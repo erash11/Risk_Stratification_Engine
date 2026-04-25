@@ -5,6 +5,15 @@ import pandas as pd
 
 
 IDENTIFIER_COLUMNS = {"athlete_id", "season_id", "date", "time_index"}
+OUTPUT_COLUMNS = [
+    "athlete_id",
+    "season_id",
+    "time_index",
+    "snapshot_date",
+    "node_count",
+    "edge_count",
+    "mean_abs_correlation",
+]
 
 
 def build_graph_snapshots(
@@ -17,6 +26,9 @@ def build_graph_snapshots(
     metric_columns = [
         column for column in measurement_matrix.columns if column not in IDENTIFIER_COLUMNS
     ]
+    if measurement_matrix.empty:
+        return pd.DataFrame(columns=OUTPUT_COLUMNS)
+    _require_numeric_metrics(measurement_matrix, metric_columns)
     rows: list[dict[str, object]] = []
     grouped = measurement_matrix.sort_values(
         ["athlete_id", "season_id", "date"]
@@ -35,7 +47,23 @@ def build_graph_snapshots(
                     **features,
                 }
             )
-    return pd.DataFrame(rows)
+    return pd.DataFrame(rows, columns=OUTPUT_COLUMNS)
+
+
+def _require_numeric_metrics(
+    measurement_matrix: pd.DataFrame,
+    metric_columns: list[str],
+) -> None:
+    non_numeric_columns = [
+        column
+        for column in metric_columns
+        if not pd.api.types.is_numeric_dtype(measurement_matrix[column])
+    ]
+    if non_numeric_columns:
+        column_list = ", ".join(non_numeric_columns)
+        raise ValueError(
+            f"measurement_matrix metric columns must be numeric: {column_list}"
+        )
 
 
 def _graph_features(

@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from risk_stratification_engine.cli import main
 
 
@@ -29,3 +31,10 @@ def test_cli_runs_fixture_experiment(tmp_path):
         / "cli_fixture_run"
         / "athlete_risk_timeline.csv"
     ).exists()
+
+
+def test_cli_requires_experiment_arguments():
+    with pytest.raises(SystemExit) as exc:
+        main([])
+
+    assert exc.value.code == 2

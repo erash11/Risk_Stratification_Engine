@@ -19,9 +19,6 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    if argv == []:
-        return 0
-
     args = build_parser().parse_args(argv)
     experiment_dir = run_research_experiment(
         measurements_path=args.measurements,

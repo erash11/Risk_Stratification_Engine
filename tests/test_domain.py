@@ -1,5 +1,4 @@
 from risk_stratification_engine import __version__
-from risk_stratification_engine.cli import main
 
 import pandas as pd
 import pytest
@@ -13,10 +12,6 @@ from risk_stratification_engine.domain import (
 
 def test_package_imports():
     assert __version__ == "0.1.0"
-
-
-def test_cli_main_returns_success():
-    assert main([]) == 0
 
 
 def test_canonical_measurement_columns_match_spec():

@@ -11,6 +11,17 @@ python -m pip install -e ".[dev]"
 pytest
 ```
 
+## Run Fixture Experiment
+
+```bash
+risk-engine \
+  --measurements tests/fixtures/measurements.csv \
+  --injuries tests/fixtures/injuries.csv \
+  --output-dir outputs \
+  --experiment-id fixture_run \
+  --graph-window-size 2
+```
+
 ## Philosophy
 
 The athlete-season is the primary modeling unit. Daily measurements are observations inside a trajectory, not independent injury-classification examples.

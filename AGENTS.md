@@ -39,6 +39,8 @@ Future work may add a dashboard performance tab inspired by the Malum/SPEAR mate
 - Real/local source data should remain in canonical upstream project locations or ignored raw-data folders, not under `src/`.
 - Use `config/paths.example.yaml` as the committed template and `config/paths.local.yaml` as the ignored machine-specific file for live source paths.
 - The current live-source keys are `forceplate_db`, `gps_db`, `bodyweight_csv`, `perch_db`, and `injury_csv`.
+- As of 2026-04-25, the local `config/paths.local.yaml` resolves all five live-source keys successfully.
+- The local injury export is in `data/raw/` as `injuries-summary-export-3ad17d.csv`; keep raw injury data ignored.
 - When running against live source files, record path metadata, file existence, schemas, and row counts in experiment/data-quality artifacts for reproducibility.
 
 ## Engineering Preferences
@@ -46,3 +48,4 @@ Future work may add a dashboard performance tab inspired by the Malum/SPEAR mate
 - Keep the first implementation modular and research-friendly.
 - Favor explicit experiment configuration and reproducible artifacts over hidden notebook state.
 - Add dashboard-facing outputs later, after the research pipeline can produce reliable risk timelines and explanations.
+- After every major change, commit the intended repo changes and push them to GitHub.

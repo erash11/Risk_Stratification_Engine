@@ -1,0 +1,9 @@
+# Copy this file to config/paths.local.yaml and update paths for your machine.
+# paths.local.yaml is intentionally ignored by git because it points to
+# private/local data stores.
+
+forceplate_db: "C:/Users/eric_rash/Desktop/DEV/ForcePlate_DecisionSystem/data/forceplate.db"
+gps_db: "C:/Users/eric_rash/Desktop/DEV/DataBase_GPS_Reporting/gps_report/data/gps_history.duckdb"
+bodyweight_csv: "C:/Users/eric_rash/Desktop/DEV/Football/BodWeightWeb/BodyWeightMaster.csv"
+perch_db: "C:/Users/eric_rash/Desktop/DEV/PlayerProfiles_FB_03-28-2026/data/perch.duckdb"
+injury_csv: "C:/Users/eric_rash/Desktop/DEV/Risk_Stratification_Engine/data/raw/injuries.csv"

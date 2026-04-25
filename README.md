@@ -22,6 +22,20 @@ risk-engine \
   --graph-window-size 2
 ```
 
+## Local Data Paths
+
+Real data sources should stay in their canonical project locations. Copy
+`config/paths.example.yaml` to `config/paths.local.yaml`, update it for your
+machine, and keep the local file uncommitted.
+
+The expected sources are:
+
+- `forceplate_db`
+- `gps_db`
+- `bodyweight_csv`
+- `perch_db`
+- `injury_csv`
+
 ## Philosophy
 
 The athlete-season is the primary modeling unit. Daily measurements are observations inside a trajectory, not independent injury-classification examples.

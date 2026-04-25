@@ -36,6 +36,10 @@ Future work may add a dashboard performance tab inspired by the Malum/SPEAR mate
 - Modeling artifacts should preserve `athlete_id`, `season_id`, `time_index`, `graph_snapshot`, `event_time`, `event_observed`, `censor_time`, and `injury_type`.
 - `event_observed = false` means the athlete was event-free through the observed window, not that the athlete is permanently healthy.
 - Use athlete-level and time-aware validation splits. Avoid random daily-row splits.
+- Real/local source data should remain in canonical upstream project locations or ignored raw-data folders, not under `src/`.
+- Use `config/paths.example.yaml` as the committed template and `config/paths.local.yaml` as the ignored machine-specific file for live source paths.
+- The current live-source keys are `forceplate_db`, `gps_db`, `bodyweight_csv`, `perch_db`, and `injury_csv`.
+- When running against live source files, record path metadata, file existence, schemas, and row counts in experiment/data-quality artifacts for reproducibility.
 
 ## Engineering Preferences
 

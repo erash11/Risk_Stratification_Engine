@@ -10,3 +10,8 @@ build/
 dist/
 *.egg-info/
 outputs/
+data/raw/
+config/paths.local.yaml
+*.duckdb
+*.duckdb.wal
+*.duckdb.tmp

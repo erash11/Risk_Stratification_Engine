@@ -2,6 +2,7 @@ from pathlib import Path
 
 import json
 import pandas as pd
+import pytest
 
 from risk_stratification_engine.experiments import run_research_experiment
 
@@ -30,7 +31,57 @@ def test_run_research_experiment_writes_artifacts(tmp_path):
     metrics = json.loads((experiment_dir / "model_metrics.json").read_text())
     assert metrics["athlete_count"] == 2
     assert metrics["snapshot_count"] == 4
-    assert metrics["observed_event_count"] == 2
+    assert metrics["observed_event_count"] == 1
 
     timeline = pd.read_csv(experiment_dir / "athlete_risk_timeline.csv")
     assert {"risk_7d", "risk_14d", "risk_30d"}.issubset(timeline.columns)
+
+    risk_columns = ["risk_7d", "risk_14d", "risk_30d"]
+    assert timeline[risk_columns].ge(0.0).all().all()
+    assert timeline[risk_columns].le(1.0).all().all()
+    assert timeline.loc[~timeline["event_observed"], risk_columns].gt(0.0).any().any()
+    for horizon in (7, 14, 30):
+        assert not timeline[f"risk_{horizon}d"].equals(
+            timeline[f"event_within_{horizon}d"].astype(float)
+        )
+
+    report = (experiment_dir / "experiment_report.md").read_text()
+    assert "deterministic placeholder scores" in report
+    assert "not calibrated probabilities" in report
+
+
+@pytest.mark.parametrize(
+    "experiment_id",
+    ["../bad", "bad/name", "bad\\name", "", Path.cwd().anchor + "bad"],
+)
+def test_run_research_experiment_rejects_unsafe_experiment_ids(
+    tmp_path,
+    experiment_id,
+):
+    with pytest.raises(ValueError, match="experiment_id must be a simple identifier"):
+        run_research_experiment(
+            measurements_path=FIXTURES / "measurements.csv",
+            injuries_path=FIXTURES / "injuries.csv",
+            output_dir=tmp_path,
+            experiment_id=experiment_id,
+            graph_window_size=2,
+        )
+
+
+def test_run_research_experiment_rejects_empty_measurement_input(tmp_path):
+    measurements_path = tmp_path / "empty_measurements.csv"
+    measurements_path.write_text(
+        "athlete_id,date,season_id,source,metric_name,metric_value\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="no graph snapshots produced"):
+        run_research_experiment(
+            measurements_path=measurements_path,
+            injuries_path=FIXTURES / "injuries.csv",
+            output_dir=tmp_path,
+            experiment_id="empty_run",
+            graph_window_size=2,
+        )
+
+    assert not (tmp_path / "experiments" / "empty_run").exists()

@@ -85,3 +85,42 @@ def test_run_research_experiment_rejects_empty_measurement_input(tmp_path):
         )
 
     assert not (tmp_path / "experiments" / "empty_run").exists()
+
+
+def test_run_research_experiment_rejects_empty_labeled_snapshots(tmp_path):
+    measurements_path = tmp_path / "post_event_measurements.csv"
+    measurements_path.write_text(
+        "\n".join(
+            [
+                "athlete_id,date,season_id,source,metric_name,metric_value",
+                "a1,2026-01-02,2026,force_plate,jump_height,42.0",
+                "a1,2026-01-02,2026,force_plate,eccentric_peak_force_asymmetry,8.0",
+                "a1,2026-01-03,2026,force_plate,jump_height,39.0",
+                "a1,2026-01-03,2026,force_plate,eccentric_peak_force_asymmetry,14.0",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    injuries_path = tmp_path / "pre_snapshot_injuries.csv"
+    injuries_path.write_text(
+        "\n".join(
+            [
+                "athlete_id,season_id,injury_date,injury_type,event_observed,censor_date",
+                "a1,2026,2026-01-01,lower_extremity_soft_tissue,true,2026-01-01",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="no labeled graph snapshots produced"):
+        run_research_experiment(
+            measurements_path=measurements_path,
+            injuries_path=injuries_path,
+            output_dir=tmp_path,
+            experiment_id="post_event_run",
+            graph_window_size=2,
+        )
+
+    assert not (tmp_path / "experiments" / "post_event_run").exists()

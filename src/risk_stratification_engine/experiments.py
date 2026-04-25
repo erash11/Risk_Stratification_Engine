@@ -26,6 +26,8 @@ def run_research_experiment(
     if graph_features.empty:
         raise ValueError("no graph snapshots produced")
     labeled = attach_time_to_event_labels(graph_features, injuries)
+    if labeled.empty:
+        raise ValueError("no labeled graph snapshots produced")
     timeline = _risk_timeline(labeled)
     explanations = _explanation_summary(timeline)
 

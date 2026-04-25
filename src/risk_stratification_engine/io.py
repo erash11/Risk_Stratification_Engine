@@ -28,9 +28,15 @@ def load_injury_events(path: str | Path) -> pd.DataFrame:
     frame = pd.read_csv(path)
     require_columns(frame, INJURY_EVENT_COLUMNS, "injury_events")
     frame = frame.loc[:, list(INJURY_EVENT_COLUMNS)].copy()
-    frame["injury_date"] = pd.to_datetime(frame["injury_date"], errors="coerce")
+    raw_injury_date = frame["injury_date"]
+    populated_injury_date = raw_injury_date.notna() & raw_injury_date.astype(
+        str
+    ).str.strip().ne("")
+    frame["injury_date"] = pd.to_datetime(raw_injury_date, errors="coerce")
     frame["censor_date"] = pd.to_datetime(frame["censor_date"], errors="coerce")
     frame["event_observed"] = frame["event_observed"].map(_parse_bool)
+    if frame.loc[populated_injury_date, "injury_date"].isna().any():
+        raise ValueError("injury_events contains unparseable injury_date values")
     if frame["censor_date"].isna().any():
         raise ValueError("injury_events contains unparseable censor_date values")
     if frame.loc[frame["event_observed"], "injury_date"].isna().any():

@@ -25,3 +25,11 @@ risk-engine \
 ## Philosophy
 
 The athlete-season is the primary modeling unit. Daily measurements are observations inside a trajectory, not independent injury-classification examples.
+
+## Source Materials
+
+The project folder may contain local research PDFs and blueprint documents. They are treated as source references, not package inputs. The research pipeline expects canonical measurement and injury CSV files.
+
+## First Milestone
+
+The first milestone is a reproducible research engine that proves the longitudinal graph/time-to-event data contract. Dashboard performance views come after stable research artifacts exist.

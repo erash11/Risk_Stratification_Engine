@@ -1,0 +1,55 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+import pandas as pd
+
+from risk_stratification_engine.domain import (
+    CANONICAL_MEASUREMENT_COLUMNS,
+    INJURY_EVENT_COLUMNS,
+    require_columns,
+)
+
+
+def load_measurements(path: str | Path) -> pd.DataFrame:
+    frame = pd.read_csv(path)
+    require_columns(frame, CANONICAL_MEASUREMENT_COLUMNS, "measurements")
+    frame = frame.loc[:, list(CANONICAL_MEASUREMENT_COLUMNS)].copy()
+    frame["date"] = pd.to_datetime(frame["date"], errors="coerce")
+    frame["metric_value"] = pd.to_numeric(frame["metric_value"], errors="coerce")
+    if frame["date"].isna().any():
+        raise ValueError("measurements contains unparseable date values")
+    if frame["metric_value"].isna().any():
+        raise ValueError("measurements contains non-numeric metric_value values")
+    return frame
+
+
+def load_injury_events(path: str | Path) -> pd.DataFrame:
+    frame = pd.read_csv(path)
+    require_columns(frame, INJURY_EVENT_COLUMNS, "injury_events")
+    frame = frame.loc[:, list(INJURY_EVENT_COLUMNS)].copy()
+    frame["injury_date"] = pd.to_datetime(frame["injury_date"], errors="coerce")
+    frame["censor_date"] = pd.to_datetime(frame["censor_date"], errors="coerce")
+    frame["event_observed"] = frame["event_observed"].map(_parse_bool)
+    if frame["censor_date"].isna().any():
+        raise ValueError("injury_events contains unparseable censor_date values")
+    if frame.loc[frame["event_observed"], "injury_date"].isna().any():
+        raise ValueError("observed injury events require injury_date")
+    return frame
+
+
+def write_frame(frame: pd.DataFrame, path: str | Path) -> None:
+    output = Path(path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    frame.to_csv(output, index=False)
+
+
+def _parse_bool(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    normalized = str(value).strip().lower()
+    if normalized in {"true", "1", "yes"}:
+        return True
+    if normalized in {"false", "0", "no"}:
+        return False
+    raise ValueError(f"cannot parse boolean value: {value}")

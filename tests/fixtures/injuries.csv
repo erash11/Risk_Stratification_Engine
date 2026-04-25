@@ -1,0 +1,3 @@
+athlete_id,season_id,injury_date,injury_type,event_observed,censor_date
+a1,2026,2026-01-20,lower_extremity_soft_tissue,true,2026-01-20
+a2,2026,,none,false,2026-02-01

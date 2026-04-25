@@ -1,0 +1,9 @@
+athlete_id,date,season_id,source,metric_name,metric_value
+a1,2026-01-01,2026,force_plate,jump_height,42.0
+a1,2026-01-01,2026,force_plate,eccentric_peak_force_asymmetry,8.0
+a1,2026-01-08,2026,force_plate,jump_height,39.0
+a1,2026-01-08,2026,force_plate,eccentric_peak_force_asymmetry,14.0
+a2,2026-01-01,2026,force_plate,jump_height,35.0
+a2,2026-01-01,2026,force_plate,eccentric_peak_force_asymmetry,5.0
+a2,2026-01-08,2026,force_plate,jump_height,36.0
+a2,2026-01-08,2026,force_plate,eccentric_peak_force_asymmetry,6.0

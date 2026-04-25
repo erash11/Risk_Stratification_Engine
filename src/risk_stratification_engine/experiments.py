@@ -51,7 +51,7 @@ def run_research_experiment(
     )
     _write_json(
         experiment_dir / "model_metrics.json",
-        _model_metrics(labeled, timeline, injuries),
+        _model_metrics(labeled, timeline),
     )
     _write_report(experiment_dir / "experiment_report.md", timeline)
     return experiment_dir
@@ -74,9 +74,8 @@ def _experiment_path(output_dir: str | Path, experiment_id: str) -> Path:
 def _model_metrics(
     labeled: pd.DataFrame,
     timeline: pd.DataFrame,
-    injuries: pd.DataFrame,
 ) -> dict[str, int | float]:
-    observed_events = injuries.loc[injuries["event_observed"]].drop_duplicates(
+    observed_events = labeled.loc[labeled["event_observed"]].drop_duplicates(
         ["athlete_id", "season_id"]
     )
     return {

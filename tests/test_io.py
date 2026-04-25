@@ -43,6 +43,33 @@ def test_load_measurements_rejects_bad_schema(tmp_path):
     assert "measurements missing required columns" in str(exc.value)
 
 
+@pytest.mark.parametrize("column", ["athlete_id", "season_id", "source", "metric_name"])
+@pytest.mark.parametrize("bad_value", ["", "   "])
+def test_load_measurements_rejects_blank_or_null_required_fields(
+    tmp_path,
+    column,
+    bad_value,
+):
+    row = {
+        "athlete_id": "a1",
+        "date": "2026-01-01",
+        "season_id": "2026",
+        "source": "force_plate",
+        "metric_name": "jump_height",
+        "metric_value": "42.0",
+    }
+    row[column] = bad_value
+    bad_path = tmp_path / "bad_required_field.csv"
+    pd.DataFrame([row]).to_csv(bad_path, index=False)
+
+    with pytest.raises(ValueError) as exc:
+        load_measurements(bad_path)
+
+    message = str(exc.value)
+    assert "measurements contains blank/null required fields" in message
+    assert column in message
+
+
 def test_load_injury_events_rejects_populated_invalid_injury_date(tmp_path):
     bad_path = tmp_path / "bad_injury_date.csv"
     bad_path.write_text(

@@ -50,6 +50,49 @@ def test_run_research_experiment_writes_artifacts(tmp_path):
     assert "not calibrated probabilities" in report
 
 
+def test_run_research_experiment_counts_observed_events_in_modeled_cohort_only(
+    tmp_path,
+):
+    measurements_path = tmp_path / "measurements.csv"
+    measurements_path.write_text(
+        "\n".join(
+            [
+                "athlete_id,date,season_id,source,metric_name,metric_value",
+                "a1,2026-01-01,2026,force_plate,jump_height,42.0",
+                "a1,2026-01-01,2026,force_plate,eccentric_peak_force_asymmetry,8.0",
+                "a1,2026-01-02,2026,force_plate,jump_height,39.0",
+                "a1,2026-01-02,2026,force_plate,eccentric_peak_force_asymmetry,14.0",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    injuries_path = tmp_path / "injuries.csv"
+    injuries_path.write_text(
+        "\n".join(
+            [
+                "athlete_id,season_id,injury_date,injury_type,event_observed,censor_date",
+                "a1,2026,2026-01-10,lower_extremity_soft_tissue,true,2026-01-10",
+                "extra,2026,2026-01-11,lower_extremity_soft_tissue,true,2026-01-11",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = run_research_experiment(
+        measurements_path=measurements_path,
+        injuries_path=injuries_path,
+        output_dir=tmp_path,
+        experiment_id="modeled_cohort_metrics",
+        graph_window_size=2,
+    )
+
+    metrics = json.loads((result / "model_metrics.json").read_text())
+    assert metrics["athlete_count"] == 1
+    assert metrics["observed_event_count"] == 1
+
+
 @pytest.mark.parametrize(
     "experiment_id",
     ["../bad", "bad/name", "bad\\name", "", Path.cwd().anchor + "bad"],

@@ -11,10 +11,23 @@ from risk_stratification_engine.domain import (
 )
 
 
+REQUIRED_MEASUREMENT_TEXT_FIELDS = (
+    "athlete_id",
+    "season_id",
+    "source",
+    "metric_name",
+)
+
+
 def load_measurements(path: str | Path) -> pd.DataFrame:
     frame = pd.read_csv(path)
     require_columns(frame, CANONICAL_MEASUREMENT_COLUMNS, "measurements")
     frame = frame.loc[:, list(CANONICAL_MEASUREMENT_COLUMNS)].copy()
+    _require_nonblank_values(
+        frame,
+        REQUIRED_MEASUREMENT_TEXT_FIELDS,
+        "measurements",
+    )
     frame["date"] = pd.to_datetime(frame["date"], errors="coerce")
     frame["metric_value"] = pd.to_numeric(frame["metric_value"], errors="coerce")
     if frame["date"].isna().any():
@@ -48,6 +61,26 @@ def write_frame(frame: pd.DataFrame, path: str | Path) -> None:
     output = Path(path)
     output.parent.mkdir(parents=True, exist_ok=True)
     frame.to_csv(output, index=False)
+
+
+def _require_nonblank_values(
+    frame: pd.DataFrame,
+    columns: tuple[str, ...],
+    label: str,
+) -> None:
+    invalid_columns = [
+        column
+        for column in columns
+        if (
+            frame[column].isna()
+            | frame[column].astype(str).str.strip().eq("")
+        ).any()
+    ]
+    if invalid_columns:
+        raise ValueError(
+            f"{label} contains blank/null required fields: "
+            f"{', '.join(invalid_columns)}"
+        )
 
 
 def _parse_bool(value: object) -> bool:

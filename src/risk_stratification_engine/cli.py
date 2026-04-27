@@ -44,6 +44,7 @@ def main(argv: list[str] | None = None) -> int:
         measurements_path = prepared.measurements_path
         injuries_path = prepared.injuries_path
         print(f"Canonical live inputs written to {prepared.measurements_path.parent}")
+        print(f"Data quality audit written to {prepared.audit_path}")
     else:
         if args.measurements is None or args.injuries is None:
             parser.error(

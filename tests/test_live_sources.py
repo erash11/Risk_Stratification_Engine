@@ -1,9 +1,11 @@
 import pandas as pd
 
+from risk_stratification_engine.config import DataSourcePaths
 from risk_stratification_engine.live_sources import (
     build_injury_event_rows,
     canonicalize_long_measurements,
     canonicalize_wide_measurements,
+    prepare_live_source_inputs,
     stable_athlete_id,
 )
 
@@ -170,3 +172,94 @@ def test_build_injury_event_rows_uses_earliest_event_and_censors_event_free_seas
             "censor_date": pd.Timestamp("2026-09-15"),
         },
     ]
+
+
+def test_prepare_live_source_inputs_writes_data_quality_audit(
+    tmp_path,
+    monkeypatch,
+):
+    paths = DataSourcePaths(
+        forceplate_db=tmp_path / "forceplate.duckdb",
+        gps_db=tmp_path / "gps.duckdb",
+        bodyweight_csv=tmp_path / "bodyweight.csv",
+        perch_db=tmp_path / "perch.duckdb",
+        injury_csv=tmp_path / "injury.csv",
+    )
+    pd.DataFrame(
+        [
+            {
+                "DATE": "2026-01-01",
+                "NAME": "Shared Athlete",
+                "WEIGHT": 190.0,
+            }
+        ]
+    ).to_csv(paths.bodyweight_csv, index=False)
+    pd.DataFrame(
+        [
+            {
+                "Athlete": "Shared Athlete",
+                "Issue Date": "2026-01-20",
+                "Classification": "soft tissue",
+                "Pathology": "",
+                "Type": "injury",
+            }
+        ]
+    ).to_csv(paths.injury_csv, index=False)
+
+    def fake_read_duckdb(_duckdb, path, _query):
+        if path == paths.gps_db:
+            return pd.DataFrame(
+                [
+                    {
+                        "name": "Shared Athlete",
+                        "session_date": "2026-01-01",
+                        "total_player_load": 10.0,
+                        "total_distance_m": 100.0,
+                    }
+                ]
+            )
+        if path == paths.forceplate_db:
+            return pd.DataFrame(
+                [
+                    {
+                        "athlete_name": "Shared Athlete",
+                        "test_date": "2026-01-10",
+                        "metric_name": "Peak Power",
+                        "metric_value": 200.0,
+                    }
+                ]
+            )
+        if path == paths.perch_db:
+            return pd.DataFrame(
+                [
+                    {
+                        "name_normalized": "Shared Athlete",
+                        "test_date": "2026-01-12",
+                        "exercise": "Bench Press",
+                        "one_rm_lbs": 300.0,
+                    }
+                ]
+            )
+        raise AssertionError(f"unexpected path: {path}")
+
+    monkeypatch.setattr(
+        "risk_stratification_engine.live_sources._require_duckdb",
+        lambda: object(),
+    )
+    monkeypatch.setattr(
+        "risk_stratification_engine.live_sources._read_duckdb",
+        fake_read_duckdb,
+    )
+
+    result = prepare_live_source_inputs(paths, tmp_path / "prepared")
+
+    assert result.audit_path.exists()
+    audit_text = result.audit_path.read_text(encoding="utf-8")
+    assert "events_without_nearby_measurements_count" in audit_text
+    assert result.audit["identity"]["source_athlete_counts"] == {
+        "bodyweight": 1,
+        "forceplate": 1,
+        "gps": 1,
+        "injury": 1,
+        "perch": 1,
+    }

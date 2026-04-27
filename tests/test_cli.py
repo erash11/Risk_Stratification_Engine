@@ -60,7 +60,9 @@ def test_cli_prepares_live_sources_before_running_experiment(tmp_path, monkeypat
             measurements_path=measurements,
             injuries_path=injuries,
             metadata_path=output_dir / "prep_metadata.json",
+            audit_path=output_dir / "data_quality_audit.json",
             metadata={"canonical_rows": {"measurements": 1, "injury_events": 1}},
+            audit={"coverage": {"athlete_season_count": 1}},
         )
 
     def fake_run_research_experiment(

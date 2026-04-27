@@ -10,6 +10,7 @@ from typing import Any
 import pandas as pd
 
 from risk_stratification_engine.config import DataSourcePaths
+from risk_stratification_engine.data_quality import build_data_quality_audit
 from risk_stratification_engine.io import write_frame
 
 
@@ -43,7 +44,9 @@ class LiveSourcePreparationResult:
     measurements_path: Path
     injuries_path: Path
     metadata_path: Path
+    audit_path: Path
     metadata: dict[str, Any]
+    audit: dict[str, Any]
 
 
 def stable_athlete_id(name: object) -> str:
@@ -153,40 +156,50 @@ def prepare_live_source_inputs(
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
-    source_frames, source_metadata = _load_source_measurements(paths)
+    source_frames, source_metadata, source_identities = _load_source_measurements(paths)
     measurements = (
         pd.concat(source_frames, ignore_index=True)
         .drop_duplicates()
         .sort_values(["athlete_id", "season_id", "date", "source", "metric_name"])
     )
     injury_export = pd.read_csv(paths.injury_csv)
+    source_identities["injury"] = _identity_frame(injury_export, "Athlete")
     injuries = build_injury_event_rows(measurements, injury_export)
 
     measurements_path = output_path / "canonical_measurements.csv"
     injuries_path = output_path / "canonical_injuries.csv"
     metadata_path = output_path / "prep_metadata.json"
+    audit_path = output_path / "data_quality_audit.json"
 
     write_frame(_csv_ready(measurements), measurements_path)
     write_frame(_csv_ready(injuries), injuries_path)
 
     metadata = _preparation_metadata(paths, source_metadata, measurements, injuries)
+    audit = build_data_quality_audit(measurements, injuries, source_identities)
     metadata_path.write_text(
         json.dumps(metadata, indent=2, allow_nan=False),
+        encoding="utf-8",
+    )
+    audit_path.write_text(
+        json.dumps(audit, indent=2, allow_nan=False),
         encoding="utf-8",
     )
     return LiveSourcePreparationResult(
         measurements_path=measurements_path,
         injuries_path=injuries_path,
         metadata_path=metadata_path,
+        audit_path=audit_path,
         metadata=metadata,
+        audit=audit,
     )
 
 
 def _load_source_measurements(
     paths: DataSourcePaths,
-) -> tuple[list[pd.DataFrame], dict[str, Any]]:
+) -> tuple[list[pd.DataFrame], dict[str, Any], dict[str, pd.DataFrame]]:
     duckdb = _require_duckdb()
     metadata: dict[str, Any] = {"sources": {}}
+    identities: dict[str, pd.DataFrame] = {}
 
     gps = _read_duckdb(
         duckdb,
@@ -207,6 +220,7 @@ def _load_source_measurements(
         metric_columns=gps_metrics,
     )
     metadata["sources"]["gps"] = _source_summary(gps, gps_metrics)
+    identities["gps"] = _identity_frame(gps, "name")
 
     forceplate = _read_duckdb(
         duckdb,
@@ -234,6 +248,7 @@ def _load_source_measurements(
         forceplate,
         forceplate_metrics,
     )
+    identities["forceplate"] = _identity_frame(forceplate, "athlete_name")
 
     bodyweight = pd.read_csv(paths.bodyweight_csv)
     bodyweight_frame = canonicalize_wide_measurements(
@@ -244,6 +259,7 @@ def _load_source_measurements(
         metric_columns=["WEIGHT"],
     )
     metadata["sources"]["bodyweight"] = _source_summary(bodyweight, ["WEIGHT"])
+    identities["bodyweight"] = _identity_frame(bodyweight, "NAME")
 
     perch = _read_duckdb(
         duckdb,
@@ -265,7 +281,8 @@ def _load_source_measurements(
         metric_value_column="one_rm_lbs",
     )
     metadata["sources"]["perch"] = _source_summary(perch, perch_metrics)
-    return [gps_frame, forceplate_frame, bodyweight_frame, perch_frame], metadata
+    identities["perch"] = _identity_frame(perch, "name_normalized")
+    return [gps_frame, forceplate_frame, bodyweight_frame, perch_frame], metadata, identities
 
 
 def _normalize_name(value: object) -> str:
@@ -302,6 +319,11 @@ def _clean_measurements(frame: pd.DataFrame) -> pd.DataFrame:
         :,
         ["athlete_id", "date", "season_id", "source", "metric_name", "metric_value"],
     ].reset_index(drop=True)
+
+
+def _identity_frame(frame: pd.DataFrame, name_column: str) -> pd.DataFrame:
+    identities = pd.DataFrame({"athlete_id": frame[name_column].map(stable_athlete_id)})
+    return identities.loc[identities["athlete_id"].ne("")].drop_duplicates()
 
 
 def _injury_type(injuries: pd.DataFrame) -> pd.Series:

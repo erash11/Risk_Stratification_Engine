@@ -51,11 +51,14 @@ risk-engine \
 ```
 
 Live-source preparation writes ignored canonical CSVs under
-`outputs/live_inputs/<experiment-id>/` and records preparation metadata beside
-them. Athlete identities are stable hashes of normalized names, seasons start on
-July 1, and the current injury label policy uses the earliest injury issue date
-per athlete-season while censoring event-free athlete-seasons at their last
-measurement date.
+`outputs/live_inputs/<experiment-id>/` and records preparation metadata plus a
+`data_quality_audit.json` beside them. The audit reports hashed identity overlap
+across sources, sparse athlete-seasons, large within-season measurement gaps,
+duplicate same-day metric rows, and observed injury events without nearby
+measurements. Athlete identities are stable hashes of normalized names, seasons
+start on July 1, and the current injury label policy uses the earliest injury
+issue date per athlete-season while censoring event-free athlete-seasons at their
+last measurement date.
 
 ## Philosophy
 

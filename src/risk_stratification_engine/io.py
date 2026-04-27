@@ -18,6 +18,13 @@ REQUIRED_MEASUREMENT_TEXT_FIELDS = (
     "metric_name",
 )
 
+OPTIONAL_INJURY_EVENT_COLUMNS = (
+    "nearest_measurement_date",
+    "nearest_measurement_gap_days",
+    "event_window_quality",
+    "primary_model_event",
+)
+
 
 def load_measurements(path: str | Path) -> pd.DataFrame:
     frame = pd.read_csv(path)
@@ -40,7 +47,10 @@ def load_measurements(path: str | Path) -> pd.DataFrame:
 def load_injury_events(path: str | Path) -> pd.DataFrame:
     frame = pd.read_csv(path)
     require_columns(frame, INJURY_EVENT_COLUMNS, "injury_events")
-    frame = frame.loc[:, list(INJURY_EVENT_COLUMNS)].copy()
+    selected_columns = list(INJURY_EVENT_COLUMNS) + [
+        column for column in OPTIONAL_INJURY_EVENT_COLUMNS if column in frame.columns
+    ]
+    frame = frame.loc[:, selected_columns].copy()
     raw_injury_date = frame["injury_date"]
     populated_injury_date = raw_injury_date.notna() & raw_injury_date.astype(
         str
@@ -48,6 +58,16 @@ def load_injury_events(path: str | Path) -> pd.DataFrame:
     frame["injury_date"] = pd.to_datetime(raw_injury_date, errors="coerce")
     frame["censor_date"] = pd.to_datetime(frame["censor_date"], errors="coerce")
     frame["event_observed"] = frame["event_observed"].map(_parse_bool)
+    if "nearest_measurement_date" in frame.columns:
+        frame["nearest_measurement_date"] = pd.to_datetime(
+            frame["nearest_measurement_date"], errors="coerce"
+        )
+    if "nearest_measurement_gap_days" in frame.columns:
+        frame["nearest_measurement_gap_days"] = pd.to_numeric(
+            frame["nearest_measurement_gap_days"], errors="coerce"
+        )
+    if "primary_model_event" in frame.columns:
+        frame["primary_model_event"] = frame["primary_model_event"].map(_parse_bool)
     if frame.loc[populated_injury_date, "injury_date"].isna().any():
         raise ValueError("injury_events contains unparseable injury_date values")
     if frame["censor_date"].isna().any():

@@ -2,7 +2,7 @@
 
 Research prototype for a Peterson-inspired athlete risk stratification pipeline.
 
-The first implementation models athlete-seasons as longitudinal trajectories, builds athlete-specific graph snapshots, assembles time-to-event labels with censoring, and writes reproducible experiment artifacts.
+The first implementation models athlete-seasons as longitudinal trajectories, builds athlete-specific graph snapshots, assembles time-to-event labels with censoring, trains a discrete-time logistic baseline, and writes reproducible experiment artifacts.
 
 ## Quickstart
 
@@ -66,9 +66,23 @@ aggregated by mean `metric_value` per athlete, season, date, source, and metric
 before modeling; the aggregation counts are recorded in `prep_metadata.json`.
 Observed injury events are labeled by nearest same-season measurement distance:
 `modelable` at 14 days or less, `low_confidence` at 15-30 days, and
-`out_of_window` beyond 30 days. The current engine still runs over the canonical
-rows, while downstream modeling can filter on `event_window_quality` and
-`primary_model_event`.
+`out_of_window` beyond 30 days. When `primary_model_event` is available, the
+discrete-time baseline uses it as the positive-event policy so low-confidence
+and out-of-window observed events do not become training positives.
+
+## Modeling Baseline
+
+The experiment runner now writes `model_summary.json` alongside
+`model_metrics.json`. The first risk model is a discrete-time logistic baseline
+trained separately for the 7, 14, and 30 day horizons over graph snapshot
+features only: `time_index`, `node_count`, `edge_count`, and
+`mean_abs_correlation`. The split is deterministic and athlete-level, with a
+sorted 20% holdout. If a training fold has only one class at a horizon, the
+runner records a prevalence fallback for that horizon instead of fitting an
+unstable classifier.
+
+The reported risk values are baseline model estimates for research comparison,
+not calibrated clinical probabilities.
 
 ## Philosophy
 

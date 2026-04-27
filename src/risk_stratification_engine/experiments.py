@@ -8,6 +8,7 @@ import pandas as pd
 from risk_stratification_engine.events import DEFAULT_HORIZONS, attach_time_to_event_labels
 from risk_stratification_engine.graphs import build_graph_snapshots
 from risk_stratification_engine.io import load_injury_events, load_measurements, write_frame
+from risk_stratification_engine.models import MODEL_TYPE, train_discrete_time_risk_model
 from risk_stratification_engine.trajectories import build_measurement_matrix
 
 
@@ -28,7 +29,8 @@ def run_research_experiment(
     labeled = attach_time_to_event_labels(graph_features, injuries)
     if labeled.empty:
         raise ValueError("no labeled graph snapshots produced")
-    timeline = _risk_timeline(labeled)
+    model_result = train_discrete_time_risk_model(labeled)
+    timeline = model_result.timeline
     explanations = _explanation_summary(timeline)
 
     graph_dir = experiment_dir / "graph_snapshots"
@@ -51,9 +53,10 @@ def run_research_experiment(
     )
     _write_json(
         experiment_dir / "model_metrics.json",
-        _model_metrics(labeled, timeline),
+        _model_metrics(labeled, timeline, model_result.summary),
     )
-    _write_report(experiment_dir / "experiment_report.md", timeline)
+    _write_json(experiment_dir / "model_summary.json", model_result.summary)
+    _write_report(experiment_dir / "experiment_report.md", timeline, model_result.summary)
     return experiment_dir
 
 
@@ -74,38 +77,32 @@ def _experiment_path(output_dir: str | Path, experiment_id: str) -> Path:
 def _model_metrics(
     labeled: pd.DataFrame,
     timeline: pd.DataFrame,
-) -> dict[str, int | float]:
+    model_summary: dict[str, object],
+) -> dict[str, int | float | str]:
     observed_events = labeled.loc[labeled["event_observed"]].drop_duplicates(
         ["athlete_id", "season_id"]
     )
+    primary_model_events = _primary_model_events(labeled)
     return {
+        "model_type": str(model_summary["model_type"]),
         "athlete_count": int(labeled["athlete_id"].nunique()),
         "snapshot_count": int(len(labeled)),
         "observed_event_count": int(len(observed_events)),
+        "primary_model_event_count": int(len(primary_model_events)),
         "mean_risk_7d": float(timeline["risk_7d"].mean()),
         "mean_risk_14d": float(timeline["risk_14d"].mean()),
         "mean_risk_30d": float(timeline["risk_30d"].mean()),
     }
 
 
-def _risk_timeline(labeled: pd.DataFrame) -> pd.DataFrame:
-    timeline = labeled.copy()
-    possible_edges = timeline["node_count"] * (timeline["node_count"] - 1) / 2
-    density_pressure = (
-        timeline["edge_count"]
-        .div(possible_edges.where(possible_edges > 0))
-        .fillna(0.0)
-        .clip(lower=0.0, upper=1.0)
-    )
-    graph_pressure = timeline["mean_abs_correlation"].clip(lower=0.0, upper=1.0)
-    for horizon in DEFAULT_HORIZONS:
-        history_pressure = (timeline["time_index"] + 1) / (
-            timeline["time_index"] + 1 + horizon
+def _primary_model_events(labeled: pd.DataFrame) -> pd.DataFrame:
+    if "primary_model_event" not in labeled.columns:
+        return labeled.loc[labeled["event_observed"]].drop_duplicates(
+            ["athlete_id", "season_id"]
         )
-        timeline[f"risk_{horizon}d"] = (
-            0.5 * graph_pressure + 0.3 * density_pressure + 0.2 * history_pressure
-        ).round(6)
-    return timeline
+    return labeled.loc[labeled["primary_model_event"].astype(bool)].drop_duplicates(
+        ["athlete_id", "season_id"]
+    )
 
 
 def _explanation_summary(timeline: pd.DataFrame) -> pd.DataFrame:
@@ -138,16 +135,23 @@ def _write_json(path: Path, payload: dict[str, object]) -> None:
     path.write_text(json.dumps(payload, indent=2, allow_nan=False), encoding="utf-8")
 
 
-def _write_report(path: Path, timeline: pd.DataFrame) -> None:
+def _write_report(
+    path: Path,
+    timeline: pd.DataFrame,
+    model_summary: dict[str, object],
+) -> None:
     lines = [
         "# Experiment Report",
         "",
+        f"Model: {MODEL_TYPE}",
+        f"Event policy: {model_summary['event_policy']}",
+        f"Split policy: {model_summary['split_policy']}",
         f"Snapshots: {len(timeline)}",
         f"Athletes: {timeline['athlete_id'].nunique()}",
         f"Mean +7 day risk: {timeline['risk_7d'].mean():.3f}",
         f"Mean +14 day risk: {timeline['risk_14d'].mean():.3f}",
         f"Mean +30 day risk: {timeline['risk_30d'].mean():.3f}",
         "",
-        "These risk values are deterministic placeholder scores over graph snapshot features, not calibrated probabilities. This baseline preserves the longitudinal time-to-event contract for later model replacement.",
+        "These risk values come from a discrete-time logistic baseline over graph snapshot features. They are not calibrated clinical probabilities, but they preserve the longitudinal time-to-event contract for later model replacement.",
     ]
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")

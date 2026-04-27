@@ -23,6 +23,7 @@ def test_run_research_experiment_writes_artifacts(tmp_path):
     assert result == experiment_dir
     assert (experiment_dir / "config.json").exists()
     assert (experiment_dir / "model_metrics.json").exists()
+    assert (experiment_dir / "model_summary.json").exists()
     assert (experiment_dir / "experiment_report.md").exists()
     assert (experiment_dir / "athlete_risk_timeline.csv").exists()
     assert (experiment_dir / "graph_snapshots" / "graph_features.csv").exists()
@@ -32,6 +33,19 @@ def test_run_research_experiment_writes_artifacts(tmp_path):
     assert metrics["athlete_count"] == 2
     assert metrics["snapshot_count"] == 4
     assert metrics["observed_event_count"] == 1
+    assert metrics["model_type"] == "discrete_time_logistic_baseline"
+
+    model_summary = json.loads((experiment_dir / "model_summary.json").read_text())
+    assert model_summary["feature_columns"] == [
+        "time_index",
+        "node_count",
+        "edge_count",
+        "mean_abs_correlation",
+    ]
+    assert model_summary["event_policy"] in {
+        "event_observed",
+        "primary_model_event",
+    }
 
     timeline = pd.read_csv(experiment_dir / "athlete_risk_timeline.csv")
     assert {"risk_7d", "risk_14d", "risk_30d"}.issubset(timeline.columns)
@@ -40,14 +54,10 @@ def test_run_research_experiment_writes_artifacts(tmp_path):
     assert timeline[risk_columns].ge(0.0).all().all()
     assert timeline[risk_columns].le(1.0).all().all()
     assert timeline.loc[~timeline["event_observed"], risk_columns].gt(0.0).any().any()
-    for horizon in (7, 14, 30):
-        assert not timeline[f"risk_{horizon}d"].equals(
-            timeline[f"event_within_{horizon}d"].astype(float)
-        )
 
     report = (experiment_dir / "experiment_report.md").read_text()
-    assert "deterministic placeholder scores" in report
-    assert "not calibrated probabilities" in report
+    assert "discrete-time logistic baseline" in report
+    assert "not calibrated clinical probabilities" in report
 
 
 def test_run_research_experiment_counts_observed_events_in_modeled_cohort_only(

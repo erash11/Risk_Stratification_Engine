@@ -33,6 +33,32 @@ def test_load_injury_events_parses_event_observed_and_dates():
     assert frame.loc[frame["athlete_id"] == "a2", "event_observed"].item() is False
 
 
+def test_load_injury_events_preserves_optional_event_window_policy_columns(tmp_path):
+    path = tmp_path / "injuries_with_policy.csv"
+    path.write_text(
+        "\n".join(
+            [
+                "athlete_id,season_id,injury_date,injury_type,event_observed,censor_date,nearest_measurement_date,nearest_measurement_gap_days,event_window_quality,primary_model_event",
+                "a1,2026,2026-01-20,lower_extremity_soft_tissue,true,2026-01-20,2026-01-18,2,modelable,true",
+                "a2,2026,,none,false,2026-02-01,,,censored,false",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    frame = load_injury_events(path)
+
+    assert "event_window_quality" in frame.columns
+    assert "primary_model_event" in frame.columns
+    assert "nearest_measurement_date" in frame.columns
+    assert "nearest_measurement_gap_days" in frame.columns
+    assert str(frame["nearest_measurement_date"].dtype).startswith("datetime64")
+    assert frame.loc[frame["athlete_id"] == "a1", "primary_model_event"].item() is True
+    assert frame.loc[frame["athlete_id"] == "a2", "primary_model_event"].item() is False
+    assert frame.loc[frame["athlete_id"] == "a1", "nearest_measurement_gap_days"].item() == 2
+
+
 def test_load_measurements_rejects_bad_schema(tmp_path):
     bad_path = tmp_path / "bad.csv"
     bad_path.write_text("athlete_id,date\nx,2026-01-01\n", encoding="utf-8")

@@ -5,6 +5,7 @@ import pandas as pd
 import pytest
 
 from risk_stratification_engine.experiments import (
+    run_model_robustness_experiment,
     run_research_experiment,
     run_window_sensitivity_experiment,
 )
@@ -197,6 +198,40 @@ def test_run_window_sensitivity_experiment_writes_comparison_artifacts(tmp_path)
     assert "Window Sensitivity" in report
     assert "window 2" in report
     assert "window 3" in report
+
+
+def test_run_model_robustness_experiment_writes_stability_artifacts(tmp_path):
+    result = run_model_robustness_experiment(
+        measurements_path=FIXTURES / "measurements.csv",
+        injuries_path=FIXTURES / "injuries.csv",
+        output_dir=tmp_path,
+        experiment_id="robustness_fixture",
+        graph_window_size=2,
+        split_count=2,
+    )
+
+    assert result == tmp_path / "experiments" / "robustness_fixture"
+    assert (result / "config.json").exists()
+    assert (result / "model_robustness.json").exists()
+    assert (result / "model_robustness_report.md").exists()
+
+    robustness = json.loads((result / "model_robustness.json").read_text())
+    assert robustness["model_variants"] == ["baseline", "l2", "l1", "elasticnet"]
+    assert robustness["split_seeds"] == [0, 1]
+    assert set(robustness["variants"]) == {
+        "baseline",
+        "l2",
+        "l1",
+        "elasticnet",
+    }
+    assert "summary_by_horizon" in robustness["variants"]["baseline"]
+    assert "calibration" in robustness["decision_modes"]
+    assert "model_brier_score" in robustness["decision_modes"]["calibration"]["7"]
+
+    report = (result / "model_robustness_report.md").read_text()
+    assert "Model Robustness Sprint" in report
+    assert "baseline" in report
+    assert "elasticnet" in report
 
 
 @pytest.mark.parametrize(

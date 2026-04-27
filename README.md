@@ -61,6 +61,20 @@ risk-engine \
   --window-sensitivity-sizes 2 3 4 5 7
 ```
 
+To compare regularized model variants across rotating athlete-level holdout
+splits:
+
+```bash
+risk-engine \
+  --from-live-sources \
+  --paths-config config/paths.local.yaml \
+  --output-dir outputs \
+  --experiment-id model_robustness_sprint_v1 \
+  --model-robustness-sprint \
+  --graph-window-size 4 \
+  --stability-splits 5
+```
+
 Live-source preparation writes ignored canonical CSVs under
 `outputs/live_inputs/<experiment-id>/` and records preparation metadata plus a
 `data_quality_audit.json` beside them. The audit reports hashed identity overlap
@@ -119,6 +133,12 @@ Window-sensitivity runs write `window_sensitivity.json` and
 `window_sensitivity_report.md`, comparing multiple graph `window_size` values
 with the same holdout policy and evaluation metrics.
 
+Model robustness sprints write `model_robustness.json` and
+`model_robustness_report.md`, comparing `baseline`, `l2`, `l1`, and
+`elasticnet` logistic variants across deterministic rotating athlete-level
+holdout splits. Regularized variants standardize features internally for model
+fitting and convert coefficients back to raw feature units for attribution.
+
 Latest live-source comparison (`intra_individual_deviation_v1`, 349 athletes,
 70 holdout): 7d AUROC 0.723, Brier skill 0.0020; 14d AUROC 0.731, Brier skill
 0.0057; 30d AUROC 0.736, Brier skill 0.0171. Compared with
@@ -133,8 +153,14 @@ most useful as ranking modifiers inside the combined model.
 The current window sensitivity run (`window_sensitivity_v1`, graph windows
 2/3/4/5/7) showed a useful tradeoff: window 4 was best for AUROC at all
 horizons, window 7 was best for Brier skill at all horizons, and window 2 was
-best for top-decile lift at all horizons. The current test suite has 86 passing
-tests.
+best for top-decile lift at all horizons.
+
+The current model robustness sprint (`model_robustness_sprint_v1`, graph window
+4, 5 rotating splits) showed that all regularized variants improved average
+AUROC, Brier skill, Brier score, and top-decile lift relative to baseline at all
+horizons. L2 was the strongest all-around choice, winning calibration at
+7/14/30d, triage at 7/14d, and ranking at 14d. Elastic net narrowly won 30d
+ranking and 30d triage. The current test suite has 90 passing tests.
 
 The reported risk values are baseline model estimates for research comparison,
 not calibrated clinical probabilities.

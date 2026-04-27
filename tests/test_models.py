@@ -80,6 +80,35 @@ def test_train_discrete_time_risk_model_accepts_feature_column_subsets():
     assert {"risk_7d", "risk_14d", "risk_30d"}.issubset(result.timeline.columns)
 
 
+def test_train_discrete_time_risk_model_accepts_explicit_test_athlete_ids():
+    result = train_discrete_time_risk_model(
+        _labeled_snapshot_frame(),
+        test_athlete_ids=("a1", "a3"),
+    )
+
+    assert result.summary["split_policy"] == "athlete_level_explicit_holdout"
+    assert result.summary["test_athlete_ids"] == ["a1", "a3"]
+    assert "a1" not in result.summary["train_athlete_ids"]
+    assert "a3" not in result.summary["train_athlete_ids"]
+
+
+def test_train_discrete_time_risk_model_accepts_regularized_variants():
+    result = train_discrete_time_risk_model(
+        _labeled_snapshot_frame(),
+        model_variant="elasticnet",
+    )
+
+    assert result.summary["model_variant"] == "elasticnet"
+    for horizon in (7, 14, 30):
+        horizon_summary = result.summary["horizon_models"][str(horizon)]
+        assert horizon_summary["model_kind"] in {
+            "logistic_regression_elasticnet",
+            "prevalence_fallback",
+        }
+        if horizon_summary["model_kind"] != "prevalence_fallback":
+            assert horizon_summary["standardized_features"] is True
+
+
 def test_train_discrete_time_risk_model_reports_standardized_feature_attribution():
     result = train_discrete_time_risk_model(_labeled_snapshot_frame())
 

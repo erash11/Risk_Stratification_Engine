@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from math import ceil
 from pathlib import Path
 
 import pandas as pd
@@ -12,6 +13,7 @@ from risk_stratification_engine.io import load_injury_events, load_measurements,
 from risk_stratification_engine.models import (
     GRAPH_SNAPSHOT_FEATURE_COLUMNS,
     MODEL_TYPE,
+    MODEL_VARIANTS,
     train_discrete_time_risk_model,
 )
 from risk_stratification_engine.trajectories import build_measurement_matrix
@@ -168,6 +170,183 @@ def run_window_sensitivity_experiment(
         sensitivity,
     )
     return experiment_dir
+
+
+def run_model_robustness_experiment(
+    measurements_path: str | Path,
+    injuries_path: str | Path,
+    output_dir: str | Path,
+    experiment_id: str,
+    graph_window_size: int = 4,
+    split_count: int = 5,
+) -> Path:
+    if split_count < 1:
+        raise ValueError("split_count must be at least 1")
+    experiment_dir = _experiment_path(output_dir, experiment_id)
+    measurements = load_measurements(measurements_path)
+    injuries = load_injury_events(injuries_path)
+    matrix = build_measurement_matrix(measurements)
+    graph_features = build_graph_snapshots(matrix, window_size=graph_window_size)
+    if graph_features.empty:
+        raise ValueError("no graph snapshots produced")
+    labeled = attach_time_to_event_labels(graph_features, injuries)
+    if labeled.empty:
+        raise ValueError("no labeled graph snapshots produced")
+
+    split_test_ids = _rotating_holdout_splits(labeled["athlete_id"], split_count)
+    variants: dict[str, object] = {}
+    first_summary: dict[str, object] | None = None
+    for variant in MODEL_VARIANTS:
+        split_payloads: dict[str, object] = {}
+        for split_seed, test_ids in enumerate(split_test_ids):
+            model_result = train_discrete_time_risk_model(
+                labeled,
+                test_athlete_ids=test_ids,
+                model_variant=variant,
+            )
+            evaluation = evaluate_risk_model(model_result.timeline, model_result.summary)
+            if first_summary is None:
+                first_summary = model_result.summary
+            split_payloads[str(split_seed)] = {
+                "test_athlete_ids": list(test_ids),
+                "test_athlete_count": len(test_ids),
+                "horizons": evaluation["horizons"],
+            }
+        variants[variant] = {
+            "splits": split_payloads,
+            "summary_by_horizon": _aggregate_variant_splits(split_payloads),
+        }
+
+    if first_summary is None:
+        raise ValueError("no model variants evaluated")
+
+    robustness = {
+        "experiment_type": "model_robustness_sprint",
+        "model_type": MODEL_TYPE,
+        "event_policy": first_summary["event_policy"],
+        "split_policy": "athlete_level_deterministic_rotating_holdout_20pct",
+        "graph_window_size": graph_window_size,
+        "model_variants": list(MODEL_VARIANTS),
+        "split_count": split_count,
+        "split_seeds": list(range(split_count)),
+        "horizons": list(DEFAULT_HORIZONS),
+        "feature_columns": list(GRAPH_SNAPSHOT_FEATURE_COLUMNS),
+        "variants": variants,
+        "decision_modes": _decision_mode_winners(variants),
+    }
+    _write_json(
+        experiment_dir / "config.json",
+        {
+            "experiment_id": experiment_id,
+            "experiment_type": "model_robustness_sprint",
+            "measurements_path": str(measurements_path),
+            "injuries_path": str(injuries_path),
+            "graph_window_size": graph_window_size,
+            "split_count": split_count,
+            "model_variants": list(MODEL_VARIANTS),
+            "horizons": list(DEFAULT_HORIZONS),
+        },
+    )
+    _write_json(experiment_dir / "model_robustness.json", robustness)
+    _write_model_robustness_report(
+        experiment_dir / "model_robustness_report.md",
+        robustness,
+    )
+    return experiment_dir
+
+
+def _rotating_holdout_splits(
+    athlete_ids: pd.Series,
+    split_count: int,
+) -> list[list[str]]:
+    unique_ids = sorted(str(athlete_id) for athlete_id in athlete_ids.dropna().unique())
+    if len(unique_ids) <= 1:
+        return [[] for _ in range(split_count)]
+    test_count = max(1, ceil(len(unique_ids) * 0.2))
+    splits: list[list[str]] = []
+    for split_seed in range(split_count):
+        start = (split_seed * test_count) % len(unique_ids)
+        split_ids = [
+            unique_ids[(start + offset) % len(unique_ids)]
+            for offset in range(test_count)
+        ]
+        splits.append(sorted(split_ids))
+    return splits
+
+
+ROBUSTNESS_METRICS = (
+    "roc_auc",
+    "brier_skill_score",
+    "model_brier_score",
+    "top_decile_lift",
+)
+
+
+def _aggregate_variant_splits(split_payloads: dict[str, object]) -> dict[str, object]:
+    summary: dict[str, object] = {}
+    for horizon in DEFAULT_HORIZONS:
+        horizon_summary: dict[str, object] = {}
+        for metric_name in ROBUSTNESS_METRICS:
+            values = [
+                split_payload["horizons"][str(horizon)][metric_name]
+                for split_payload in split_payloads.values()
+                if split_payload["horizons"][str(horizon)][metric_name] is not None
+            ]
+            horizon_summary[metric_name] = _metric_distribution(values)
+        summary[str(horizon)] = horizon_summary
+    return summary
+
+
+def _metric_distribution(values: list[float]) -> dict[str, float | int | None]:
+    if not values:
+        return {
+            "mean": None,
+            "std": None,
+            "min": None,
+            "max": None,
+            "defined_split_count": 0,
+        }
+    numeric = [float(value) for value in values]
+    mean_value = sum(numeric) / len(numeric)
+    variance = sum((value - mean_value) ** 2 for value in numeric) / len(numeric)
+    return {
+        "mean": float(mean_value),
+        "std": float(variance**0.5),
+        "min": float(min(numeric)),
+        "max": float(max(numeric)),
+        "defined_split_count": len(numeric),
+    }
+
+
+def _decision_mode_winners(variants: dict[str, object]) -> dict[str, object]:
+    decision_modes = {
+        "ranking": ("roc_auc", max),
+        "calibration": ("model_brier_score", min),
+        "triage": ("top_decile_lift", max),
+    }
+    output: dict[str, object] = {}
+    for mode_name, (metric_name, selector) in decision_modes.items():
+        mode_payload: dict[str, object] = {}
+        for horizon in DEFAULT_HORIZONS:
+            candidates = []
+            for variant_name, variant_payload in variants.items():
+                distribution = variant_payload["summary_by_horizon"][str(horizon)][
+                    metric_name
+                ]
+                if distribution["mean"] is not None:
+                    candidates.append(
+                        {
+                            "model_variant": variant_name,
+                            metric_name: distribution,
+                        }
+                    )
+            if candidates:
+                mode_payload[str(horizon)] = selector(
+                    candidates,
+                    key=lambda candidate: candidate[metric_name]["mean"],
+                )
+        output[mode_name] = mode_payload
+    return output
 
 
 def _normalize_window_sizes(graph_window_sizes: tuple[int, ...]) -> tuple[int, ...]:
@@ -453,6 +632,59 @@ def _write_window_sensitivity_report(
                 f"({_format_metric(best_metric['value'])})"
             )
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _write_model_robustness_report(
+    path: Path,
+    robustness: dict[str, object],
+) -> None:
+    variants = robustness["variants"]
+    decision_modes = robustness["decision_modes"]
+    lines = [
+        "# Model Robustness Sprint",
+        "",
+        f"Graph window size: {robustness['graph_window_size']}",
+        f"Split count: {robustness['split_count']}",
+        "",
+        "## Stability Summary",
+        "",
+        "| Variant | Horizon | AUROC mean/std | Brier skill mean/std | Brier mean/std | Top-decile lift mean/std |",
+        "|---|---:|---:|---:|---:|---:|",
+    ]
+    for variant_name, variant_payload in variants.items():
+        for horizon in DEFAULT_HORIZONS:
+            summary = variant_payload["summary_by_horizon"][str(horizon)]
+            lines.append(
+                "| "
+                f"{variant_name} | "
+                f"{horizon}d | "
+                f"{_format_distribution(summary['roc_auc'])} | "
+                f"{_format_distribution(summary['brier_skill_score'])} | "
+                f"{_format_distribution(summary['model_brier_score'])} | "
+                f"{_format_distribution(summary['top_decile_lift'])} |"
+            )
+
+    lines.extend(["", "## Decision Mode Winners", ""])
+    for mode_name, mode_payload in decision_modes.items():
+        lines.append(f"### {mode_name}")
+        for horizon in DEFAULT_HORIZONS:
+            if str(horizon) not in mode_payload:
+                lines.append(f"- {horizon}d: n/a")
+                continue
+            winner = mode_payload[str(horizon)]
+            metric_name = next(key for key in winner if key != "model_variant")
+            lines.append(
+                f"- {horizon}d: {winner['model_variant']} "
+                f"({_format_distribution(winner[metric_name])})"
+            )
+        lines.append("")
+    path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+
+
+def _format_distribution(distribution: dict[str, object]) -> str:
+    if distribution["mean"] is None:
+        return "n/a"
+    return f"{float(distribution['mean']):.3f}/{float(distribution['std']):.3f}"
 
 
 def _horizon_report_line(horizon: int, metrics: dict[str, object]) -> str:

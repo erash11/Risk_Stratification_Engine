@@ -175,3 +175,61 @@ def test_cli_runs_window_sensitivity_experiment(tmp_path, monkeypatch):
         "experiment_id": "window_sensitivity",
         "graph_window_sizes": (2, 4, 7),
     }
+
+
+def test_cli_runs_model_robustness_sprint(tmp_path, monkeypatch):
+    calls = {}
+
+    def fake_run_model_robustness_experiment(
+        measurements_path,
+        injuries_path,
+        output_dir,
+        experiment_id,
+        graph_window_size,
+        split_count,
+    ):
+        calls["robustness"] = {
+            "measurements_path": measurements_path,
+            "injuries_path": injuries_path,
+            "output_dir": output_dir,
+            "experiment_id": experiment_id,
+            "graph_window_size": graph_window_size,
+            "split_count": split_count,
+        }
+        experiment_dir = output_dir / "experiments" / experiment_id
+        experiment_dir.mkdir(parents=True)
+        return experiment_dir
+
+    monkeypatch.setattr(
+        cli,
+        "run_model_robustness_experiment",
+        fake_run_model_robustness_experiment,
+    )
+
+    exit_code = main(
+        [
+            "--measurements",
+            str(FIXTURES / "measurements.csv"),
+            "--injuries",
+            str(FIXTURES / "injuries.csv"),
+            "--output-dir",
+            str(tmp_path),
+            "--experiment-id",
+            "robustness",
+            "--model-robustness-sprint",
+            "--graph-window-size",
+            "4",
+            "--stability-splits",
+            "3",
+        ]
+    )
+
+    assert exit_code == 0
+    assert calls["robustness"] == {
+        "measurements_path": FIXTURES / "measurements.csv",
+        "injuries_path": FIXTURES / "injuries.csv",
+        "output_dir": tmp_path,
+        "experiment_id": "robustness",
+        "graph_window_size": 4,
+        "split_count": 3,
+    }

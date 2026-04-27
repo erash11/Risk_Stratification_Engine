@@ -12,6 +12,7 @@ from risk_stratification_engine.events import DEFAULT_HORIZONS
 
 
 MODEL_TYPE = "discrete_time_logistic_baseline"
+MODEL_VARIANTS = ("baseline", "l2", "l1", "elasticnet")
 GRAPH_SNAPSHOT_FEATURE_COLUMNS = (
     "time_index",
     "node_count",
@@ -39,12 +40,21 @@ def train_discrete_time_risk_model(
     labeled: pd.DataFrame,
     horizons: tuple[int, ...] = DEFAULT_HORIZONS,
     feature_columns: Sequence[str] = GRAPH_SNAPSHOT_FEATURE_COLUMNS,
+    test_athlete_ids: Sequence[str] | None = None,
+    model_variant: str = "baseline",
 ) -> RiskModelResult:
     feature_columns = tuple(feature_columns)
+    if model_variant not in MODEL_VARIANTS:
+        raise ValueError(
+            f"model_variant must be one of: {', '.join(MODEL_VARIANTS)}"
+        )
     _require_columns(labeled, feature_columns)
     timeline = labeled.copy()
     event_policy = _event_policy(timeline)
-    train_ids, test_ids = _athlete_holdout_ids(timeline["athlete_id"])
+    train_ids, test_ids, split_policy = _athlete_split_ids(
+        timeline["athlete_id"],
+        test_athlete_ids=test_athlete_ids,
+    )
     train_mask = timeline["athlete_id"].isin(train_ids)
     test_mask = timeline["athlete_id"].isin(test_ids)
     features = _feature_frame(timeline, feature_columns)
@@ -56,24 +66,36 @@ def train_discrete_time_risk_model(
         labels = _training_labels(timeline, label_column, event_policy)
         train_labels = labels.loc[train_mask]
         train_features = features.loc[train_mask]
+        fit_features, fit_train_features, coefficient_scale = _fit_feature_frames(
+            features=features,
+            train_features=train_features,
+            standardize=model_variant != "baseline",
+        )
+        standardized_features = model_variant != "baseline"
 
         if train_labels.nunique(dropna=False) < 2:
             probability = float(train_labels.mean()) if not train_labels.empty else 0.0
             probabilities = pd.Series(probability, index=timeline.index)
             model_kind = "prevalence_fallback"
         else:
-            model = LogisticRegression(max_iter=1000, random_state=0)
-            model.fit(train_features, train_labels)
+            model = _logistic_model(model_variant)
+            model.fit(fit_train_features, train_labels)
             probabilities = pd.Series(
-                model.predict_proba(features)[:, 1],
+                model.predict_proba(fit_features)[:, 1],
                 index=timeline.index,
             )
-            model_kind = "logistic_regression"
+            model_kind = (
+                "logistic_regression"
+                if model_variant == "baseline"
+                else f"logistic_regression_{model_variant}"
+            )
 
         risk_column = f"risk_{horizon}d"
         timeline[risk_column] = probabilities.clip(lower=0.0, upper=1.0).round(6)
         coefficients = (
-            None if model_kind == "prevalence_fallback" else model.coef_[0].tolist()
+            None
+            if model_kind == "prevalence_fallback"
+            else (model.coef_[0] * coefficient_scale).tolist()
         )
         horizon_models[str(horizon)] = _horizon_summary(
             labels=labels,
@@ -84,16 +106,18 @@ def train_discrete_time_risk_model(
             feature_columns=feature_columns,
             train_features=train_features,
             coefficients=coefficients,
+            standardized_features=standardized_features,
         )
 
     return RiskModelResult(
         timeline=timeline,
         summary={
             "model_type": MODEL_TYPE,
+            "model_variant": model_variant,
             "horizons": list(horizons),
             "feature_columns": list(feature_columns),
             "event_policy": event_policy,
-            "split_policy": "athlete_level_sorted_holdout_20pct",
+            "split_policy": split_policy,
             "train_athlete_count": len(train_ids),
             "test_athlete_count": len(test_ids),
             "train_athlete_ids": train_ids,
@@ -115,6 +139,23 @@ def _event_policy(frame: pd.DataFrame) -> str:
     return "event_observed"
 
 
+def _athlete_split_ids(
+    athlete_ids: pd.Series,
+    test_athlete_ids: Sequence[str] | None,
+) -> tuple[list[str], list[str], str]:
+    if test_athlete_ids is None:
+        train_ids, test_ids = _athlete_holdout_ids(athlete_ids)
+        return train_ids, test_ids, "athlete_level_sorted_holdout_20pct"
+
+    unique_ids = sorted(str(athlete_id) for athlete_id in athlete_ids.dropna().unique())
+    requested_test_ids = sorted({str(athlete_id) for athlete_id in test_athlete_ids})
+    present_test_ids = [athlete_id for athlete_id in requested_test_ids if athlete_id in unique_ids]
+    train_ids = [athlete_id for athlete_id in unique_ids if athlete_id not in present_test_ids]
+    if not train_ids and present_test_ids:
+        raise ValueError("explicit test_athlete_ids leave no training athletes")
+    return train_ids, present_test_ids, "athlete_level_explicit_holdout"
+
+
 def _athlete_holdout_ids(athlete_ids: pd.Series) -> tuple[list[str], list[str]]:
     unique_ids = sorted(str(athlete_id) for athlete_id in athlete_ids.dropna().unique())
     if len(unique_ids) <= 1:
@@ -125,6 +166,36 @@ def _athlete_holdout_ids(athlete_ids: pd.Series) -> tuple[list[str], list[str]]:
     return train_ids, test_ids
 
 
+def _logistic_model(model_variant: str) -> LogisticRegression:
+    if model_variant == "baseline":
+        return LogisticRegression(max_iter=1000, random_state=0)
+    if model_variant == "l2":
+        return LogisticRegression(
+            C=0.2,
+            l1_ratio=0,
+            solver="saga",
+            max_iter=5000,
+            random_state=0,
+        )
+    if model_variant == "l1":
+        return LogisticRegression(
+            C=0.2,
+            l1_ratio=1,
+            solver="saga",
+            max_iter=5000,
+            random_state=0,
+        )
+    if model_variant == "elasticnet":
+        return LogisticRegression(
+            C=0.2,
+            l1_ratio=0.5,
+            solver="saga",
+            max_iter=5000,
+            random_state=0,
+        )
+    raise ValueError(f"unsupported model_variant: {model_variant}")
+
+
 def _feature_frame(
     frame: pd.DataFrame,
     feature_columns: Sequence[str],
@@ -133,6 +204,23 @@ def _feature_frame(
         frame.loc[:, feature_columns]
         .apply(pd.to_numeric, errors="coerce")
         .fillna(0.0)
+    )
+
+
+def _fit_feature_frames(
+    features: pd.DataFrame,
+    train_features: pd.DataFrame,
+    standardize: bool,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.Series]:
+    if not standardize:
+        return features, train_features, pd.Series(1.0, index=features.columns)
+
+    means = train_features.mean()
+    stds = train_features.std(ddof=0).replace(0.0, 1.0)
+    return (
+        (features - means) / stds,
+        (train_features - means) / stds,
+        1.0 / stds,
     )
 
 
@@ -156,6 +244,7 @@ def _horizon_summary(
     feature_columns: Sequence[str],
     train_features: pd.DataFrame,
     coefficients: Sequence[float] | None,
+    standardized_features: bool,
 ) -> dict[str, Any]:
     train_labels = labels.loc[train_mask]
     test_labels = labels.loc[test_mask]
@@ -168,6 +257,7 @@ def _horizon_summary(
         "test_positive_count": int(test_labels.sum()),
         "train_positive_rate": float(train_labels.mean()) if len(train_labels) else 0.0,
         "test_positive_rate": float(test_labels.mean()) if len(test_labels) else None,
+        "standardized_features": standardized_features,
         "feature_attribution": _feature_attribution(
             feature_columns=feature_columns,
             train_features=train_features,

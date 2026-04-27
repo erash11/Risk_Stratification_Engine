@@ -54,6 +54,44 @@ Future work may add a dashboard performance tab inspired by the Malum/SPEAR mate
 - `model_evaluation.json` compares each horizon's holdout predictions against the training-prevalence baseline and reports Brier score, Brier skill score, AUROC, average precision, and top-decile lift when the holdout labels support those metrics.
 - Enriched graph features (`enriched_graph_features_v1` run, 349 athletes, 70 holdout): 7d AUROC 0.730 (+0.008), 14d AUROC 0.735 (+0.007), 30d AUROC 0.735 (+0.007); Brier skill 30d improved from 0.0142 to 0.0168 (+18%).
 
+## Recommended Next Step
+
+**Intra-individual z-score deviation features** — approved design, ready to implement.
+
+Full spec: `docs/superpowers/specs/2026-04-27-intra-individual-deviation-design.md`
+
+**Why:** The current 9-feature model uses only absolute graph values (population-level). Peterson's methodology is fundamentally intra-individual: risk emerges from departure of an athlete's own dynamic baseline, not from population position. Z-score features are the direct implementation of that philosophy.
+
+**What to add (4 new features, 13 total):**
+
+| New column | Source feature | Logic |
+|---|---|---|
+| `z_mean_abs_correlation` | `mean_abs_correlation` | z-score vs. athlete's own rolling baseline |
+| `z_edge_density` | `edge_density` | same |
+| `z_edge_count` | `edge_count` | same |
+| `z_graph_instability` | `graph_instability` | same |
+
+**Computation rules (per athlete-season, chronological):**
+- Baseline window: `group_rows[max(0, i − window_size + 1) : i]` — strictly prior, no current row
+- Minimum 2 prior snapshots required; else z-score = 0.0
+- std = 0 → z-score = 0.0
+- Clip to `[-10.0, 10.0]`, round to 6 dp
+- Use population std (ddof=0), same as `graph_instability`
+
+**Files to change:** `graphs.py` (OUTPUT_COLUMNS + `_add_temporal_features`), `models.py` (GRAPH_SNAPSHOT_FEATURE_COLUMNS), `tests/test_graphs.py` (6 new TDD tests), `tests/test_models.py` (fixture columns), `tests/test_experiments.py` (feature_columns assertion).
+
+**TDD requirement:** Write 6 failing tests first (see spec for exact test names and assertions), watch them fail, then implement. Do not write implementation code before tests.
+
+**6 required tests:**
+1. `test_build_graph_snapshots_includes_z_score_feature_columns` — all 4 columns present
+2. `test_build_graph_snapshots_z_scores_are_zero_at_first_snapshot` — no prior history
+3. `test_build_graph_snapshots_z_scores_are_zero_at_second_snapshot` — only 1 prior (below minimum-2 threshold)
+4. `test_build_graph_snapshots_z_score_nonzero_once_baseline_has_two_prior_snapshots` — known z-score from 3-row synthetic fixture
+5. `test_build_graph_snapshots_z_score_is_zero_when_baseline_std_is_zero` — std-zero fallback
+6. `test_build_graph_snapshots_z_score_clips_extreme_departures` — clip to ±10.0
+
+**After implementation:** run live experiment `intra_individual_deviation_v1` and compare `model_evaluation.json` against `enriched_graph_features_v1` baseline (7d AUROC 0.730, 14d 0.735, 30d 0.735). Update this file with new test count and results. Commit and push.
+
 ## Engineering Preferences
 
 - Keep the first implementation modular and research-friendly.

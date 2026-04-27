@@ -93,6 +93,33 @@ def test_build_data_quality_audit_reports_identity_and_coverage_findings():
         "gps": 1,
         "injury": 1,
     }
+    assert audit["identity"]["single_source_athlete_review"]["total_count"] == 2
+    assert audit["identity"]["single_source_athlete_review"]["by_source"] == {
+        "gps": 1,
+        "injury": 1,
+    }
+    assert audit["identity"]["single_source_athlete_review"]["examples"] == [
+        {
+            "athlete_id": sparse_id,
+            "source": "gps",
+            "measurement_rows": 1,
+            "measurement_dates": 1,
+            "athlete_seasons": 1,
+            "first_measurement_date": "2026-02-01",
+            "last_measurement_date": "2026-02-01",
+            "modeled_observed_events": 0,
+        },
+        {
+            "athlete_id": injury_only_id,
+            "source": "injury",
+            "measurement_rows": 0,
+            "measurement_dates": 0,
+            "athlete_seasons": 0,
+            "first_measurement_date": None,
+            "last_measurement_date": None,
+            "modeled_observed_events": 0,
+        },
+    ]
     assert audit["coverage"]["sparse_athlete_season_count"] == 1
     assert audit["coverage"]["sparse_athlete_seasons"][0]["athlete_id"] == sparse_id
     assert audit["date_gaps"]["large_gap_count"] == 1
@@ -100,6 +127,20 @@ def test_build_data_quality_audit_reports_identity_and_coverage_findings():
     assert audit["duplicates"]["duplicate_same_day_metric_count"] == 1
     assert audit["duplicates"]["duplicate_same_day_metrics"][0]["row_count"] == 2
     assert audit["injuries"]["events_without_nearby_measurements_count"] == 1
+    assert audit["injuries"]["events_without_nearby_measurements_by_gap_bucket"] == {
+        "4-7d": 0,
+        "8-14d": 1,
+        "15-30d": 0,
+        "31-90d": 0,
+        "91d+": 0,
+        "no_measurements": 0,
+    }
+    assert audit["injuries"]["events_without_nearby_measurements"][0][
+        "season_measurement_dates"
+    ] == 2
+    assert audit["injuries"]["events_without_nearby_measurements"][0][
+        "season_source_count"
+    ] == 2
     assert (
         audit["injuries"]["events_without_nearby_measurements"][0]["athlete_id"]
         == shared_id

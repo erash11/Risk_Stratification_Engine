@@ -55,11 +55,13 @@ Live-source preparation writes ignored canonical CSVs under
 `data_quality_audit.json` beside them. The audit reports hashed identity overlap
 across sources, sparse athlete-seasons, large within-season measurement gaps,
 duplicate same-day metric rows, and observed injury events without nearby
-measurements. Athlete identities are stable hashes of normalized names, seasons
-start on July 1, and the current injury label policy uses the earliest injury
-issue date per athlete-season while censoring event-free athlete-seasons at their
-last measurement date. Name normalization reconciles common `Last, First` export
-style with `First Last` names before hashing. Duplicate same-day metric rows are
+measurements. It also includes review context for remaining single-source hashed
+identities and injury events outside the nearby-measurement window. Athlete
+identities are stable hashes of normalized names, seasons start on July 1, and
+the current injury label policy uses the earliest injury issue date per
+athlete-season while censoring event-free athlete-seasons at their last
+measurement date. Name normalization reconciles common `Last, First` export style
+with `First Last` names before hashing. Duplicate same-day metric rows are
 aggregated by mean `metric_value` per athlete, season, date, source, and metric
 before modeling; the aggregation counts are recorded in `prep_metadata.json`.
 

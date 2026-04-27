@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from risk_stratification_engine.evaluation import evaluate_risk_model
 from risk_stratification_engine.events import DEFAULT_HORIZONS, attach_time_to_event_labels
 from risk_stratification_engine.graphs import build_graph_snapshots
 from risk_stratification_engine.io import load_injury_events, load_measurements, write_frame
@@ -31,6 +32,7 @@ def run_research_experiment(
         raise ValueError("no labeled graph snapshots produced")
     model_result = train_discrete_time_risk_model(labeled)
     timeline = model_result.timeline
+    evaluation = evaluate_risk_model(timeline, model_result.summary)
     explanations = _explanation_summary(timeline)
 
     graph_dir = experiment_dir / "graph_snapshots"
@@ -55,8 +57,14 @@ def run_research_experiment(
         experiment_dir / "model_metrics.json",
         _model_metrics(labeled, timeline, model_result.summary),
     )
+    _write_json(experiment_dir / "model_evaluation.json", evaluation)
     _write_json(experiment_dir / "model_summary.json", model_result.summary)
-    _write_report(experiment_dir / "experiment_report.md", timeline, model_result.summary)
+    _write_report(
+        experiment_dir / "experiment_report.md",
+        timeline,
+        model_result.summary,
+        evaluation,
+    )
     return experiment_dir
 
 
@@ -139,7 +147,9 @@ def _write_report(
     path: Path,
     timeline: pd.DataFrame,
     model_summary: dict[str, object],
+    evaluation: dict[str, object],
 ) -> None:
+    evaluation_horizons = evaluation["horizons"]
     lines = [
         "# Experiment Report",
         "",
@@ -152,6 +162,32 @@ def _write_report(
         f"Mean +14 day risk: {timeline['risk_14d'].mean():.3f}",
         f"Mean +30 day risk: {timeline['risk_30d'].mean():.3f}",
         "",
+        "## Holdout Evaluation",
+        "",
+        *[
+            _horizon_report_line(
+                horizon,
+                evaluation_horizons[str(horizon)],
+            )
+            for horizon in DEFAULT_HORIZONS
+        ],
+        "",
         "These risk values come from a discrete-time logistic baseline over graph snapshot features. They are not calibrated clinical probabilities, but they preserve the longitudinal time-to-event contract for later model replacement.",
     ]
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _horizon_report_line(horizon: int, metrics: dict[str, object]) -> str:
+    model_brier = _format_metric(metrics["model_brier_score"])
+    prevalence_brier = _format_metric(metrics["prevalence_brier_score"])
+    auc = _format_metric(metrics["roc_auc"])
+    return (
+        f"- +{horizon} days: Brier {model_brier}; "
+        f"Prevalence baseline Brier {prevalence_brier}; AUROC {auc}"
+    )
+
+
+def _format_metric(value: object) -> str:
+    if value is None:
+        return "n/a"
+    return f"{float(value):.3f}"

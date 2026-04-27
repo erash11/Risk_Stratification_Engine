@@ -22,6 +22,7 @@ def test_run_research_experiment_writes_artifacts(tmp_path):
     experiment_dir = tmp_path / "experiments" / "fixture_research_run"
     assert result == experiment_dir
     assert (experiment_dir / "config.json").exists()
+    assert (experiment_dir / "model_evaluation.json").exists()
     assert (experiment_dir / "model_metrics.json").exists()
     assert (experiment_dir / "model_summary.json").exists()
     assert (experiment_dir / "experiment_report.md").exists()
@@ -46,6 +47,11 @@ def test_run_research_experiment_writes_artifacts(tmp_path):
         "event_observed",
         "primary_model_event",
     }
+    model_evaluation = json.loads(
+        (experiment_dir / "model_evaluation.json").read_text()
+    )
+    assert model_evaluation["model_type"] == "discrete_time_logistic_baseline"
+    assert model_evaluation["horizons"]["7"]["prevalence_baseline_risk"] is not None
 
     timeline = pd.read_csv(experiment_dir / "athlete_risk_timeline.csv")
     assert {"risk_7d", "risk_14d", "risk_30d"}.issubset(timeline.columns)
@@ -57,6 +63,7 @@ def test_run_research_experiment_writes_artifacts(tmp_path):
 
     report = (experiment_dir / "experiment_report.md").read_text()
     assert "discrete-time logistic baseline" in report
+    assert "Prevalence baseline" in report
     assert "not calibrated clinical probabilities" in report
 
 

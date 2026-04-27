@@ -72,14 +72,20 @@ and out-of-window observed events do not become training positives.
 
 ## Modeling Baseline
 
-The experiment runner now writes `model_summary.json` alongside
-`model_metrics.json`. The first risk model is a discrete-time logistic baseline
-trained separately for the 7, 14, and 30 day horizons over graph snapshot
-features only: `time_index`, `node_count`, `edge_count`, and
-`mean_abs_correlation`. The split is deterministic and athlete-level, with a
-sorted 20% holdout. If a training fold has only one class at a horizon, the
-runner records a prevalence fallback for that horizon instead of fitting an
-unstable classifier.
+The experiment runner now writes `model_summary.json` and
+`model_evaluation.json` alongside `model_metrics.json`. The first risk model is
+a discrete-time logistic baseline trained separately for the 7, 14, and 30 day
+horizons over graph snapshot features only: `time_index`, `node_count`,
+`edge_count`, and `mean_abs_correlation`. The split is deterministic and
+athlete-level, with a sorted 20% holdout. If a training fold has only one class
+at a horizon, the runner records a prevalence fallback for that horizon instead
+of fitting an unstable classifier.
+
+`model_evaluation.json` compares holdout predictions to the training prevalence
+baseline for each horizon. It reports holdout event counts and rates, mean
+predicted risk, model and prevalence Brier scores, Brier skill score, AUROC,
+average precision, and top-decile lift when those metrics are defined by the
+holdout labels.
 
 The reported risk values are baseline model estimates for research comparison,
 not calibrated clinical probabilities.

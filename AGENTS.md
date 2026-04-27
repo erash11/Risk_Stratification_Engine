@@ -42,6 +42,8 @@ Future work may add a dashboard performance tab inspired by the Malum/SPEAR mate
 - As of 2026-04-25, the local `config/paths.local.yaml` resolves all five live-source keys successfully.
 - The local injury export is in `data/raw/` as `injuries-summary-export-3ad17d.csv`; keep raw injury data ignored.
 - When running against live source files, record path metadata, file existence, schemas, and row counts in experiment/data-quality artifacts for reproducibility.
+- As of 2026-04-27, live-source ingestion is available through `risk-engine --from-live-sources --paths-config config/paths.local.yaml --output-dir outputs --experiment-id <id>`.
+- Live-source ingestion writes ignored canonical inputs to `outputs/live_inputs/<experiment-id>/`, uses stable hashed athlete IDs from normalized names, starts seasons on July 1, and uses the earliest injury issue date per athlete-season with censoring at the last measurement date.
 
 ## Engineering Preferences
 

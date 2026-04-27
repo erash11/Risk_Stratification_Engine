@@ -36,6 +36,27 @@ The expected sources are:
 - `perch_db`
 - `injury_csv`
 
+## Run Live-Source Experiment
+
+When `config/paths.local.yaml` points to available local sources, the CLI can
+prepare canonical inputs and run the research engine in one step:
+
+```bash
+risk-engine \
+  --from-live-sources \
+  --paths-config config/paths.local.yaml \
+  --output-dir outputs \
+  --experiment-id actual_data_probe_run \
+  --graph-window-size 4
+```
+
+Live-source preparation writes ignored canonical CSVs under
+`outputs/live_inputs/<experiment-id>/` and records preparation metadata beside
+them. Athlete identities are stable hashes of normalized names, seasons start on
+July 1, and the current injury label policy uses the earliest injury issue date
+per athlete-season while censoring event-free athlete-seasons at their last
+measurement date.
+
 ## Philosophy
 
 The athlete-season is the primary modeling unit. Daily measurements are observations inside a trajectory, not independent injury-classification examples.

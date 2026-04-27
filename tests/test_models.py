@@ -68,6 +68,38 @@ def test_train_discrete_time_risk_model_predicts_horizon_risks_without_leakage()
     assert result.summary["event_policy"] == "primary_model_event"
 
 
+def test_train_discrete_time_risk_model_accepts_feature_column_subsets():
+    feature_columns = ("z_edge_count", "z_edge_density")
+
+    result = train_discrete_time_risk_model(
+        _labeled_snapshot_frame(),
+        feature_columns=feature_columns,
+    )
+
+    assert result.summary["feature_columns"] == list(feature_columns)
+    assert {"risk_7d", "risk_14d", "risk_30d"}.issubset(result.timeline.columns)
+
+
+def test_train_discrete_time_risk_model_reports_standardized_feature_attribution():
+    result = train_discrete_time_risk_model(_labeled_snapshot_frame())
+
+    horizon_summary = result.summary["horizon_models"]["7"]
+    attribution = horizon_summary["feature_attribution"]
+
+    assert len(attribution) == len(GRAPH_SNAPSHOT_FEATURE_COLUMNS)
+    assert {
+        "feature",
+        "coefficient",
+        "train_mean",
+        "train_std",
+        "standardized_coefficient",
+        "abs_standardized_coefficient",
+    }.issubset(attribution[0])
+    assert {entry["feature"] for entry in attribution} == set(
+        GRAPH_SNAPSHOT_FEATURE_COLUMNS
+    )
+
+
 def test_train_discrete_time_risk_model_falls_back_when_training_labels_one_class():
     frame = _labeled_snapshot_frame()
     frame["event_within_7d"] = False

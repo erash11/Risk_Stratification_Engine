@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from math import ceil
-from typing import Any
+from typing import Any, Sequence
 
 import pandas as pd
 from sklearn.linear_model import LogisticRegression
@@ -38,14 +38,16 @@ class RiskModelResult:
 def train_discrete_time_risk_model(
     labeled: pd.DataFrame,
     horizons: tuple[int, ...] = DEFAULT_HORIZONS,
+    feature_columns: Sequence[str] = GRAPH_SNAPSHOT_FEATURE_COLUMNS,
 ) -> RiskModelResult:
-    _require_columns(labeled, GRAPH_SNAPSHOT_FEATURE_COLUMNS)
+    feature_columns = tuple(feature_columns)
+    _require_columns(labeled, feature_columns)
     timeline = labeled.copy()
     event_policy = _event_policy(timeline)
     train_ids, test_ids = _athlete_holdout_ids(timeline["athlete_id"])
     train_mask = timeline["athlete_id"].isin(train_ids)
     test_mask = timeline["athlete_id"].isin(test_ids)
-    features = _feature_frame(timeline)
+    features = _feature_frame(timeline, feature_columns)
 
     horizon_models: dict[str, dict[str, Any]] = {}
     for horizon in horizons:
@@ -70,12 +72,18 @@ def train_discrete_time_risk_model(
 
         risk_column = f"risk_{horizon}d"
         timeline[risk_column] = probabilities.clip(lower=0.0, upper=1.0).round(6)
+        coefficients = (
+            None if model_kind == "prevalence_fallback" else model.coef_[0].tolist()
+        )
         horizon_models[str(horizon)] = _horizon_summary(
             labels=labels,
             predictions=timeline[risk_column],
             train_mask=train_mask,
             test_mask=test_mask,
             model_kind=model_kind,
+            feature_columns=feature_columns,
+            train_features=train_features,
+            coefficients=coefficients,
         )
 
     return RiskModelResult(
@@ -83,7 +91,7 @@ def train_discrete_time_risk_model(
         summary={
             "model_type": MODEL_TYPE,
             "horizons": list(horizons),
-            "feature_columns": list(GRAPH_SNAPSHOT_FEATURE_COLUMNS),
+            "feature_columns": list(feature_columns),
             "event_policy": event_policy,
             "split_policy": "athlete_level_sorted_holdout_20pct",
             "train_athlete_count": len(train_ids),
@@ -117,9 +125,12 @@ def _athlete_holdout_ids(athlete_ids: pd.Series) -> tuple[list[str], list[str]]:
     return train_ids, test_ids
 
 
-def _feature_frame(frame: pd.DataFrame) -> pd.DataFrame:
+def _feature_frame(
+    frame: pd.DataFrame,
+    feature_columns: Sequence[str],
+) -> pd.DataFrame:
     return (
-        frame.loc[:, GRAPH_SNAPSHOT_FEATURE_COLUMNS]
+        frame.loc[:, feature_columns]
         .apply(pd.to_numeric, errors="coerce")
         .fillna(0.0)
     )
@@ -142,6 +153,9 @@ def _horizon_summary(
     train_mask: pd.Series,
     test_mask: pd.Series,
     model_kind: str,
+    feature_columns: Sequence[str],
+    train_features: pd.DataFrame,
+    coefficients: Sequence[float] | None,
 ) -> dict[str, Any]:
     train_labels = labels.loc[train_mask]
     test_labels = labels.loc[test_mask]
@@ -154,6 +168,11 @@ def _horizon_summary(
         "test_positive_count": int(test_labels.sum()),
         "train_positive_rate": float(train_labels.mean()) if len(train_labels) else 0.0,
         "test_positive_rate": float(test_labels.mean()) if len(test_labels) else None,
+        "feature_attribution": _feature_attribution(
+            feature_columns=feature_columns,
+            train_features=train_features,
+            coefficients=coefficients,
+        ),
     }
     if len(test_labels) > 0:
         summary["test_brier_score"] = float(
@@ -162,3 +181,35 @@ def _horizon_summary(
     else:
         summary["test_brier_score"] = None
     return summary
+
+
+def _feature_attribution(
+    feature_columns: Sequence[str],
+    train_features: pd.DataFrame,
+    coefficients: Sequence[float] | None,
+) -> list[dict[str, float | str]]:
+    rows: list[dict[str, float | str]] = []
+    for index, feature in enumerate(feature_columns):
+        train_values = train_features[feature]
+        train_mean = float(train_values.mean()) if len(train_values) else 0.0
+        train_std = float(train_values.std(ddof=0)) if len(train_values) else 0.0
+        if pd.isna(train_mean):
+            train_mean = 0.0
+        if pd.isna(train_std):
+            train_std = 0.0
+        coefficient = 0.0 if coefficients is None else float(coefficients[index])
+        standardized = coefficient * train_std
+        rows.append(
+            {
+                "feature": str(feature),
+                "coefficient": float(round(coefficient, 10)),
+                "train_mean": float(round(train_mean, 10)),
+                "train_std": float(round(train_std, 10)),
+                "standardized_coefficient": float(round(standardized, 10)),
+                "abs_standardized_coefficient": float(round(abs(standardized), 10)),
+            }
+        )
+    return sorted(
+        rows,
+        key=lambda row: (-float(row["abs_standardized_coefficient"]), str(row["feature"])),
+    )

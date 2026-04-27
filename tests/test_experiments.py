@@ -25,6 +25,8 @@ def test_run_research_experiment_writes_artifacts(tmp_path):
     assert (experiment_dir / "model_evaluation.json").exists()
     assert (experiment_dir / "model_metrics.json").exists()
     assert (experiment_dir / "model_summary.json").exists()
+    assert (experiment_dir / "feature_attribution.json").exists()
+    assert (experiment_dir / "feature_ablation_report.md").exists()
     assert (experiment_dir / "experiment_report.md").exists()
     assert (experiment_dir / "athlete_risk_timeline.csv").exists()
     assert (experiment_dir / "graph_snapshots" / "graph_features.csv").exists()
@@ -62,6 +64,30 @@ def test_run_research_experiment_writes_artifacts(tmp_path):
     assert model_evaluation["model_type"] == "discrete_time_logistic_baseline"
     assert model_evaluation["horizons"]["7"]["prevalence_baseline_risk"] is not None
 
+    feature_attribution = json.loads(
+        (experiment_dir / "feature_attribution.json").read_text()
+    )
+    assert set(feature_attribution["feature_sets"]) == {
+        "full_13",
+        "original_9",
+        "z_score_only",
+    }
+    assert feature_attribution["feature_sets"]["full_13"]["feature_columns"] == (
+        model_summary["feature_columns"]
+    )
+    assert feature_attribution["feature_sets"]["z_score_only"]["feature_columns"] == [
+        "z_mean_abs_correlation",
+        "z_edge_density",
+        "z_edge_count",
+        "z_graph_instability",
+    ]
+    full_7d = feature_attribution["feature_sets"]["full_13"]["horizons"]["7"]
+    assert "evaluation" in full_7d
+    assert "feature_attribution" in full_7d
+    assert full_7d["feature_attribution"][0]["feature"] in model_summary[
+        "feature_columns"
+    ]
+
     timeline = pd.read_csv(experiment_dir / "athlete_risk_timeline.csv")
     assert {"risk_7d", "risk_14d", "risk_30d"}.issubset(timeline.columns)
 
@@ -74,6 +100,11 @@ def test_run_research_experiment_writes_artifacts(tmp_path):
     assert "discrete-time logistic baseline" in report
     assert "Prevalence baseline" in report
     assert "not calibrated clinical probabilities" in report
+
+    ablation_report = (experiment_dir / "feature_ablation_report.md").read_text()
+    assert "Feature Attribution And Ablation" in ablation_report
+    assert "full_13" in ablation_report
+    assert "z_score_only" in ablation_report
 
 
 def test_run_research_experiment_counts_observed_events_in_modeled_cohort_only(

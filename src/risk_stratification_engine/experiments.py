@@ -9,8 +9,35 @@ from risk_stratification_engine.evaluation import evaluate_risk_model
 from risk_stratification_engine.events import DEFAULT_HORIZONS, attach_time_to_event_labels
 from risk_stratification_engine.graphs import build_graph_snapshots
 from risk_stratification_engine.io import load_injury_events, load_measurements, write_frame
-from risk_stratification_engine.models import MODEL_TYPE, train_discrete_time_risk_model
+from risk_stratification_engine.models import (
+    GRAPH_SNAPSHOT_FEATURE_COLUMNS,
+    MODEL_TYPE,
+    train_discrete_time_risk_model,
+)
 from risk_stratification_engine.trajectories import build_measurement_matrix
+
+ORIGINAL_GRAPH_FEATURE_COLUMNS = (
+    "time_index",
+    "node_count",
+    "edge_count",
+    "mean_abs_correlation",
+    "edge_density",
+    "delta_edge_count",
+    "delta_mean_abs_correlation",
+    "delta_edge_density",
+    "graph_instability",
+)
+Z_SCORE_GRAPH_FEATURE_COLUMNS = (
+    "z_mean_abs_correlation",
+    "z_edge_density",
+    "z_edge_count",
+    "z_graph_instability",
+)
+FEATURE_ABLATION_SETS = {
+    "full_13": GRAPH_SNAPSHOT_FEATURE_COLUMNS,
+    "original_9": ORIGINAL_GRAPH_FEATURE_COLUMNS,
+    "z_score_only": Z_SCORE_GRAPH_FEATURE_COLUMNS,
+}
 
 
 def run_research_experiment(
@@ -33,6 +60,12 @@ def run_research_experiment(
     model_result = train_discrete_time_risk_model(labeled)
     timeline = model_result.timeline
     evaluation = evaluate_risk_model(timeline, model_result.summary)
+    feature_attribution = _feature_attribution_and_ablation(
+        labeled=labeled,
+        full_timeline=timeline,
+        full_model_summary=model_result.summary,
+        full_evaluation=evaluation,
+    )
     explanations = _explanation_summary(timeline)
 
     graph_dir = experiment_dir / "graph_snapshots"
@@ -59,11 +92,16 @@ def run_research_experiment(
     )
     _write_json(experiment_dir / "model_evaluation.json", evaluation)
     _write_json(experiment_dir / "model_summary.json", model_result.summary)
+    _write_json(experiment_dir / "feature_attribution.json", feature_attribution)
     _write_report(
         experiment_dir / "experiment_report.md",
         timeline,
         model_result.summary,
         evaluation,
+    )
+    _write_feature_ablation_report(
+        experiment_dir / "feature_ablation_report.md",
+        feature_attribution,
     )
     return experiment_dir
 
@@ -138,6 +176,50 @@ def _primary_signal(row: pd.Series) -> str:
     return "moderate_metric_relationship_shift"
 
 
+def _feature_attribution_and_ablation(
+    labeled: pd.DataFrame,
+    full_timeline: pd.DataFrame,
+    full_model_summary: dict[str, object],
+    full_evaluation: dict[str, object],
+) -> dict[str, object]:
+    feature_sets: dict[str, object] = {}
+    for name, feature_columns in FEATURE_ABLATION_SETS.items():
+        if name == "full_13":
+            timeline = full_timeline
+            model_summary = full_model_summary
+            evaluation = full_evaluation
+        else:
+            model_result = train_discrete_time_risk_model(
+                labeled,
+                feature_columns=feature_columns,
+            )
+            timeline = model_result.timeline
+            model_summary = model_result.summary
+            evaluation = evaluate_risk_model(timeline, model_summary)
+
+        feature_sets[name] = {
+            "feature_columns": list(feature_columns),
+            "horizons": {
+                str(horizon): {
+                    "model_kind": model_summary["horizon_models"][str(horizon)][
+                        "model_kind"
+                    ],
+                    "evaluation": evaluation["horizons"][str(horizon)],
+                    "feature_attribution": model_summary["horizon_models"][
+                        str(horizon)
+                    ]["feature_attribution"],
+                }
+                for horizon in model_summary["horizons"]
+            },
+        }
+    return {
+        "model_type": MODEL_TYPE,
+        "event_policy": full_model_summary["event_policy"],
+        "split_policy": full_model_summary["split_policy"],
+        "feature_sets": feature_sets,
+    }
+
+
 def _write_json(path: Path, payload: dict[str, object]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, allow_nan=False), encoding="utf-8")
@@ -175,6 +257,48 @@ def _write_report(
         "These risk values come from a discrete-time logistic baseline over graph snapshot features. They are not calibrated clinical probabilities, but they preserve the longitudinal time-to-event contract for later model replacement.",
     ]
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _write_feature_ablation_report(
+    path: Path,
+    feature_attribution: dict[str, object],
+) -> None:
+    feature_sets = feature_attribution["feature_sets"]
+    lines = [
+        "# Feature Attribution And Ablation",
+        "",
+        "All feature sets use the same athlete-level deterministic holdout split and event policy as the primary experiment.",
+        "",
+        "## Ablation Metrics",
+        "",
+        "| Feature set | Horizon | AUROC | Brier skill | Top-decile lift |",
+        "|---|---:|---:|---:|---:|",
+    ]
+    for feature_set_name, feature_set in feature_sets.items():
+        horizons = feature_set["horizons"]
+        for horizon, horizon_payload in horizons.items():
+            evaluation = horizon_payload["evaluation"]
+            lines.append(
+                "| "
+                f"{feature_set_name} | "
+                f"{horizon}d | "
+                f"{_format_metric(evaluation['roc_auc'])} | "
+                f"{_format_metric(evaluation['brier_skill_score'])} | "
+                f"{_format_metric(evaluation['top_decile_lift'])} |"
+            )
+
+    lines.extend(["", "## Top Standardized Coefficients", ""])
+    for feature_set_name, feature_set in feature_sets.items():
+        lines.append(f"### {feature_set_name}")
+        for horizon, horizon_payload in feature_set["horizons"].items():
+            top_features = horizon_payload["feature_attribution"][:5]
+            formatted = ", ".join(
+                f"{entry['feature']} ({float(entry['standardized_coefficient']):+.3f})"
+                for entry in top_features
+            )
+            lines.append(f"- {horizon}d: {formatted}")
+        lines.append("")
+    path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
 
 
 def _horizon_report_line(horizon: int, metrics: dict[str, object]) -> str:

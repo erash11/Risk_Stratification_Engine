@@ -98,12 +98,23 @@ predicted risk, model and prevalence Brier scores, Brier skill score, AUROC,
 average precision, and top-decile lift when those metrics are defined by the
 holdout labels.
 
+The experiment runner also writes `feature_attribution.json` and
+`feature_ablation_report.md`. These compare the full 13-feature model with the
+prior `original_9` feature set and a `z_score_only` feature set using the same
+athlete-level holdout split. Each horizon includes the same holdout metrics plus
+standardized logistic coefficients for feature attribution.
+
 Latest live-source comparison (`intra_individual_deviation_v1`, 349 athletes,
 70 holdout): 7d AUROC 0.723, Brier skill 0.0020; 14d AUROC 0.731, Brier skill
 0.0057; 30d AUROC 0.736, Brier skill 0.0171. Compared with
 `enriched_graph_features_v1`, the 30d AUROC, 7d/30d Brier skill, and all
 top-decile lifts improved, while 7d/14d AUROC declined slightly. The current
-test suite has 82 passing tests.
+feature attribution run (`feature_attribution_ablation_v1`) showed that
+`original_9` remains stronger on 7d/14d AUROC, while the combined `full_13`
+model improves 7d/30d top-decile lift. The `z_score_only` model is weak as a
+standalone model but has strong 7d lift, suggesting the z-score features are
+most useful as ranking modifiers inside the combined model. The current test
+suite has 84 passing tests.
 
 The reported risk values are baseline model estimates for research comparison,
 not calibrated clinical probabilities.

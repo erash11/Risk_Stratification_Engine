@@ -42,6 +42,11 @@ def test_run_research_experiment_writes_artifacts(tmp_path):
         "node_count",
         "edge_count",
         "mean_abs_correlation",
+        "edge_density",
+        "delta_edge_count",
+        "delta_mean_abs_correlation",
+        "delta_edge_density",
+        "graph_instability",
     ]
     assert model_summary["event_policy"] in {
         "event_observed",

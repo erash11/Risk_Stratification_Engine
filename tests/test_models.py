@@ -10,6 +10,10 @@ def _labeled_snapshot_frame() -> pd.DataFrame:
     rows = []
     for athlete_index, athlete_id in enumerate(["a1", "a2", "a3", "a4", "a5"]):
         for time_index in range(3):
+            edge_count = athlete_index + time_index
+            mean_abs_correlation = 0.1 * (athlete_index + time_index)
+            max_edges = 4 * 3 // 2  # node_count=4 → 6 max edges
+            edge_density = edge_count / max_edges
             rows.append(
                 {
                     "athlete_id": athlete_id,
@@ -17,8 +21,13 @@ def _labeled_snapshot_frame() -> pd.DataFrame:
                     "snapshot_date": pd.Timestamp(f"2026-01-0{time_index + 1}"),
                     "time_index": time_index,
                     "node_count": 4,
-                    "edge_count": athlete_index + time_index,
-                    "mean_abs_correlation": 0.1 * (athlete_index + time_index),
+                    "edge_count": edge_count,
+                    "mean_abs_correlation": mean_abs_correlation,
+                    "edge_density": edge_density,
+                    "delta_edge_count": 0 if time_index == 0 else 1,
+                    "delta_mean_abs_correlation": 0.0 if time_index == 0 else 0.1,
+                    "delta_edge_density": 0.0 if time_index == 0 else round(1 / max_edges, 6),
+                    "graph_instability": 0.0 if time_index == 0 else 0.05,
                     "days_to_event": 3 if athlete_id in {"a1", "a2"} else 30,
                     "event_observed": athlete_id in {"a1", "a2"},
                     "event_within_7d": athlete_id in {"a1", "a2"},

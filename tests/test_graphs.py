@@ -1,23 +1,15 @@
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import pytest
 
-from risk_stratification_engine.graphs import build_graph_snapshots
+from risk_stratification_engine.graphs import OUTPUT_COLUMNS, build_graph_snapshots
 from risk_stratification_engine.io import load_measurements
 from risk_stratification_engine.trajectories import build_measurement_matrix
 
 
 FIXTURES = Path(__file__).parent / "fixtures"
-OUTPUT_COLUMNS = [
-    "athlete_id",
-    "season_id",
-    "time_index",
-    "snapshot_date",
-    "node_count",
-    "edge_count",
-    "mean_abs_correlation",
-]
 
 
 def test_build_graph_snapshots_returns_athlete_specific_snapshots():
@@ -95,3 +87,82 @@ def test_build_graph_snapshots_rejects_too_small_window_size():
 
     with pytest.raises(ValueError, match="window_size must be at least 2"):
         build_graph_snapshots(matrix, window_size=1)
+
+
+def test_build_graph_snapshots_edge_density_is_zero_when_no_edges():
+    measurements = load_measurements(FIXTURES / "measurements.csv")
+    matrix = build_measurement_matrix(measurements)
+
+    snapshots = build_graph_snapshots(matrix, window_size=2)
+    first = snapshots.loc[
+        (snapshots["athlete_id"] == "a1") & (snapshots["time_index"] == 0)
+    ].iloc[0]
+
+    assert first["edge_density"] == 0.0
+
+
+def test_build_graph_snapshots_edge_density_matches_edge_fraction():
+    measurements = load_measurements(FIXTURES / "measurements.csv")
+    matrix = build_measurement_matrix(measurements)
+
+    snapshots = build_graph_snapshots(matrix, window_size=2)
+    second = snapshots.loc[
+        (snapshots["athlete_id"] == "a1") & (snapshots["time_index"] == 1)
+    ].iloc[0]
+
+    # 2 nodes → max_edges = 1; edge_count = 1 → density = 1.0
+    assert second["edge_density"] == 1.0
+
+
+def test_build_graph_snapshots_deltas_are_zero_at_first_snapshot():
+    measurements = load_measurements(FIXTURES / "measurements.csv")
+    matrix = build_measurement_matrix(measurements)
+
+    snapshots = build_graph_snapshots(matrix, window_size=2)
+    first = snapshots.loc[
+        (snapshots["athlete_id"] == "a1") & (snapshots["time_index"] == 0)
+    ].iloc[0]
+
+    assert first["delta_edge_count"] == 0
+    assert first["delta_mean_abs_correlation"] == 0.0
+    assert first["delta_edge_density"] == 0.0
+
+
+def test_build_graph_snapshots_computes_deltas_from_prior_snapshot():
+    measurements = load_measurements(FIXTURES / "measurements.csv")
+    matrix = build_measurement_matrix(measurements)
+
+    snapshots = build_graph_snapshots(matrix, window_size=2)
+    second = snapshots.loc[
+        (snapshots["athlete_id"] == "a1") & (snapshots["time_index"] == 1)
+    ].iloc[0]
+
+    # edges: 0 → 1, correlation: 0.0 → 1.0, density: 0.0 → 1.0
+    assert second["delta_edge_count"] == 1
+    assert second["delta_mean_abs_correlation"] == pytest.approx(1.0)
+    assert second["delta_edge_density"] == pytest.approx(1.0)
+
+
+def test_build_graph_snapshots_graph_instability_is_zero_at_first_snapshot():
+    measurements = load_measurements(FIXTURES / "measurements.csv")
+    matrix = build_measurement_matrix(measurements)
+
+    snapshots = build_graph_snapshots(matrix, window_size=2)
+    first = snapshots.loc[
+        (snapshots["athlete_id"] == "a1") & (snapshots["time_index"] == 0)
+    ].iloc[0]
+
+    assert first["graph_instability"] == 0.0
+
+
+def test_build_graph_snapshots_graph_instability_reflects_correlation_variance():
+    measurements = load_measurements(FIXTURES / "measurements.csv")
+    matrix = build_measurement_matrix(measurements)
+
+    snapshots = build_graph_snapshots(matrix, window_size=2)
+    second = snapshots.loc[
+        (snapshots["athlete_id"] == "a1") & (snapshots["time_index"] == 1)
+    ].iloc[0]
+
+    # population std of [0.0, 1.0] = 0.5
+    assert second["graph_instability"] == pytest.approx(np.std([0.0, 1.0]))

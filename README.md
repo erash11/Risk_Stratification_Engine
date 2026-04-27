@@ -72,14 +72,20 @@ and out-of-window observed events do not become training positives.
 
 ## Modeling Baseline
 
-The experiment runner now writes `model_summary.json` and
-`model_evaluation.json` alongside `model_metrics.json`. The first risk model is
-a discrete-time logistic baseline trained separately for the 7, 14, and 30 day
-horizons over graph snapshot features only: `time_index`, `node_count`,
-`edge_count`, and `mean_abs_correlation`. The split is deterministic and
-athlete-level, with a sorted 20% holdout. If a training fold has only one class
-at a horizon, the runner records a prevalence fallback for that horizon instead
-of fitting an unstable classifier.
+The experiment runner writes `model_summary.json` and `model_evaluation.json`
+alongside `model_metrics.json`. The current risk model is a discrete-time
+logistic baseline trained separately for the 7, 14, and 30 day horizons over
+nine graph snapshot features: `time_index`, `node_count`, `edge_count`,
+`mean_abs_correlation`, `edge_density`, `delta_edge_count`,
+`delta_mean_abs_correlation`, `delta_edge_density`, and `graph_instability`.
+The temporal delta features are computed per athlete-season in chronological
+order and capture change from one snapshot to the next. `edge_density`
+normalizes edge count by the maximum possible edges. `graph_instability` is a
+rolling population standard deviation of `mean_abs_correlation` over the most
+recent three snapshots. The split is deterministic and athlete-level, with a
+sorted 20% holdout. If a training fold has only one class at a horizon, the
+runner records a prevalence fallback for that horizon instead of fitting an
+unstable classifier.
 
 `model_evaluation.json` compares holdout predictions to the training prevalence
 baseline for each horizon. It reports holdout event counts and rates, mean

@@ -13,7 +13,14 @@ OUTPUT_COLUMNS = [
     "node_count",
     "edge_count",
     "mean_abs_correlation",
+    "edge_density",
+    "delta_edge_count",
+    "delta_mean_abs_correlation",
+    "delta_edge_density",
+    "graph_instability",
 ]
+
+_INSTABILITY_WINDOW = 3
 
 
 def build_graph_snapshots(
@@ -35,10 +42,11 @@ def build_graph_snapshots(
     ).groupby(["athlete_id", "season_id"], sort=False)
 
     for (athlete_id, season_id), group in grouped:
+        group_rows: list[dict[str, object]] = []
         for row_position, row in enumerate(group.itertuples(index=False)):
             history = group.iloc[max(0, row_position - window_size + 1) : row_position + 1]
             features = _graph_features(history[metric_columns], correlation_threshold)
-            rows.append(
+            group_rows.append(
                 {
                     "athlete_id": athlete_id,
                     "season_id": season_id,
@@ -47,6 +55,8 @@ def build_graph_snapshots(
                     **features,
                 }
             )
+        _add_temporal_features(group_rows)
+        rows.extend(group_rows)
     return pd.DataFrame(rows, columns=OUTPUT_COLUMNS)
 
 
@@ -91,3 +101,35 @@ def _graph_features(
         "edge_count": edge_count,
         "mean_abs_correlation": mean_abs_correlation,
     }
+
+
+def _add_temporal_features(group_rows: list[dict[str, object]]) -> None:
+    for i, row in enumerate(group_rows):
+        node_count = int(row["node_count"])
+        max_edges = node_count * (node_count - 1) // 2
+        edge_density = float(row["edge_count"]) / max_edges if max_edges > 0 else 0.0
+        row["edge_density"] = round(edge_density, 6)
+
+        if i == 0:
+            row["delta_edge_count"] = 0
+            row["delta_mean_abs_correlation"] = 0.0
+            row["delta_edge_density"] = 0.0
+        else:
+            prev = group_rows[i - 1]
+            row["delta_edge_count"] = int(row["edge_count"]) - int(prev["edge_count"])
+            row["delta_mean_abs_correlation"] = round(
+                float(row["mean_abs_correlation"]) - float(prev["mean_abs_correlation"]), 6
+            )
+            row["delta_edge_density"] = round(
+                float(row["edge_density"]) - float(prev["edge_density"]), 6
+            )
+
+        window_start = max(0, i - _INSTABILITY_WINDOW + 1)
+        window_corrs = [
+            float(group_rows[j]["mean_abs_correlation"])
+            for j in range(window_start, i + 1)
+        ]
+        if len(window_corrs) < 2:
+            row["graph_instability"] = 0.0
+        else:
+            row["graph_instability"] = round(float(np.std(window_corrs)), 6)

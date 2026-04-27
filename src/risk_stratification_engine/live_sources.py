@@ -56,6 +56,40 @@ def stable_athlete_id(name: object) -> str:
     return "ath_" + hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:12]
 
 
+def aggregate_same_day_measurements(
+    measurements: pd.DataFrame,
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    group_columns = [
+        "athlete_id",
+        "date",
+        "season_id",
+        "source",
+        "metric_name",
+    ]
+    duplicate_groups = (
+        measurements.groupby(group_columns, as_index=False)
+        .size()
+        .rename(columns={"size": "row_count"})
+    )
+    duplicate_group_count = int((duplicate_groups["row_count"] > 1).sum())
+    aggregated = (
+        measurements.groupby(group_columns, as_index=False)
+        .agg(metric_value=("metric_value", "mean"))
+        .sort_values(["athlete_id", "season_id", "date", "source", "metric_name"])
+        .reset_index(drop=True)
+    )
+    summary = {
+        "policy": (
+            "mean metric_value per athlete_id, season_id, date, source, metric_name"
+        ),
+        "input_rows": int(len(measurements)),
+        "output_rows": int(len(aggregated)),
+        "duplicate_same_day_metric_groups": duplicate_group_count,
+        "aggregated_rows_removed": int(len(measurements) - len(aggregated)),
+    }
+    return aggregated, summary
+
+
 def canonicalize_wide_measurements(
     frame: pd.DataFrame,
     *,
@@ -162,6 +196,7 @@ def prepare_live_source_inputs(
         .drop_duplicates()
         .sort_values(["athlete_id", "season_id", "date", "source", "metric_name"])
     )
+    measurements, aggregation_summary = aggregate_same_day_measurements(measurements)
     injury_export = pd.read_csv(paths.injury_csv)
     source_identities["injury"] = _identity_frame(injury_export, "Athlete")
     injuries = build_injury_event_rows(measurements, injury_export)
@@ -174,7 +209,13 @@ def prepare_live_source_inputs(
     write_frame(_csv_ready(measurements), measurements_path)
     write_frame(_csv_ready(injuries), injuries_path)
 
-    metadata = _preparation_metadata(paths, source_metadata, measurements, injuries)
+    metadata = _preparation_metadata(
+        paths,
+        source_metadata,
+        measurements,
+        injuries,
+        aggregation_summary,
+    )
     audit = build_data_quality_audit(measurements, injuries, source_identities)
     metadata_path.write_text(
         json.dumps(metadata, indent=2, allow_nan=False),
@@ -289,6 +330,10 @@ def _normalize_name(value: object) -> str:
     if pd.isna(value):
         return ""
     text = str(value).strip().lower()
+    if "," in text:
+        parts = [part.strip() for part in text.split(",", maxsplit=1)]
+        if all(parts):
+            text = f"{parts[1]} {parts[0]}"
     text = re.sub(r"[^a-z0-9]+", " ", text)
     return re.sub(r"\s+", " ", text).strip()
 
@@ -386,6 +431,7 @@ def _preparation_metadata(
     source_metadata: dict[str, Any],
     measurements: pd.DataFrame,
     injuries: pd.DataFrame,
+    aggregation_summary: dict[str, Any],
 ) -> dict[str, Any]:
     return {
         "paths": {
@@ -404,6 +450,7 @@ def _preparation_metadata(
             "earliest injury issue date per athlete-season; non-event rows censored "
             "at last measurement date"
         ),
+        "aggregation": aggregation_summary,
         **source_metadata,
         "canonical_rows": {
             "measurements": int(len(measurements)),

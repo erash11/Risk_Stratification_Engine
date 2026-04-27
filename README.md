@@ -58,7 +58,10 @@ duplicate same-day metric rows, and observed injury events without nearby
 measurements. Athlete identities are stable hashes of normalized names, seasons
 start on July 1, and the current injury label policy uses the earliest injury
 issue date per athlete-season while censoring event-free athlete-seasons at their
-last measurement date.
+last measurement date. Name normalization reconciles common `Last, First` export
+style with `First Last` names before hashing. Duplicate same-day metric rows are
+aggregated by mean `metric_value` per athlete, season, date, source, and metric
+before modeling; the aggregation counts are recorded in `prep_metadata.json`.
 
 ## Philosophy
 

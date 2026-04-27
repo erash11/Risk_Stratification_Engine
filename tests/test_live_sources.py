@@ -2,6 +2,7 @@ import pandas as pd
 
 from risk_stratification_engine.config import DataSourcePaths
 from risk_stratification_engine.live_sources import (
+    aggregate_same_day_measurements,
     build_injury_event_rows,
     canonicalize_long_measurements,
     canonicalize_wide_measurements,
@@ -17,6 +18,10 @@ def test_stable_athlete_id_normalizes_names_and_does_not_expose_name():
     assert athlete_id.startswith("ath_")
     assert "jane" not in athlete_id
     assert "smith" not in athlete_id
+
+
+def test_stable_athlete_id_reconciles_last_comma_first_names():
+    assert stable_athlete_id("Athlete, Jane") == stable_athlete_id("Jane Athlete")
 
 
 def test_canonicalize_wide_measurements_builds_required_fields():
@@ -104,6 +109,65 @@ def test_canonicalize_long_measurements_drops_bad_rows_and_slugs_metric_names():
     ]
 
 
+def test_aggregate_same_day_measurements_averages_duplicate_metric_rows():
+    measurements = pd.DataFrame(
+        [
+            {
+                "athlete_id": stable_athlete_id("Jane Athlete"),
+                "date": pd.Timestamp("2026-08-01"),
+                "season_id": "2026-2027",
+                "source": "gps",
+                "metric_name": "gps__total_distance_m",
+                "metric_value": 100.0,
+            },
+            {
+                "athlete_id": stable_athlete_id("Jane Athlete"),
+                "date": pd.Timestamp("2026-08-01"),
+                "season_id": "2026-2027",
+                "source": "gps",
+                "metric_name": "gps__total_distance_m",
+                "metric_value": 120.0,
+            },
+            {
+                "athlete_id": stable_athlete_id("Jane Athlete"),
+                "date": pd.Timestamp("2026-08-02"),
+                "season_id": "2026-2027",
+                "source": "gps",
+                "metric_name": "gps__total_distance_m",
+                "metric_value": 130.0,
+            },
+        ]
+    )
+
+    aggregated, summary = aggregate_same_day_measurements(measurements)
+
+    assert aggregated.to_dict("records") == [
+        {
+            "athlete_id": stable_athlete_id("Jane Athlete"),
+            "date": pd.Timestamp("2026-08-01"),
+            "season_id": "2026-2027",
+            "source": "gps",
+            "metric_name": "gps__total_distance_m",
+            "metric_value": 110.0,
+        },
+        {
+            "athlete_id": stable_athlete_id("Jane Athlete"),
+            "date": pd.Timestamp("2026-08-02"),
+            "season_id": "2026-2027",
+            "source": "gps",
+            "metric_name": "gps__total_distance_m",
+            "metric_value": 130.0,
+        },
+    ]
+    assert summary == {
+        "policy": "mean metric_value per athlete_id, season_id, date, source, metric_name",
+        "input_rows": 3,
+        "output_rows": 2,
+        "duplicate_same_day_metric_groups": 1,
+        "aggregated_rows_removed": 1,
+    }
+
+
 def test_build_injury_event_rows_uses_earliest_event_and_censors_event_free_seasons():
     measurements = pd.DataFrame(
         [
@@ -189,8 +253,13 @@ def test_prepare_live_source_inputs_writes_data_quality_audit(
         [
             {
                 "DATE": "2026-01-01",
-                "NAME": "Shared Athlete",
+                "NAME": "Athlete, Shared",
                 "WEIGHT": 190.0,
+            },
+            {
+                "DATE": "2026-01-01",
+                "NAME": "Athlete, Shared",
+                "WEIGHT": 192.0,
             }
         ]
     ).to_csv(paths.bodyweight_csv, index=False)
@@ -252,10 +321,17 @@ def test_prepare_live_source_inputs_writes_data_quality_audit(
     )
 
     result = prepare_live_source_inputs(paths, tmp_path / "prepared")
+    measurements = pd.read_csv(result.measurements_path)
 
     assert result.audit_path.exists()
     audit_text = result.audit_path.read_text(encoding="utf-8")
     assert "events_without_nearby_measurements_count" in audit_text
+    assert result.metadata["aggregation"]["duplicate_same_day_metric_groups"] == 1
+    assert result.audit["duplicates"]["duplicate_same_day_metric_count"] == 0
+    assert measurements.loc[
+        measurements["metric_name"] == "bodyweight__weight",
+        "metric_value",
+    ].item() == 191.0
     assert result.audit["identity"]["source_athlete_counts"] == {
         "bodyweight": 1,
         "forceplate": 1,

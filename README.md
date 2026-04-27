@@ -75,6 +75,20 @@ risk-engine \
   --stability-splits 5
 ```
 
+To compare regularized model variants across multiple graph windows in the same
+sprint:
+
+```bash
+risk-engine \
+  --from-live-sources \
+  --paths-config config/paths.local.yaml \
+  --output-dir outputs \
+  --experiment-id window_model_robustness_v1 \
+  --model-robustness-sprint \
+  --window-sensitivity-sizes 2 4 7 \
+  --stability-splits 5
+```
+
 Live-source preparation writes ignored canonical CSVs under
 `outputs/live_inputs/<experiment-id>/` and records preparation metadata plus a
 `data_quality_audit.json` beside them. The audit reports hashed identity overlap
@@ -138,6 +152,10 @@ Model robustness sprints write `model_robustness.json` and
 `elasticnet` logistic variants across deterministic rotating athlete-level
 holdout splits. Regularized variants standardize features internally for model
 fitting and convert coefficients back to raw feature units for attribution.
+Pairing `--model-robustness-sprint` with `--window-sensitivity-sizes` writes
+`window_model_robustness.json` and `window_model_robustness_report.md`, which
+compare those variants across each requested graph window. Single research runs
+also accept `--model-variant baseline|l2|l1|elasticnet`.
 
 Latest live-source comparison (`intra_individual_deviation_v1`, 349 athletes,
 70 holdout): 7d AUROC 0.723, Brier skill 0.0020; 14d AUROC 0.731, Brier skill
@@ -160,7 +178,15 @@ The current model robustness sprint (`model_robustness_sprint_v1`, graph window
 AUROC, Brier skill, Brier score, and top-decile lift relative to baseline at all
 horizons. L2 was the strongest all-around choice, winning calibration at
 7/14/30d, triage at 7/14d, and ranking at 14d. Elastic net narrowly won 30d
-ranking and 30d triage. The current test suite has 90 passing tests.
+ranking and 30d triage.
+
+The current window/model robustness sprint (`window_model_robustness_v1`,
+windows 2/4/7, 5 rotating splits) showed that operating goal matters. L2 remains
+the best calibration candidate, winning 7d/14d calibration with window 7 and 30d
+calibration with window 4. Window 2 produced the strongest top-decile lift at all
+horizons, making it the clearest high-alert triage setting. Ranking split by
+horizon: window 2 baseline won 7d AUROC, window 4 L2 won 14d AUROC, and window 7
+L1 narrowly won 30d AUROC. The current test suite has 93 passing tests.
 
 The reported risk values are baseline model estimates for research comparison,
 not calibrated clinical probabilities.

@@ -7,6 +7,7 @@ import pytest
 from risk_stratification_engine.experiments import (
     run_model_robustness_experiment,
     run_research_experiment,
+    run_window_model_robustness_experiment,
     run_window_sensitivity_experiment,
 )
 
@@ -154,6 +155,27 @@ def test_run_research_experiment_counts_observed_events_in_modeled_cohort_only(
     assert metrics["observed_event_count"] == 1
 
 
+def test_run_research_experiment_accepts_regularized_model_variant(tmp_path):
+    result = run_research_experiment(
+        measurements_path=FIXTURES / "measurements.csv",
+        injuries_path=FIXTURES / "injuries.csv",
+        output_dir=tmp_path,
+        experiment_id="regularized_research_run",
+        graph_window_size=2,
+        model_variant="l2",
+    )
+
+    config = json.loads((result / "config.json").read_text())
+    model_summary = json.loads((result / "model_summary.json").read_text())
+    feature_attribution = json.loads(
+        (result / "feature_attribution.json").read_text()
+    )
+
+    assert config["model_variant"] == "l2"
+    assert model_summary["model_variant"] == "l2"
+    assert feature_attribution["model_variant"] == "l2"
+
+
 def test_run_window_sensitivity_experiment_writes_comparison_artifacts(tmp_path):
     result = run_window_sensitivity_experiment(
         measurements_path=FIXTURES / "measurements.csv",
@@ -232,6 +254,42 @@ def test_run_model_robustness_experiment_writes_stability_artifacts(tmp_path):
     assert "Model Robustness Sprint" in report
     assert "baseline" in report
     assert "elasticnet" in report
+
+
+def test_run_window_model_robustness_experiment_writes_cross_window_artifacts(
+    tmp_path,
+):
+    result = run_window_model_robustness_experiment(
+        measurements_path=FIXTURES / "measurements.csv",
+        injuries_path=FIXTURES / "injuries.csv",
+        output_dir=tmp_path,
+        experiment_id="window_model_robustness_fixture",
+        graph_window_sizes=(2, 3),
+        split_count=2,
+    )
+
+    assert result == tmp_path / "experiments" / "window_model_robustness_fixture"
+    assert (result / "config.json").exists()
+    assert (result / "window_model_robustness.json").exists()
+    assert (result / "window_model_robustness_report.md").exists()
+
+    robustness = json.loads((result / "window_model_robustness.json").read_text())
+    assert robustness["experiment_type"] == "window_model_robustness_sprint"
+    assert robustness["graph_window_sizes"] == [2, 3]
+    assert set(robustness["windows"]) == {"2", "3"}
+    assert set(robustness["windows"]["2"]["variants"]) == {
+        "baseline",
+        "l2",
+        "l1",
+        "elasticnet",
+    }
+    assert "ranking" in robustness["overall_decision_modes"]
+    assert "model_brier_score" in robustness["overall_decision_modes"]["calibration"]["7"]
+
+    report = (result / "window_model_robustness_report.md").read_text()
+    assert "Window + Model Robustness Sprint" in report
+    assert "window 2" in report
+    assert "window 3" in report
 
 
 @pytest.mark.parametrize(

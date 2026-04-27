@@ -48,6 +48,7 @@ def run_research_experiment(
     output_dir: str | Path,
     experiment_id: str,
     graph_window_size: int = 4,
+    model_variant: str = "baseline",
 ) -> Path:
     experiment_dir = _experiment_path(output_dir, experiment_id)
     measurements = load_measurements(measurements_path)
@@ -59,7 +60,10 @@ def run_research_experiment(
     labeled = attach_time_to_event_labels(graph_features, injuries)
     if labeled.empty:
         raise ValueError("no labeled graph snapshots produced")
-    model_result = train_discrete_time_risk_model(labeled)
+    model_result = train_discrete_time_risk_model(
+        labeled,
+        model_variant=model_variant,
+    )
     timeline = model_result.timeline
     evaluation = evaluate_risk_model(timeline, model_result.summary)
     feature_attribution = _feature_attribution_and_ablation(
@@ -85,6 +89,7 @@ def run_research_experiment(
             "measurements_path": str(measurements_path),
             "injuries_path": str(injuries_path),
             "graph_window_size": graph_window_size,
+            "model_variant": model_variant,
             "horizons": list(DEFAULT_HORIZONS),
         },
     )
@@ -114,6 +119,7 @@ def run_window_sensitivity_experiment(
     output_dir: str | Path,
     experiment_id: str,
     graph_window_sizes: tuple[int, ...],
+    model_variant: str = "baseline",
 ) -> Path:
     experiment_dir = _experiment_path(output_dir, experiment_id)
     window_sizes = _normalize_window_sizes(graph_window_sizes)
@@ -130,7 +136,10 @@ def run_window_sensitivity_experiment(
         labeled = attach_time_to_event_labels(graph_features, injuries)
         if labeled.empty:
             raise ValueError("no labeled graph snapshots produced")
-        model_result = train_discrete_time_risk_model(labeled)
+        model_result = train_discrete_time_risk_model(
+            labeled,
+            model_variant=model_variant,
+        )
         evaluation = evaluate_risk_model(model_result.timeline, model_result.summary)
         if first_summary is None:
             first_summary = model_result.summary
@@ -148,6 +157,7 @@ def run_window_sensitivity_experiment(
     sensitivity = {
         "model_type": MODEL_TYPE,
         "event_policy": first_summary["event_policy"],
+        "model_variant": model_variant,
         "split_policy": first_summary["split_policy"],
         "graph_window_sizes": list(window_sizes),
         "windows": windows,
@@ -161,6 +171,7 @@ def run_window_sensitivity_experiment(
             "measurements_path": str(measurements_path),
             "injuries_path": str(injuries_path),
             "graph_window_sizes": list(window_sizes),
+            "model_variant": model_variant,
             "horizons": list(DEFAULT_HORIZONS),
         },
     )
@@ -255,6 +266,102 @@ def run_model_robustness_experiment(
     return experiment_dir
 
 
+def run_window_model_robustness_experiment(
+    measurements_path: str | Path,
+    injuries_path: str | Path,
+    output_dir: str | Path,
+    experiment_id: str,
+    graph_window_sizes: tuple[int, ...],
+    split_count: int = 5,
+) -> Path:
+    if split_count < 1:
+        raise ValueError("split_count must be at least 1")
+    experiment_dir = _experiment_path(output_dir, experiment_id)
+    window_sizes = _normalize_window_sizes(graph_window_sizes)
+    measurements = load_measurements(measurements_path)
+    injuries = load_injury_events(injuries_path)
+    matrix = build_measurement_matrix(measurements)
+
+    windows: dict[str, object] = {}
+    first_summary: dict[str, object] | None = None
+    for window_size in window_sizes:
+        graph_features = build_graph_snapshots(matrix, window_size=window_size)
+        if graph_features.empty:
+            raise ValueError("no graph snapshots produced")
+        labeled = attach_time_to_event_labels(graph_features, injuries)
+        if labeled.empty:
+            raise ValueError("no labeled graph snapshots produced")
+        split_test_ids = _rotating_holdout_splits(labeled["athlete_id"], split_count)
+        variants: dict[str, object] = {}
+        for variant in MODEL_VARIANTS:
+            split_payloads: dict[str, object] = {}
+            for split_seed, test_ids in enumerate(split_test_ids):
+                model_result = train_discrete_time_risk_model(
+                    labeled,
+                    test_athlete_ids=test_ids,
+                    model_variant=variant,
+                )
+                evaluation = evaluate_risk_model(
+                    model_result.timeline,
+                    model_result.summary,
+                )
+                if first_summary is None:
+                    first_summary = model_result.summary
+                split_payloads[str(split_seed)] = {
+                    "test_athlete_ids": list(test_ids),
+                    "test_athlete_count": len(test_ids),
+                    "horizons": evaluation["horizons"],
+                }
+            variants[variant] = {
+                "splits": split_payloads,
+                "summary_by_horizon": _aggregate_variant_splits(split_payloads),
+            }
+        windows[str(window_size)] = {
+            "graph_window_size": window_size,
+            "athlete_count": int(labeled["athlete_id"].nunique()),
+            "snapshot_count": int(len(labeled)),
+            "variants": variants,
+            "decision_modes": _decision_mode_winners(variants),
+        }
+
+    if first_summary is None:
+        raise ValueError("no graph window sizes provided")
+
+    robustness = {
+        "experiment_type": "window_model_robustness_sprint",
+        "model_type": MODEL_TYPE,
+        "event_policy": first_summary["event_policy"],
+        "split_policy": "athlete_level_deterministic_rotating_holdout_20pct",
+        "graph_window_sizes": list(window_sizes),
+        "model_variants": list(MODEL_VARIANTS),
+        "split_count": split_count,
+        "split_seeds": list(range(split_count)),
+        "horizons": list(DEFAULT_HORIZONS),
+        "feature_columns": list(GRAPH_SNAPSHOT_FEATURE_COLUMNS),
+        "windows": windows,
+        "overall_decision_modes": _overall_window_model_decision_winners(windows),
+    }
+    _write_json(
+        experiment_dir / "config.json",
+        {
+            "experiment_id": experiment_id,
+            "experiment_type": "window_model_robustness_sprint",
+            "measurements_path": str(measurements_path),
+            "injuries_path": str(injuries_path),
+            "graph_window_sizes": list(window_sizes),
+            "split_count": split_count,
+            "model_variants": list(MODEL_VARIANTS),
+            "horizons": list(DEFAULT_HORIZONS),
+        },
+    )
+    _write_json(experiment_dir / "window_model_robustness.json", robustness)
+    _write_window_model_robustness_report(
+        experiment_dir / "window_model_robustness_report.md",
+        robustness,
+    )
+    return experiment_dir
+
+
 def _rotating_holdout_splits(
     athlete_ids: pd.Series,
     split_count: int,
@@ -340,6 +447,45 @@ def _decision_mode_winners(variants: dict[str, object]) -> dict[str, object]:
                             metric_name: distribution,
                         }
                     )
+            if candidates:
+                mode_payload[str(horizon)] = selector(
+                    candidates,
+                    key=lambda candidate: candidate[metric_name]["mean"],
+                )
+        output[mode_name] = mode_payload
+    return output
+
+
+def _overall_window_model_decision_winners(
+    windows: dict[str, object],
+) -> dict[str, object]:
+    decision_modes = {
+        "ranking": ("roc_auc", max),
+        "calibration": ("model_brier_score", min),
+        "triage": ("top_decile_lift", max),
+    }
+    output: dict[str, object] = {}
+    for mode_name, (metric_name, selector) in decision_modes.items():
+        mode_payload: dict[str, object] = {}
+        for horizon in DEFAULT_HORIZONS:
+            candidates = []
+            for window_payload in windows.values():
+                for variant_name, variant_payload in window_payload[
+                    "variants"
+                ].items():
+                    distribution = variant_payload["summary_by_horizon"][
+                        str(horizon)
+                    ][metric_name]
+                    if distribution["mean"] is not None:
+                        candidates.append(
+                            {
+                                "graph_window_size": window_payload[
+                                    "graph_window_size"
+                                ],
+                                "model_variant": variant_name,
+                                metric_name: distribution,
+                            }
+                        )
             if candidates:
                 mode_payload[str(horizon)] = selector(
                     candidates,
@@ -467,6 +613,7 @@ def _feature_attribution_and_ablation(
     full_evaluation: dict[str, object],
 ) -> dict[str, object]:
     feature_sets: dict[str, object] = {}
+    model_variant = str(full_model_summary["model_variant"])
     for name, feature_columns in FEATURE_ABLATION_SETS.items():
         if name == "full_13":
             timeline = full_timeline
@@ -476,6 +623,7 @@ def _feature_attribution_and_ablation(
             model_result = train_discrete_time_risk_model(
                 labeled,
                 feature_columns=feature_columns,
+                model_variant=model_variant,
             )
             timeline = model_result.timeline
             model_summary = model_result.summary
@@ -498,6 +646,7 @@ def _feature_attribution_and_ablation(
         }
     return {
         "model_type": MODEL_TYPE,
+        "model_variant": model_variant,
         "event_policy": full_model_summary["event_policy"],
         "split_policy": full_model_summary["split_policy"],
         "feature_sets": feature_sets,
@@ -520,6 +669,7 @@ def _write_report(
         "# Experiment Report",
         "",
         f"Model: {MODEL_TYPE}",
+        f"Model variant: {model_summary['model_variant']}",
         f"Event policy: {model_summary['event_policy']}",
         f"Split policy: {model_summary['split_policy']}",
         f"Snapshots: {len(timeline)}",
@@ -594,6 +744,7 @@ def _write_window_sensitivity_report(
     lines = [
         "# Window Sensitivity",
         "",
+        f"Model variant: {sensitivity['model_variant']}",
         "All graph window sizes use the same athlete-level deterministic holdout split and event policy.",
         "",
         "## Holdout Metrics",
@@ -675,6 +826,61 @@ def _write_model_robustness_report(
             metric_name = next(key for key in winner if key != "model_variant")
             lines.append(
                 f"- {horizon}d: {winner['model_variant']} "
+                f"({_format_distribution(winner[metric_name])})"
+            )
+        lines.append("")
+    path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+
+
+def _write_window_model_robustness_report(
+    path: Path,
+    robustness: dict[str, object],
+) -> None:
+    windows = robustness["windows"]
+    overall_decision_modes = robustness["overall_decision_modes"]
+    lines = [
+        "# Window + Model Robustness Sprint",
+        "",
+        f"Graph window sizes: {', '.join(str(size) for size in robustness['graph_window_sizes'])}",
+        f"Split count: {robustness['split_count']}",
+        "",
+        "## Stability Summary",
+        "",
+        "| Window | Variant | Horizon | AUROC mean/std | Brier skill mean/std | Brier mean/std | Top-decile lift mean/std |",
+        "|---|---|---:|---:|---:|---:|---:|",
+    ]
+    for window_size in robustness["graph_window_sizes"]:
+        window_payload = windows[str(window_size)]
+        for variant_name, variant_payload in window_payload["variants"].items():
+            for horizon in DEFAULT_HORIZONS:
+                summary = variant_payload["summary_by_horizon"][str(horizon)]
+                lines.append(
+                    "| "
+                    f"window {window_size} | "
+                    f"{variant_name} | "
+                    f"{horizon}d | "
+                    f"{_format_distribution(summary['roc_auc'])} | "
+                    f"{_format_distribution(summary['brier_skill_score'])} | "
+                    f"{_format_distribution(summary['model_brier_score'])} | "
+                    f"{_format_distribution(summary['top_decile_lift'])} |"
+                )
+
+    lines.extend(["", "## Overall Decision Mode Winners", ""])
+    for mode_name, mode_payload in overall_decision_modes.items():
+        lines.append(f"### {mode_name}")
+        for horizon in DEFAULT_HORIZONS:
+            if str(horizon) not in mode_payload:
+                lines.append(f"- {horizon}d: n/a")
+                continue
+            winner = mode_payload[str(horizon)]
+            metric_name = next(
+                key
+                for key in winner
+                if key not in {"graph_window_size", "model_variant"}
+            )
+            lines.append(
+                f"- {horizon}d: window {winner['graph_window_size']} "
+                f"{winner['model_variant']} "
                 f"({_format_distribution(winner[metric_name])})"
             )
         lines.append("")

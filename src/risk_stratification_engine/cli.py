@@ -10,12 +10,14 @@ from risk_stratification_engine.config import (
 from risk_stratification_engine.experiments import (
     run_model_robustness_experiment,
     run_research_experiment,
+    run_window_model_robustness_experiment,
     run_window_sensitivity_experiment,
 )
 from risk_stratification_engine.live_sources import (
     LiveSourcePreparationResult,
     prepare_live_source_inputs,
 )
+from risk_stratification_engine.models import MODEL_VARIANTS
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -33,6 +35,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output-dir", required=True, type=Path)
     parser.add_argument("--experiment-id", required=True)
     parser.add_argument("--graph-window-size", type=int, default=4)
+    parser.add_argument("--model-variant", choices=MODEL_VARIANTS, default="baseline")
     parser.add_argument("--window-sensitivity-sizes", nargs="+", type=int)
     parser.add_argument("--model-robustness-sprint", action="store_true")
     parser.add_argument("--stability-splits", type=int, default=5)
@@ -61,7 +64,17 @@ def main(argv: list[str] | None = None) -> int:
         measurements_path = args.measurements
         injuries_path = args.injuries
 
-    if args.model_robustness_sprint:
+    if args.model_robustness_sprint and args.window_sensitivity_sizes:
+        experiment_dir = run_window_model_robustness_experiment(
+            measurements_path=measurements_path,
+            injuries_path=injuries_path,
+            output_dir=args.output_dir,
+            experiment_id=args.experiment_id,
+            graph_window_sizes=tuple(args.window_sensitivity_sizes),
+            split_count=args.stability_splits,
+        )
+        print(f"Window + model robustness artifacts written to {experiment_dir}")
+    elif args.model_robustness_sprint:
         experiment_dir = run_model_robustness_experiment(
             measurements_path=measurements_path,
             injuries_path=injuries_path,
@@ -78,6 +91,7 @@ def main(argv: list[str] | None = None) -> int:
             output_dir=args.output_dir,
             experiment_id=args.experiment_id,
             graph_window_sizes=tuple(args.window_sensitivity_sizes),
+            model_variant=args.model_variant,
         )
         print(f"Window sensitivity artifacts written to {experiment_dir}")
     else:
@@ -87,6 +101,7 @@ def main(argv: list[str] | None = None) -> int:
             output_dir=args.output_dir,
             experiment_id=args.experiment_id,
             graph_window_size=args.graph_window_size,
+            model_variant=args.model_variant,
         )
         print(f"Experiment artifacts written to {experiment_dir}")
     return 0

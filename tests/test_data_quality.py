@@ -53,6 +53,10 @@ def test_build_data_quality_audit_reports_identity_and_coverage_findings():
                 "injury_type": "soft tissue",
                 "event_observed": True,
                 "censor_date": "2026-01-20",
+                "nearest_measurement_date": "2026-01-10",
+                "nearest_measurement_gap_days": 10,
+                "event_window_quality": "low_confidence",
+                "primary_model_event": False,
             },
             {
                 "athlete_id": sparse_id,
@@ -61,6 +65,10 @@ def test_build_data_quality_audit_reports_identity_and_coverage_findings():
                 "injury_type": "censored",
                 "event_observed": False,
                 "censor_date": "2026-02-01",
+                "nearest_measurement_date": "",
+                "nearest_measurement_gap_days": "",
+                "event_window_quality": "censored",
+                "primary_model_event": False,
             },
         ]
     )
@@ -127,6 +135,11 @@ def test_build_data_quality_audit_reports_identity_and_coverage_findings():
     assert audit["duplicates"]["duplicate_same_day_metric_count"] == 1
     assert audit["duplicates"]["duplicate_same_day_metrics"][0]["row_count"] == 2
     assert audit["injuries"]["events_without_nearby_measurements_count"] == 1
+    assert audit["injuries"]["event_window_quality_counts"] == {
+        "censored": 1,
+        "low_confidence": 1,
+    }
+    assert audit["injuries"]["primary_model_event_count"] == 0
     assert audit["injuries"]["events_without_nearby_measurements_by_gap_bucket"] == {
         "4-7d": 0,
         "8-14d": 1,

@@ -226,6 +226,10 @@ def test_build_injury_event_rows_uses_earliest_event_and_censors_event_free_seas
             "injury_type": "earliest event",
             "event_observed": True,
             "censor_date": pd.Timestamp("2026-08-10"),
+            "nearest_measurement_date": pd.Timestamp("2026-08-01"),
+            "nearest_measurement_gap_days": 3,
+            "event_window_quality": "modelable",
+            "primary_model_event": True,
         },
         {
             "athlete_id": stable_athlete_id("No Event"),
@@ -234,8 +238,84 @@ def test_build_injury_event_rows_uses_earliest_event_and_censors_event_free_seas
             "injury_type": "censored",
             "event_observed": False,
             "censor_date": pd.Timestamp("2026-09-15"),
+            "nearest_measurement_date": pd.NaT,
+            "nearest_measurement_gap_days": None,
+            "event_window_quality": "censored",
+            "primary_model_event": False,
         },
     ]
+
+
+def test_build_injury_event_rows_assigns_event_window_quality_labels():
+    measurements = pd.DataFrame(
+        [
+            {
+                "athlete_id": stable_athlete_id("Modelable Athlete"),
+                "date": pd.Timestamp("2026-08-01"),
+                "season_id": "2026-2027",
+                "source": "gps",
+                "metric_name": "gps__total_distance_m",
+                "metric_value": 100.0,
+            },
+            {
+                "athlete_id": stable_athlete_id("Low Confidence Athlete"),
+                "date": pd.Timestamp("2026-08-01"),
+                "season_id": "2026-2027",
+                "source": "gps",
+                "metric_name": "gps__total_distance_m",
+                "metric_value": 100.0,
+            },
+            {
+                "athlete_id": stable_athlete_id("Out Window Athlete"),
+                "date": pd.Timestamp("2026-08-01"),
+                "season_id": "2026-2027",
+                "source": "gps",
+                "metric_name": "gps__total_distance_m",
+                "metric_value": 100.0,
+            },
+        ]
+    )
+    injuries = pd.DataFrame(
+        [
+            {
+                "Athlete": "Modelable Athlete",
+                "Issue Date": "2026-08-10",
+                "Classification": "injury",
+            },
+            {
+                "Athlete": "Low Confidence Athlete",
+                "Issue Date": "2026-08-25",
+                "Classification": "injury",
+            },
+            {
+                "Athlete": "Out Window Athlete",
+                "Issue Date": "2026-09-15",
+                "Classification": "injury",
+            },
+        ]
+    )
+
+    frame = build_injury_event_rows(measurements, injuries)
+
+    assert frame.set_index("athlete_id")[
+        ["nearest_measurement_gap_days", "event_window_quality", "primary_model_event"]
+    ].to_dict("index") == {
+        stable_athlete_id("Modelable Athlete"): {
+            "nearest_measurement_gap_days": 9,
+            "event_window_quality": "modelable",
+            "primary_model_event": True,
+        },
+        stable_athlete_id("Low Confidence Athlete"): {
+            "nearest_measurement_gap_days": 24,
+            "event_window_quality": "low_confidence",
+            "primary_model_event": False,
+        },
+        stable_athlete_id("Out Window Athlete"): {
+            "nearest_measurement_gap_days": 45,
+            "event_window_quality": "out_of_window",
+            "primary_model_event": False,
+        },
+    }
 
 
 def test_prepare_live_source_inputs_writes_data_quality_audit(
@@ -327,6 +407,13 @@ def test_prepare_live_source_inputs_writes_data_quality_audit(
     audit_text = result.audit_path.read_text(encoding="utf-8")
     assert "events_without_nearby_measurements_count" in audit_text
     assert result.metadata["aggregation"]["duplicate_same_day_metric_groups"] == 1
+    assert result.metadata["event_window_quality_counts"] == {
+        "censored": 0,
+        "low_confidence": 0,
+        "modelable": 1,
+        "no_measurements": 0,
+        "out_of_window": 0,
+    }
     assert result.audit["duplicates"]["duplicate_same_day_metric_count"] == 0
     assert measurements.loc[
         measurements["metric_name"] == "bodyweight__weight",

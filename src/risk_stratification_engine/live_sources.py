@@ -38,6 +38,17 @@ METRIC_LIMITS = {
     "perch": 8,
 }
 
+EVENT_WINDOW_QUALITY_ORDER = (
+    "censored",
+    "low_confidence",
+    "modelable",
+    "no_measurements",
+    "out_of_window",
+)
+
+MODELABLE_EVENT_WINDOW_DAYS = 14
+LOW_CONFIDENCE_EVENT_WINDOW_DAYS = 30
+
 
 @dataclass(frozen=True)
 class LiveSourcePreparationResult:
@@ -170,6 +181,7 @@ def build_injury_event_rows(
     )
     events["event_observed"] = events["injury_date"].notna()
     events.loc[~events["event_observed"], "injury_type"] = "censored"
+    events = _attach_event_window_quality(events, measurement_dates)
     return events.loc[
         :,
         [
@@ -179,6 +191,10 @@ def build_injury_event_rows(
             "injury_type",
             "event_observed",
             "censor_date",
+            "nearest_measurement_date",
+            "nearest_measurement_gap_days",
+            "event_window_quality",
+            "primary_model_event",
         ],
     ]
 
@@ -366,6 +382,58 @@ def _clean_measurements(frame: pd.DataFrame) -> pd.DataFrame:
     ].reset_index(drop=True)
 
 
+def _attach_event_window_quality(
+    events: pd.DataFrame,
+    measurements: pd.DataFrame,
+) -> pd.DataFrame:
+    output = events.copy()
+    output["nearest_measurement_date"] = pd.NaT
+    output["nearest_measurement_gap_days"] = pd.Series(pd.NA, index=output.index, dtype="Int64")
+    output["event_window_quality"] = "censored"
+    output["primary_model_event"] = False
+
+    measurement_dates = (
+        measurements.loc[:, ["athlete_id", "season_id", "date"]]
+        .drop_duplicates()
+        .sort_values(["athlete_id", "season_id", "date"])
+    )
+    grouped_dates = {
+        key: group["date"].reset_index(drop=True)
+        for key, group in measurement_dates.groupby(["athlete_id", "season_id"])
+    }
+
+    for index, row in output.loc[output["event_observed"]].iterrows():
+        dates = grouped_dates.get((row["athlete_id"], row["season_id"]))
+        if dates is None or dates.empty:
+            output.at[index, "event_window_quality"] = "no_measurements"
+            continue
+        gaps = (dates - row["injury_date"]).abs().dt.days
+        nearest_position = gaps.idxmin()
+        nearest_gap = int(gaps.loc[nearest_position])
+        output.at[index, "nearest_measurement_date"] = dates.loc[nearest_position]
+        output.at[index, "nearest_measurement_gap_days"] = nearest_gap
+        quality = _event_window_quality(nearest_gap)
+        output.at[index, "event_window_quality"] = quality
+        output.at[index, "primary_model_event"] = quality == "modelable"
+    return output
+
+
+def _event_window_quality(nearest_gap_days: int) -> str:
+    if nearest_gap_days <= MODELABLE_EVENT_WINDOW_DAYS:
+        return "modelable"
+    if nearest_gap_days <= LOW_CONFIDENCE_EVENT_WINDOW_DAYS:
+        return "low_confidence"
+    return "out_of_window"
+
+
+def _event_window_quality_counts(injuries: pd.DataFrame) -> dict[str, int]:
+    counts = injuries["event_window_quality"].value_counts().to_dict()
+    return {
+        label: int(counts.get(label, 0))
+        for label in EVENT_WINDOW_QUALITY_ORDER
+    }
+
+
 def _identity_frame(frame: pd.DataFrame, name_column: str) -> pd.DataFrame:
     identities = pd.DataFrame({"athlete_id": frame[name_column].map(stable_athlete_id)})
     return identities.loc[identities["athlete_id"].ne("")].drop_duplicates()
@@ -450,6 +518,13 @@ def _preparation_metadata(
             "earliest injury issue date per athlete-season; non-event rows censored "
             "at last measurement date"
         ),
+        "event_window_policy": {
+            "modelable_days": MODELABLE_EVENT_WINDOW_DAYS,
+            "low_confidence_days": LOW_CONFIDENCE_EVENT_WINDOW_DAYS,
+            "labels": list(EVENT_WINDOW_QUALITY_ORDER),
+        },
+        "event_window_quality_counts": _event_window_quality_counts(injuries),
+        "primary_model_event_count": int(injuries["primary_model_event"].sum()),
         "aggregation": aggregation_summary,
         **source_metadata,
         "canonical_rows": {

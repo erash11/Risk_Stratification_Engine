@@ -64,6 +64,11 @@ measurement date. Name normalization reconciles common `Last, First` export styl
 with `First Last` names before hashing. Duplicate same-day metric rows are
 aggregated by mean `metric_value` per athlete, season, date, source, and metric
 before modeling; the aggregation counts are recorded in `prep_metadata.json`.
+Observed injury events are labeled by nearest same-season measurement distance:
+`modelable` at 14 days or less, `low_confidence` at 15-30 days, and
+`out_of_window` beyond 30 days. The current engine still runs over the canonical
+rows, while downstream modeling can filter on `event_window_quality` and
+`primary_model_event`.
 
 ## Philosophy
 

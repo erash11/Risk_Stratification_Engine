@@ -309,6 +309,8 @@ def _injury_audit(
     return {
         "injury_nearby_days": injury_nearby_days,
         "observed_event_count": int(len(observed)),
+        "event_window_quality_counts": _event_window_quality_counts(injuries),
+        "primary_model_event_count": _primary_model_event_count(injuries),
         "events_without_nearby_measurements_count": len(rows),
         "events_without_nearby_measurements_by_gap_bucket": _injury_gap_buckets(rows),
         "events_without_nearby_measurements": _json_ready(rows[:100]),
@@ -366,6 +368,21 @@ def _count_by(rows: list[dict[str, str]], key: str) -> dict[str, int]:
         value = row[key]
         counts[value] = counts.get(value, 0) + 1
     return dict(sorted(counts.items()))
+
+
+def _event_window_quality_counts(injuries: pd.DataFrame) -> dict[str, int]:
+    if "event_window_quality" not in injuries.columns:
+        return {}
+    return {
+        str(label): int(count)
+        for label, count in injuries["event_window_quality"].value_counts().items()
+    }
+
+
+def _primary_model_event_count(injuries: pd.DataFrame) -> int:
+    if "primary_model_event" not in injuries.columns:
+        return 0
+    return int(injuries["primary_model_event"].fillna(False).astype(bool).sum())
 
 
 def _json_ready(value: Any) -> Any:

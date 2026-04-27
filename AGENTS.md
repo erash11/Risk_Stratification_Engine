@@ -54,11 +54,23 @@ Future work may add a dashboard performance tab inspired by the Malum/SPEAR mate
 - The baseline writes `model_summary.json` with the event policy, feature columns, deterministic athlete-level 20% holdout split, per-horizon model kind, positive rates, and holdout Brier scores. If a training horizon has only one class, it records a prevalence fallback instead of fitting an unstable classifier.
 - `model_evaluation.json` compares each horizon's holdout predictions against the training-prevalence baseline and reports Brier score, Brier skill score, AUROC, average precision, and top-decile lift when the holdout labels support those metrics.
 - `feature_attribution.json` and `feature_ablation_report.md` compare the current 13-feature model against `original_9` and `z_score_only` feature sets using the same deterministic athlete-level holdout split. The artifact includes per-horizon holdout metrics and standardized logistic coefficients for feature attribution.
+- Window sensitivity runs are available through `risk-engine --window-sensitivity-sizes <sizes...>` and write `window_sensitivity.json` plus `window_sensitivity_report.md`. The runner reuses one canonical input set, loops graph `window_size` values, and compares the same holdout metrics across windows.
 - Enriched graph features (`enriched_graph_features_v1` run, 349 athletes, 70 holdout): 7d AUROC 0.730 (+0.008), 14d AUROC 0.735 (+0.007), 30d AUROC 0.735 (+0.007); Brier skill 30d improved from 0.0142 to 0.0168 (+18%).
 - Intra-individual deviation features (`intra_individual_deviation_v1` run, 349 athletes, 70 holdout): 7d AUROC 0.723, Brier skill 0.0020, top-decile lift 3.76; 14d AUROC 0.731, Brier skill 0.0057, top-decile lift 3.96; 30d AUROC 0.736, Brier skill 0.0171, top-decile lift 4.48. Versus `enriched_graph_features_v1`, the 30d AUROC, 7d/30d Brier skill, and all top-decile lifts improved, while 7d/14d AUROC declined slightly.
 - Feature attribution/ablation (`feature_attribution_ablation_v1` run, 349 athletes, 70 holdout): `full_13` matched the `intra_individual_deviation_v1` metrics. `original_9` remained stronger on 7d/14d AUROC (0.730/0.735) but had lower 7d/30d top-decile lift (3.68/4.34) than `full_13` (3.76/4.48). `z_score_only` had weak AUROC (7d 0.566, 14d 0.553, 30d 0.491) but strong 7d top-decile lift (4.14), suggesting the z-score features are most useful as ranking modifiers inside the combined model rather than as a standalone risk model.
+- Window sensitivity (`window_sensitivity_v1` run, windows 2/3/4/5/7, 349 athletes, 70 holdout): window 4 was best for AUROC at all horizons (7d 0.723, 14d 0.731, 30d 0.736); window 7 was best for Brier skill and Brier score at all horizons (7d Brier skill 0.0062, 14d 0.0119, 30d 0.0301); window 2 was best for top-decile lift at all horizons (7d 5.19, 14d 5.04, 30d 5.13). This suggests the default window 4 remains the best ranking/AUROC baseline, while longer windows improve probability sharpness and shorter windows concentrate positives in the highest-risk decile.
 
 ## Latest Completed Step
+
+**Graph window-size sensitivity artifacts** — implemented and verified on 2026-04-27.
+
+**What changed:** `run_window_sensitivity_experiment(...)` now compares multiple graph window sizes over the same prepared inputs and writes `window_sensitivity.json` plus `window_sensitivity_report.md`. The CLI supports this with `--window-sensitivity-sizes`, including live-source runs.
+
+**Verification:** New tests first failed because the window-sensitivity runner and CLI dispatch did not exist. After implementation, `python -m pytest` collected and passed 86 tests. The live command `risk-engine --from-live-sources --paths-config config/paths.local.yaml --output-dir outputs --experiment-id window_sensitivity_v1 --window-sensitivity-sizes 2 3 4 5 7` completed and wrote the sensitivity artifacts.
+
+**Interpretation:** No single window dominates every criterion. Keep window 4 as the headline AUROC/ranking baseline, investigate window 7 for better Brier skill/calibration, and treat window 2 as a possible high-alert triage setting because it produces the strongest top-decile lift while hurting Brier skill.
+
+## Previous Completed Step
 
 **Feature attribution and ablation artifacts** — implemented and verified on 2026-04-27.
 
@@ -68,7 +80,7 @@ Future work may add a dashboard performance tab inspired by the Malum/SPEAR mate
 
 **Interpretation:** `edge_count` remains the dominant standardized coefficient in the combined and original feature sets across horizons. The z-score-only model is not enough by itself, especially at 30d, but z-score features improve lift in the combined model. The logical next research step is window-size sensitivity or regularized feature selection, not adding more raw features yet.
 
-## Previous Completed Step
+## Earlier Completed Step
 
 **Intra-individual z-score deviation features** — implemented and verified on 2026-04-27.
 

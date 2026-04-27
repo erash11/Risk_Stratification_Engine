@@ -106,6 +106,111 @@ def run_research_experiment(
     return experiment_dir
 
 
+def run_window_sensitivity_experiment(
+    measurements_path: str | Path,
+    injuries_path: str | Path,
+    output_dir: str | Path,
+    experiment_id: str,
+    graph_window_sizes: tuple[int, ...],
+) -> Path:
+    experiment_dir = _experiment_path(output_dir, experiment_id)
+    window_sizes = _normalize_window_sizes(graph_window_sizes)
+    measurements = load_measurements(measurements_path)
+    injuries = load_injury_events(injuries_path)
+    matrix = build_measurement_matrix(measurements)
+
+    windows: dict[str, object] = {}
+    first_summary: dict[str, object] | None = None
+    for window_size in window_sizes:
+        graph_features = build_graph_snapshots(matrix, window_size=window_size)
+        if graph_features.empty:
+            raise ValueError("no graph snapshots produced")
+        labeled = attach_time_to_event_labels(graph_features, injuries)
+        if labeled.empty:
+            raise ValueError("no labeled graph snapshots produced")
+        model_result = train_discrete_time_risk_model(labeled)
+        evaluation = evaluate_risk_model(model_result.timeline, model_result.summary)
+        if first_summary is None:
+            first_summary = model_result.summary
+        windows[str(window_size)] = {
+            "graph_window_size": window_size,
+            "athlete_count": int(labeled["athlete_id"].nunique()),
+            "snapshot_count": int(len(labeled)),
+            "feature_columns": model_result.summary["feature_columns"],
+            "horizons": evaluation["horizons"],
+        }
+
+    if first_summary is None:
+        raise ValueError("no graph window sizes provided")
+
+    sensitivity = {
+        "model_type": MODEL_TYPE,
+        "event_policy": first_summary["event_policy"],
+        "split_policy": first_summary["split_policy"],
+        "graph_window_sizes": list(window_sizes),
+        "windows": windows,
+        "best_by_horizon": _best_windows_by_horizon(windows),
+    }
+    _write_json(
+        experiment_dir / "config.json",
+        {
+            "experiment_id": experiment_id,
+            "experiment_type": "window_sensitivity",
+            "measurements_path": str(measurements_path),
+            "injuries_path": str(injuries_path),
+            "graph_window_sizes": list(window_sizes),
+            "horizons": list(DEFAULT_HORIZONS),
+        },
+    )
+    _write_json(experiment_dir / "window_sensitivity.json", sensitivity)
+    _write_window_sensitivity_report(
+        experiment_dir / "window_sensitivity_report.md",
+        sensitivity,
+    )
+    return experiment_dir
+
+
+def _normalize_window_sizes(graph_window_sizes: tuple[int, ...]) -> tuple[int, ...]:
+    if not graph_window_sizes:
+        raise ValueError("at least one graph window size is required")
+    normalized = tuple(dict.fromkeys(int(size) for size in graph_window_sizes))
+    invalid = [size for size in normalized if size < 2]
+    if invalid:
+        raise ValueError("graph window sizes must be at least 2")
+    return normalized
+
+
+def _best_windows_by_horizon(windows: dict[str, object]) -> dict[str, object]:
+    metric_policies = {
+        "roc_auc": max,
+        "brier_skill_score": max,
+        "top_decile_lift": max,
+        "model_brier_score": min,
+    }
+    best: dict[str, object] = {}
+    for horizon in DEFAULT_HORIZONS:
+        horizon_best: dict[str, object] = {}
+        for metric_name, selector in metric_policies.items():
+            candidates = []
+            for window_payload in windows.values():
+                metrics = window_payload["horizons"][str(horizon)]
+                metric_value = metrics[metric_name]
+                if metric_value is not None:
+                    candidates.append(
+                        {
+                            "graph_window_size": window_payload["graph_window_size"],
+                            "value": float(metric_value),
+                        }
+                    )
+            if candidates:
+                horizon_best[metric_name] = selector(
+                    candidates,
+                    key=lambda candidate: candidate["value"],
+                )
+        best[str(horizon)] = horizon_best
+    return best
+
+
 def _experiment_path(output_dir: str | Path, experiment_id: str) -> Path:
     experiment_path = Path(experiment_id)
     if (
@@ -299,6 +404,55 @@ def _write_feature_ablation_report(
             lines.append(f"- {horizon}d: {formatted}")
         lines.append("")
     path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+
+
+def _write_window_sensitivity_report(
+    path: Path,
+    sensitivity: dict[str, object],
+) -> None:
+    windows = sensitivity["windows"]
+    best_by_horizon = sensitivity["best_by_horizon"]
+    lines = [
+        "# Window Sensitivity",
+        "",
+        "All graph window sizes use the same athlete-level deterministic holdout split and event policy.",
+        "",
+        "## Holdout Metrics",
+        "",
+        "| Window | Horizon | AUROC | Brier skill | Top-decile lift |",
+        "|---|---:|---:|---:|---:|",
+    ]
+    for window_size in sensitivity["graph_window_sizes"]:
+        window_payload = windows[str(window_size)]
+        for horizon in DEFAULT_HORIZONS:
+            metrics = window_payload["horizons"][str(horizon)]
+            lines.append(
+                "| "
+                f"window {window_size} | "
+                f"{horizon}d | "
+                f"{_format_metric(metrics['roc_auc'])} | "
+                f"{_format_metric(metrics['brier_skill_score'])} | "
+                f"{_format_metric(metrics['top_decile_lift'])} |"
+            )
+
+    lines.extend(["", "## Best Windows", ""])
+    for horizon in DEFAULT_HORIZONS:
+        horizon_best = best_by_horizon[str(horizon)]
+        for label, metric_name in (
+            ("AUROC", "roc_auc"),
+            ("Brier skill", "brier_skill_score"),
+            ("top-decile lift", "top_decile_lift"),
+        ):
+            if metric_name not in horizon_best:
+                lines.append(f"- {horizon}d {label}: n/a")
+                continue
+            best_metric = horizon_best[metric_name]
+            lines.append(
+                f"- {horizon}d {label}: window "
+                f"{best_metric['graph_window_size']} "
+                f"({_format_metric(best_metric['value'])})"
+            )
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def _horizon_report_line(horizon: int, metrics: dict[str, object]) -> str:

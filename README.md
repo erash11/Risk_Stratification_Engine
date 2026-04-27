@@ -50,6 +50,17 @@ risk-engine \
   --graph-window-size 4
 ```
 
+To compare graph construction windows over the same prepared input set:
+
+```bash
+risk-engine \
+  --from-live-sources \
+  --paths-config config/paths.local.yaml \
+  --output-dir outputs \
+  --experiment-id window_sensitivity_v1 \
+  --window-sensitivity-sizes 2 3 4 5 7
+```
+
 Live-source preparation writes ignored canonical CSVs under
 `outputs/live_inputs/<experiment-id>/` and records preparation metadata plus a
 `data_quality_audit.json` beside them. The audit reports hashed identity overlap
@@ -104,6 +115,10 @@ prior `original_9` feature set and a `z_score_only` feature set using the same
 athlete-level holdout split. Each horizon includes the same holdout metrics plus
 standardized logistic coefficients for feature attribution.
 
+Window-sensitivity runs write `window_sensitivity.json` and
+`window_sensitivity_report.md`, comparing multiple graph `window_size` values
+with the same holdout policy and evaluation metrics.
+
 Latest live-source comparison (`intra_individual_deviation_v1`, 349 athletes,
 70 holdout): 7d AUROC 0.723, Brier skill 0.0020; 14d AUROC 0.731, Brier skill
 0.0057; 30d AUROC 0.736, Brier skill 0.0171. Compared with
@@ -113,8 +128,13 @@ feature attribution run (`feature_attribution_ablation_v1`) showed that
 `original_9` remains stronger on 7d/14d AUROC, while the combined `full_13`
 model improves 7d/30d top-decile lift. The `z_score_only` model is weak as a
 standalone model but has strong 7d lift, suggesting the z-score features are
-most useful as ranking modifiers inside the combined model. The current test
-suite has 84 passing tests.
+most useful as ranking modifiers inside the combined model.
+
+The current window sensitivity run (`window_sensitivity_v1`, graph windows
+2/3/4/5/7) showed a useful tradeoff: window 4 was best for AUROC at all
+horizons, window 7 was best for Brier skill at all horizons, and window 2 was
+best for top-decile lift at all horizons. The current test suite has 86 passing
+tests.
 
 The reported risk values are baseline model estimates for research comparison,
 not calibrated clinical probabilities.

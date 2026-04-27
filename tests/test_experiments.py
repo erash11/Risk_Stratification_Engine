@@ -4,7 +4,10 @@ import json
 import pandas as pd
 import pytest
 
-from risk_stratification_engine.experiments import run_research_experiment
+from risk_stratification_engine.experiments import (
+    run_research_experiment,
+    run_window_sensitivity_experiment,
+)
 
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -148,6 +151,52 @@ def test_run_research_experiment_counts_observed_events_in_modeled_cohort_only(
     metrics = json.loads((result / "model_metrics.json").read_text())
     assert metrics["athlete_count"] == 1
     assert metrics["observed_event_count"] == 1
+
+
+def test_run_window_sensitivity_experiment_writes_comparison_artifacts(tmp_path):
+    result = run_window_sensitivity_experiment(
+        measurements_path=FIXTURES / "measurements.csv",
+        injuries_path=FIXTURES / "injuries.csv",
+        output_dir=tmp_path,
+        experiment_id="window_sensitivity_fixture",
+        graph_window_sizes=(2, 3),
+    )
+
+    assert result == tmp_path / "experiments" / "window_sensitivity_fixture"
+    assert (result / "config.json").exists()
+    assert (result / "window_sensitivity.json").exists()
+    assert (result / "window_sensitivity_report.md").exists()
+
+    sensitivity = json.loads((result / "window_sensitivity.json").read_text())
+    assert sensitivity["graph_window_sizes"] == [2, 3]
+    assert set(sensitivity["windows"]) == {"2", "3"}
+    assert sensitivity["windows"]["2"]["feature_columns"] == [
+        "time_index",
+        "node_count",
+        "edge_count",
+        "mean_abs_correlation",
+        "edge_density",
+        "delta_edge_count",
+        "delta_mean_abs_correlation",
+        "delta_edge_density",
+        "graph_instability",
+        "z_mean_abs_correlation",
+        "z_edge_density",
+        "z_edge_count",
+        "z_graph_instability",
+    ]
+    assert "model_brier_score" in sensitivity["best_by_horizon"]["7"]
+    assert sensitivity["best_by_horizon"]["7"]["model_brier_score"][
+        "graph_window_size"
+    ] in {
+        2,
+        3,
+    }
+
+    report = (result / "window_sensitivity_report.md").read_text()
+    assert "Window Sensitivity" in report
+    assert "window 2" in report
+    assert "window 3" in report
 
 
 @pytest.mark.parametrize(

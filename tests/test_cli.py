@@ -121,3 +121,57 @@ def test_cli_prepares_live_sources_before_running_experiment(tmp_path, monkeypat
         "experiment_id": "live_run",
         "graph_window_size": 5,
     }
+
+
+def test_cli_runs_window_sensitivity_experiment(tmp_path, monkeypatch):
+    calls = {}
+
+    def fake_run_window_sensitivity_experiment(
+        measurements_path,
+        injuries_path,
+        output_dir,
+        experiment_id,
+        graph_window_sizes,
+    ):
+        calls["window_sensitivity"] = {
+            "measurements_path": measurements_path,
+            "injuries_path": injuries_path,
+            "output_dir": output_dir,
+            "experiment_id": experiment_id,
+            "graph_window_sizes": graph_window_sizes,
+        }
+        experiment_dir = output_dir / "experiments" / experiment_id
+        experiment_dir.mkdir(parents=True)
+        return experiment_dir
+
+    monkeypatch.setattr(
+        cli,
+        "run_window_sensitivity_experiment",
+        fake_run_window_sensitivity_experiment,
+    )
+
+    exit_code = main(
+        [
+            "--measurements",
+            str(FIXTURES / "measurements.csv"),
+            "--injuries",
+            str(FIXTURES / "injuries.csv"),
+            "--output-dir",
+            str(tmp_path),
+            "--experiment-id",
+            "window_sensitivity",
+            "--window-sensitivity-sizes",
+            "2",
+            "4",
+            "7",
+        ]
+    )
+
+    assert exit_code == 0
+    assert calls["window_sensitivity"] == {
+        "measurements_path": FIXTURES / "measurements.csv",
+        "injuries_path": FIXTURES / "injuries.csv",
+        "output_dir": tmp_path,
+        "experiment_id": "window_sensitivity",
+        "graph_window_sizes": (2, 4, 7),
+    }

@@ -48,21 +48,23 @@ Future work may add a dashboard performance tab inspired by the Malum/SPEAR mate
 - Live-source name normalization reconciles common `Last, First` export names with `First Last` names before hashing, and duplicate same-day metric rows are aggregated by mean value before modeling with counts recorded in `prep_metadata.json`.
 - `data_quality_audit.json` includes privacy-preserving review context for remaining single-source hashed identities and observed injury events outside the nearby-measurement window.
 - Observed live-source injury events are labeled by nearest same-season measurement distance: `modelable` at 14 days or less, `low_confidence` at 15-30 days, and `out_of_window` beyond 30 days; downstream modeling should prefer `primary_model_event = true` until calibration work says otherwise.
-- As of 2026-04-27, `run_research_experiment(...)` trains a discrete-time logistic baseline at the 7, 14, and 30 day horizons over nine graph snapshot-time features: `time_index`, `node_count`, `edge_count`, `mean_abs_correlation`, `edge_density`, `delta_edge_count`, `delta_mean_abs_correlation`, `delta_edge_density`, and `graph_instability`.
+- As of 2026-04-27, `run_research_experiment(...)` trains a discrete-time logistic baseline at the 7, 14, and 30 day horizons over 13 graph snapshot-time features: `time_index`, `node_count`, `edge_count`, `mean_abs_correlation`, `edge_density`, `delta_edge_count`, `delta_mean_abs_correlation`, `delta_edge_density`, `graph_instability`, `z_mean_abs_correlation`, `z_edge_density`, `z_edge_count`, and `z_graph_instability`.
 - The temporal delta features (`delta_*`) are computed per athlete-season in chronological order and are zero at each athlete's first snapshot; they capture change from one snapshot to the next. `edge_density` normalizes edge count by the maximum possible edges for the observed node count. `graph_instability` is the rolling population standard deviation of `mean_abs_correlation` over the most recent three snapshots, zero when fewer than two snapshots are available.
+- The intra-individual z-score features compare each athlete-season snapshot against that athlete-season's own strictly prior rolling baseline using the graph `window_size`. They require at least two prior snapshots, use population standard deviation, fall back to `0.0` when the prior standard deviation is zero, and are clipped to `[-10.0, 10.0]`.
 - The baseline writes `model_summary.json` with the event policy, feature columns, deterministic athlete-level 20% holdout split, per-horizon model kind, positive rates, and holdout Brier scores. If a training horizon has only one class, it records a prevalence fallback instead of fitting an unstable classifier.
 - `model_evaluation.json` compares each horizon's holdout predictions against the training-prevalence baseline and reports Brier score, Brier skill score, AUROC, average precision, and top-decile lift when the holdout labels support those metrics.
 - Enriched graph features (`enriched_graph_features_v1` run, 349 athletes, 70 holdout): 7d AUROC 0.730 (+0.008), 14d AUROC 0.735 (+0.007), 30d AUROC 0.735 (+0.007); Brier skill 30d improved from 0.0142 to 0.0168 (+18%).
+- Intra-individual deviation features (`intra_individual_deviation_v1` run, 349 athletes, 70 holdout): 7d AUROC 0.723, Brier skill 0.0020, top-decile lift 3.76; 14d AUROC 0.731, Brier skill 0.0057, top-decile lift 3.96; 30d AUROC 0.736, Brier skill 0.0171, top-decile lift 4.48. Versus `enriched_graph_features_v1`, the 30d AUROC, 7d/30d Brier skill, and all top-decile lifts improved, while 7d/14d AUROC declined slightly.
 
-## Recommended Next Step
+## Latest Completed Step
 
-**Intra-individual z-score deviation features** — approved design, ready to implement.
+**Intra-individual z-score deviation features** — implemented and verified on 2026-04-27.
 
 Full spec: `docs/superpowers/specs/2026-04-27-intra-individual-deviation-design.md`
 
-**Why:** The current 9-feature model uses only absolute graph values (population-level). Peterson's methodology is fundamentally intra-individual: risk emerges from departure of an athlete's own dynamic baseline, not from population position. Z-score features are the direct implementation of that philosophy.
+**Why:** The prior 9-feature model used only absolute graph values (population-level). Peterson's methodology is fundamentally intra-individual: risk emerges from departure of an athlete's own dynamic baseline, not from population position. Z-score features are the direct implementation of that philosophy.
 
-**What to add (4 new features, 13 total):**
+**Added features (4 new features, 13 total):**
 
 | New column | Source feature | Logic |
 |---|---|---|
@@ -78,11 +80,11 @@ Full spec: `docs/superpowers/specs/2026-04-27-intra-individual-deviation-design.
 - Clip to `[-10.0, 10.0]`, round to 6 dp
 - Use population std (ddof=0), same as `graph_instability`
 
-**Files to change:** `graphs.py` (OUTPUT_COLUMNS + `_add_temporal_features`), `models.py` (GRAPH_SNAPSHOT_FEATURE_COLUMNS), `tests/test_graphs.py` (6 new TDD tests), `tests/test_models.py` (fixture columns), `tests/test_experiments.py` (feature_columns assertion).
+**Changed files:** `graphs.py` (OUTPUT_COLUMNS + `_add_temporal_features`), `models.py` (GRAPH_SNAPSHOT_FEATURE_COLUMNS), `tests/test_graphs.py` (6 new TDD tests), `tests/test_models.py` (fixture columns), `tests/test_experiments.py` (feature_columns assertion), `AGENTS.md`, and `README.md`.
 
-**TDD requirement:** Write 6 failing tests first (see spec for exact test names and assertions), watch them fail, then implement. Do not write implementation code before tests.
+**Verification:** The 6 required graph tests were written first and failed against the old schema. After implementation, `python -m pytest` collected and passed 82 tests. The live experiment command `risk-engine --from-live-sources --paths-config config/paths.local.yaml --output-dir outputs --experiment-id intra_individual_deviation_v1` completed and wrote `outputs/experiments/intra_individual_deviation_v1/model_evaluation.json`.
 
-**6 required tests:**
+**6 added tests:**
 1. `test_build_graph_snapshots_includes_z_score_feature_columns` — all 4 columns present
 2. `test_build_graph_snapshots_z_scores_are_zero_at_first_snapshot` — no prior history
 3. `test_build_graph_snapshots_z_scores_are_zero_at_second_snapshot` — only 1 prior (below minimum-2 threshold)
@@ -90,7 +92,7 @@ Full spec: `docs/superpowers/specs/2026-04-27-intra-individual-deviation-design.
 5. `test_build_graph_snapshots_z_score_is_zero_when_baseline_std_is_zero` — std-zero fallback
 6. `test_build_graph_snapshots_z_score_clips_extreme_departures` — clip to ±10.0
 
-**After implementation:** run live experiment `intra_individual_deviation_v1` and compare `model_evaluation.json` against `enriched_graph_features_v1` baseline (7d AUROC 0.730, 14d 0.735, 30d 0.735). Update this file with new test count and results. Commit and push.
+**Live comparison:** `intra_individual_deviation_v1` improved 30d AUROC from 0.735 to 0.736, 30d Brier skill from 0.0168 to 0.0171, and top-decile lift from 4.34 to 4.48. It also improved 7d Brier skill from 0.0017 to 0.0020 and top-decile lifts at all horizons. The 7d and 14d AUROC values were slightly lower than `enriched_graph_features_v1`.
 
 ## Engineering Preferences
 

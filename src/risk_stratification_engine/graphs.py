@@ -18,9 +18,19 @@ OUTPUT_COLUMNS = [
     "delta_mean_abs_correlation",
     "delta_edge_density",
     "graph_instability",
+    "z_mean_abs_correlation",
+    "z_edge_density",
+    "z_edge_count",
+    "z_graph_instability",
 ]
 
 _INSTABILITY_WINDOW = 3
+_Z_SCORE_FEATURES = {
+    "z_mean_abs_correlation": "mean_abs_correlation",
+    "z_edge_density": "edge_density",
+    "z_edge_count": "edge_count",
+    "z_graph_instability": "graph_instability",
+}
 
 
 def build_graph_snapshots(
@@ -55,7 +65,7 @@ def build_graph_snapshots(
                     **features,
                 }
             )
-        _add_temporal_features(group_rows)
+        _add_temporal_features(group_rows, window_size)
         rows.extend(group_rows)
     return pd.DataFrame(rows, columns=OUTPUT_COLUMNS)
 
@@ -103,7 +113,10 @@ def _graph_features(
     }
 
 
-def _add_temporal_features(group_rows: list[dict[str, object]]) -> None:
+def _add_temporal_features(
+    group_rows: list[dict[str, object]],
+    window_size: int,
+) -> None:
     for i, row in enumerate(group_rows):
         node_count = int(row["node_count"])
         max_edges = node_count * (node_count - 1) // 2
@@ -133,3 +146,30 @@ def _add_temporal_features(group_rows: list[dict[str, object]]) -> None:
             row["graph_instability"] = 0.0
         else:
             row["graph_instability"] = round(float(np.std(window_corrs)), 6)
+
+        baseline_start = max(0, i - window_size + 1)
+        baseline_rows = group_rows[baseline_start:i]
+        for z_column, source_column in _Z_SCORE_FEATURES.items():
+            row[z_column] = _prior_window_z_score(
+                current_value=float(row[source_column]),
+                baseline_values=[
+                    float(baseline_row[source_column])
+                    for baseline_row in baseline_rows
+                ],
+            )
+
+
+def _prior_window_z_score(
+    current_value: float,
+    baseline_values: list[float],
+) -> float:
+    if len(baseline_values) < 2:
+        return 0.0
+
+    baseline_std = float(np.std(baseline_values))
+    if baseline_std == 0.0:
+        return 0.0
+
+    baseline_mean = float(np.mean(baseline_values))
+    z_score = (current_value - baseline_mean) / baseline_std
+    return round(float(np.clip(z_score, -10.0, 10.0)), 6)

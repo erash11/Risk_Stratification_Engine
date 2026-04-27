@@ -22,6 +22,10 @@ GRAPH_SNAPSHOT_FEATURE_COLUMNS = (
     "delta_mean_abs_correlation",
     "delta_edge_density",
     "graph_instability",
+    "z_mean_abs_correlation",
+    "z_edge_density",
+    "z_edge_count",
+    "z_graph_instability",
 )
 
 

@@ -75,14 +75,19 @@ and out-of-window observed events do not become training positives.
 The experiment runner writes `model_summary.json` and `model_evaluation.json`
 alongside `model_metrics.json`. The current risk model is a discrete-time
 logistic baseline trained separately for the 7, 14, and 30 day horizons over
-nine graph snapshot features: `time_index`, `node_count`, `edge_count`,
+13 graph snapshot features: `time_index`, `node_count`, `edge_count`,
 `mean_abs_correlation`, `edge_density`, `delta_edge_count`,
-`delta_mean_abs_correlation`, `delta_edge_density`, and `graph_instability`.
+`delta_mean_abs_correlation`, `delta_edge_density`, `graph_instability`,
+`z_mean_abs_correlation`, `z_edge_density`, `z_edge_count`, and
+`z_graph_instability`.
 The temporal delta features are computed per athlete-season in chronological
 order and capture change from one snapshot to the next. `edge_density`
 normalizes edge count by the maximum possible edges. `graph_instability` is a
 rolling population standard deviation of `mean_abs_correlation` over the most
-recent three snapshots. The split is deterministic and athlete-level, with a
+recent three snapshots. The z-score features compare each snapshot to that
+athlete-season's own strictly prior rolling baseline, use population standard
+deviation, require at least two prior snapshots, and clip extreme departures to
+`[-10.0, 10.0]`. The split is deterministic and athlete-level, with a
 sorted 20% holdout. If a training fold has only one class at a horizon, the
 runner records a prevalence fallback for that horizon instead of fitting an
 unstable classifier.
@@ -92,6 +97,13 @@ baseline for each horizon. It reports holdout event counts and rates, mean
 predicted risk, model and prevalence Brier scores, Brier skill score, AUROC,
 average precision, and top-decile lift when those metrics are defined by the
 holdout labels.
+
+Latest live-source comparison (`intra_individual_deviation_v1`, 349 athletes,
+70 holdout): 7d AUROC 0.723, Brier skill 0.0020; 14d AUROC 0.731, Brier skill
+0.0057; 30d AUROC 0.736, Brier skill 0.0171. Compared with
+`enriched_graph_features_v1`, the 30d AUROC, 7d/30d Brier skill, and all
+top-decile lifts improved, while 7d/14d AUROC declined slightly. The current
+test suite has 82 passing tests.
 
 The reported risk values are baseline model estimates for research comparison,
 not calibrated clinical probabilities.

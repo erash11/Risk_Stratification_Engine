@@ -166,3 +166,109 @@ def test_build_graph_snapshots_graph_instability_reflects_correlation_variance()
 
     # population std of [0.0, 1.0] = 0.5
     assert second["graph_instability"] == pytest.approx(np.std([0.0, 1.0]))
+
+
+Z_SCORE_COLUMNS = [
+    "z_mean_abs_correlation",
+    "z_edge_density",
+    "z_edge_count",
+    "z_graph_instability",
+]
+
+
+def _snapshot_matrix(rows: list[dict[str, object]]) -> pd.DataFrame:
+    return pd.DataFrame(
+        [
+            {
+                "athlete_id": "a1",
+                "season_id": "2026",
+                "date": pd.Timestamp(f"2026-01-{index + 1:02d}"),
+                "time_index": index,
+                **row,
+            }
+            for index, row in enumerate(rows)
+        ]
+    )
+
+
+def test_build_graph_snapshots_includes_z_score_feature_columns():
+    measurements = load_measurements(FIXTURES / "measurements.csv")
+    matrix = build_measurement_matrix(measurements)
+
+    snapshots = build_graph_snapshots(matrix, window_size=2)
+
+    assert set(Z_SCORE_COLUMNS).issubset(OUTPUT_COLUMNS)
+    assert set(Z_SCORE_COLUMNS).issubset(snapshots.columns)
+
+
+def test_build_graph_snapshots_z_scores_are_zero_at_first_snapshot():
+    measurements = load_measurements(FIXTURES / "measurements.csv")
+    matrix = build_measurement_matrix(measurements)
+
+    snapshots = build_graph_snapshots(matrix, window_size=2)
+    first = snapshots.loc[
+        (snapshots["athlete_id"] == "a1") & (snapshots["time_index"] == 0)
+    ].iloc[0]
+
+    assert first[Z_SCORE_COLUMNS].tolist() == [0.0, 0.0, 0.0, 0.0]
+
+
+def test_build_graph_snapshots_z_scores_are_zero_at_second_snapshot():
+    measurements = load_measurements(FIXTURES / "measurements.csv")
+    matrix = build_measurement_matrix(measurements)
+
+    snapshots = build_graph_snapshots(matrix, window_size=2)
+    second = snapshots.loc[
+        (snapshots["athlete_id"] == "a1") & (snapshots["time_index"] == 1)
+    ].iloc[0]
+
+    assert second[Z_SCORE_COLUMNS].tolist() == [0.0, 0.0, 0.0, 0.0]
+
+
+def test_build_graph_snapshots_z_score_nonzero_once_baseline_has_two_prior_snapshots():
+    matrix = _snapshot_matrix(
+        [
+            {"jump_height": 1.0, "force_asymmetry": 1.0},
+            {"jump_height": 2.0, "force_asymmetry": 2.0},
+            {"jump_height": 3.0, "force_asymmetry": 1.0},
+        ]
+    )
+
+    snapshots = build_graph_snapshots(matrix, window_size=4)
+    third = snapshots.loc[snapshots["time_index"] == 2].iloc[0]
+
+    assert third["z_mean_abs_correlation"] != 0.0
+    assert third["z_mean_abs_correlation"] == pytest.approx(-1.0)
+
+
+def test_build_graph_snapshots_z_score_is_zero_when_baseline_std_is_zero():
+    matrix = _snapshot_matrix(
+        [
+            {"jump_height": 1.0, "force_asymmetry": 1.0},
+            {"jump_height": 2.0, "force_asymmetry": 1.0},
+            {"jump_height": 3.0, "force_asymmetry": 9.0},
+        ]
+    )
+
+    snapshots = build_graph_snapshots(matrix, window_size=4)
+    third = snapshots.loc[snapshots["time_index"] == 2].iloc[0]
+
+    assert third["z_mean_abs_correlation"] == 0.0
+
+
+def test_build_graph_snapshots_z_score_clips_extreme_departures():
+    metric_count = 20
+    early_sparse_row = {f"metric_{i}": 0.0 for i in range(metric_count)}
+    early_sparse_row["metric_0"] = 1.0
+    early_sparse_row["metric_1"] = 1.0
+    second_sparse_row = {f"metric_{i}": 0.0 for i in range(metric_count)}
+    second_sparse_row["metric_0"] = 2.0
+    second_sparse_row["metric_1"] = 2.0
+    departure_row = {f"metric_{i}": float(i + 1) for i in range(metric_count)}
+
+    matrix = _snapshot_matrix([early_sparse_row, second_sparse_row, departure_row])
+
+    snapshots = build_graph_snapshots(matrix, window_size=4)
+    third = snapshots.loc[snapshots["time_index"] == 2].iloc[0]
+
+    assert third["z_mean_abs_correlation"] == 10.0

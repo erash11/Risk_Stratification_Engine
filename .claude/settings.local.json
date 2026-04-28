@@ -11,7 +11,15 @@
       "Bash(python -c ' *)",
       "Bash(git add *)",
       "Bash(git commit -m ' *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(python -m pytest tests/test_calibration.py tests/test_experiments.py::test_run_calibration_threshold_experiment_writes_artifacts tests/test_cli.py::test_cli_runs_calibration_thresholds_experiment --tb=line -q)",
+      "Bash(python -m pytest tests/test_calibration.py tests/test_cli.py::test_cli_runs_calibration_thresholds_experiment --tb=line -q)",
+      "Bash(python -m pytest tests/test_calibration.py -v)",
+      "Bash(python -m pytest --tb=short -q)",
+      "Bash(risk-engine --from-live-sources --paths-config config/paths.local.yaml --output-dir outputs --experiment-id calibration_threshold_v1 --calibration-thresholds --model-variant l2 --graph-window-size 4 --stability-splits 5)",
+      "Bash(python *)",
+      "Bash(risk-engine --from-live-sources --paths-config config/paths.local.yaml --output-dir outputs --experiment-id calibration_threshold_w7_v1 --calibration-thresholds --model-variant l2 --graph-window-size 7 --stability-splits 5)",
+      "Bash(risk-engine --from-live-sources --paths-config config/paths.local.yaml --output-dir outputs --experiment-id athlete_explanations_v1 --model-variant l2 --graph-window-size 4)"
     ]
   }
 }

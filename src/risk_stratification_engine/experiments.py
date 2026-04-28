@@ -28,6 +28,9 @@ from risk_stratification_engine.models import (
     MODEL_VARIANTS,
     train_discrete_time_risk_model,
 )
+from risk_stratification_engine.model_diagnostics import (
+    build_model_improvement_diagnostics,
+)
 from risk_stratification_engine.trajectories import build_measurement_matrix
 
 ORIGINAL_GRAPH_FEATURE_COLUMNS = (
@@ -166,6 +169,11 @@ def run_alert_episode_experiment(
         alert_timeline=alert_timeline,
         quality=quality,
     )
+    model_diagnostics = build_model_improvement_diagnostics(
+        episodes=episodes,
+        alert_timeline=alert_timeline,
+        quality=quality,
+    )
     alert_summary.update(
         {
             "experiment_type": "alert_episode_validation",
@@ -183,6 +191,10 @@ def run_alert_episode_experiment(
     write_frame(
         pd.DataFrame(quality["quality_rows"]),
         experiment_dir / "alert_episode_quality.csv",
+    )
+    write_frame(
+        pd.DataFrame(model_diagnostics["diagnostic_rows"]),
+        experiment_dir / "model_improvement_diagnostics.csv",
     )
     _write_json(
         experiment_dir / "config.json",
@@ -230,6 +242,16 @@ def run_alert_episode_experiment(
             **case_review,
         },
     )
+    _write_json(
+        experiment_dir / "model_improvement_diagnostics.json",
+        {
+            "experiment_type": "model_improvement_diagnostics",
+            "model_variant": model_variant,
+            "graph_window_size": graph_window_size,
+            "alert_percentile_thresholds": list(percentile_thresholds),
+            **model_diagnostics,
+        },
+    )
     _write_alert_episode_report(
         experiment_dir / "alert_episode_report.md",
         alert_summary,
@@ -248,6 +270,14 @@ def run_alert_episode_experiment(
             "model_variant": model_variant,
             "graph_window_size": graph_window_size,
             **case_review,
+        },
+    )
+    _write_model_improvement_diagnostic_report(
+        experiment_dir / "model_improvement_diagnostic_report.md",
+        {
+            "model_variant": model_variant,
+            "graph_window_size": graph_window_size,
+            **model_diagnostics,
         },
     )
     return experiment_dir
@@ -1401,6 +1431,54 @@ def _write_qualitative_case_review_report(
             f"{case['season_id']} | "
             f"{case['horizon_days']}d | "
             f"{case['threshold']} |"
+        )
+
+    path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+
+
+def _write_model_improvement_diagnostic_report(
+    path: Path,
+    diagnostics: dict[str, object],
+) -> None:
+    lines = [
+        "# Model Improvement Diagnostics",
+        "",
+        f"Model variant: {diagnostics['model_variant']}",
+        f"Graph window size: {diagnostics['graph_window_size']}",
+        f"Rows: {diagnostics['diagnostic_row_count']}",
+        "",
+        "This report compares useful alerts, noisy alerts, and missed observed "
+        "injuries so the next modeling step can target the right limitation.",
+        "",
+        "## Recommended Actions",
+        "",
+        "| Recommended next action | Rows |",
+        "|---|---:|",
+    ]
+    for action, count in diagnostics["recommended_action_summary"].items():
+        lines.append(f"| {action} | {count} |")
+
+    lines.extend(
+        [
+            "",
+            "## Diagnostic Table",
+            "",
+            "| Horizon | Threshold | Group | Count | Median risk | Max pre-event risk | "
+            "Z-rate | Recommended next action |",
+            "|---:|---|---|---:|---:|---:|---:|---|",
+        ]
+    )
+    for row in diagnostics["diagnostic_rows"]:
+        lines.append(
+            "| "
+            f"{row['horizon_days']}d | "
+            f"{row['threshold']} | "
+            f"{row['comparison_group']} | "
+            f"{row['row_count']} | "
+            f"{_format_metric(row['median_peak_risk'])} | "
+            f"{_format_metric(row['max_pre_event_risk'])} | "
+            f"{_format_metric(row['elevated_z_rate'])} | "
+            f"{row['recommended_next_action']} |"
         )
 
     path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")

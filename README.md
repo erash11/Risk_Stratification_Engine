@@ -209,7 +209,10 @@ These runs write `alert_episodes.csv`, `alert_episodes.json`,
 the Episode Quality Audit artifacts: `alert_episode_quality.csv`,
 `alert_episode_quality.json`, and `alert_episode_quality_report.md`, plus the
 qualitative case-review artifacts: `qualitative_case_review.json` and
-`qualitative_case_review_report.md`. Episodes use the top-5% and top-10%
+`qualitative_case_review_report.md`, plus the model-improvement diagnostic
+artifacts: `model_improvement_diagnostics.csv`,
+`model_improvement_diagnostics.json`, and
+`model_improvement_diagnostic_report.md`. Episodes use the top-5% and top-10%
 percentile thresholds, collapse contiguous alert snapshots, record start/peak/end
 event timing without treating censoring dates as injuries, and roll up model
 contribution and intra-individual z-score flags. The quality audit adds
@@ -217,7 +220,10 @@ start-based true-positive counts, false-positive counts, unique injury-event
 capture, missed observed events, alert burden per athlete-season, median lead
 time, threshold overlap, and representative cases. The case-review artifact adds
 timeline context and simple diagnostic labels for useful warnings, noisy alerts,
-missed injuries, and high own-baseline-deviation cases.
+missed injuries, and high own-baseline-deviation cases. The model-improvement
+diagnostic table compares useful alerts, noisy alerts, and missed observed
+injuries side by side so the next modeling sprint can target missing context,
+threshold policy, or event-specific feature gaps.
 
 Latest live-source comparison (`intra_individual_deviation_v1`, 349 athletes,
 70 holdout): 7d AUROC 0.723, Brier skill 0.0020; 14d AUROC 0.731, Brier skill
@@ -302,8 +308,19 @@ cases, and 6 explanation gaps. The missed-injury cases include modelable events,
 so performance is not only a data-quality problem. Better injury labels and
 exposure/availability context are still likely high-value, but the next
 performance sprint should explicitly compare missed-event feature profiles
-against false-positive and true-positive profiles. The current test suite has
-130 passing tests.
+against false-positive and true-positive profiles.
+
+The model-improvement diagnostic run (`model_improvement_diagnostics_v1`, L2,
+window 4) wrote 18 comparison rows: useful alerts, noisy alerts, and missed
+events for each 7d/14d/30d horizon and top-5%/top-10% threshold. At the current
+headline policy, 30d top-5%, it found 130 true-positive episodes, 490
+false-positive episodes, and 133 missed events. True-positive and false-positive
+episodes again had very similar median peak risk (0.136 vs 0.137) and high
+z-feature rates (82.3% vs 79.4%), reinforcing the need for added context
+features. Missed 30d top-5% events were mostly modelable (129 of 133) and had a
+maximum pre-event risk of 0.701 but low median pre-event risk (0.034), pointing
+to threshold/policy review plus event-specific feature work rather than data
+cleanup alone. The current test suite has 134 passing tests.
 
 The reported risk values are baseline model estimates for research comparison,
 not calibrated clinical probabilities.

@@ -67,6 +67,23 @@ Future work may add a dashboard performance tab inspired by the Malum/SPEAR mate
 
 ## Latest Completed Step
 
+**Model Improvement Diagnostic Table v1** — implemented and verified on 2026-04-28.
+
+**What changed:** Added `model_diagnostics.py` and extended the existing `--alert-episodes` runner with `model_improvement_diagnostics.csv`, `model_improvement_diagnostics.json`, and `model_improvement_diagnostic_report.md`. The diagnostic table compares useful alerts, noisy alerts, and missed observed injury events for every horizon/threshold pair, then reports risk summaries, pre-event risk summaries for missed events, elevated z-score rates, top feature counts, event-window quality counts, measurement-gap summaries, and a concise recommended next action.
+
+**Verification:** New TDD tests first failed because `risk_stratification_engine.model_diagnostics` did not exist. The alert episode experiment test then failed because the runner did not write model-improvement artifacts. After implementation, targeted tests passed, and `python -m pytest` collected and passed 134 tests. The live command `risk-engine --from-live-sources --paths-config config/paths.local.yaml --output-dir outputs --experiment-id model_improvement_diagnostics_v1 --alert-episodes --model-variant l2 --graph-window-size 4` completed and wrote the diagnostic artifacts.
+
+**Live results (`model_improvement_diagnostics_v1`, L2, window 4):**
+- 18 diagnostic rows were written: true-positive episodes, false-positive episodes, and missed events for each 7d/14d/30d horizon and top-5%/top-10% threshold.
+- Recommended action rows: 6 `retain_policy_signal`, 6 `add_context_features`, and 6 `review_threshold_policy`.
+- At the current headline policy, 30d top-5%, the table reported 130 true-positive episodes, 490 false-positive episodes, and 133 missed events.
+- True-positive and false-positive 30d top-5% episodes had nearly identical median peak risk (0.136 vs 0.137) and similarly high elevated z-feature rates (82.3% vs 79.4%), reinforcing that current graph-risk features alone do not separate useful warnings from noisy alerts.
+- Missed 30d top-5% events were mostly modelable (129 of 133), with median pre-event snapshot count 7, median pre-event risk 0.034, and maximum pre-event risk 0.701. This suggests a mixed issue: many missed events stay low-risk, but some high-risk missed events need threshold or episode-policy review.
+
+**Interpretation:** The performance ceiling is not just a data problem. Better injury labels and measurement coverage still matter, but the strongest next improvement lever is adding context that separates managed-risk/adaptation from harmful risk and adding event-specific features for injuries whose pre-event graph profile stays low. Keep L2 + window 4 + 30d top-5% as the primary early-warning policy while the next sprint tests context features.
+
+## Previous Completed Step
+
 **Qualitative Case Review + Data Diagnostic v1** — implemented and verified on 2026-04-28.
 
 **What changed:** Added `case_review.py` and extended the existing `--alert-episodes` runner with `qualitative_case_review.json` and `qualitative_case_review_report.md`. The case-review artifact samples deterministic true-positive, false-positive, missed-injury, and high intra-individual deviation cases for each horizon/threshold pair, then attaches compact athlete-season timeline context, model drivers, elevated z-score features, event-window quality, nearest-measurement gap, and a simple diagnostic label.

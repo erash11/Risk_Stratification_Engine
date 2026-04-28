@@ -440,6 +440,9 @@ def test_run_alert_episode_experiment_writes_episode_artifacts(tmp_path):
     assert (result / "alert_episode_quality_report.md").exists()
     assert (result / "qualitative_case_review.json").exists()
     assert (result / "qualitative_case_review_report.md").exists()
+    assert (result / "model_improvement_diagnostics.csv").exists()
+    assert (result / "model_improvement_diagnostics.json").exists()
+    assert (result / "model_improvement_diagnostic_report.md").exists()
 
     config = json.loads((result / "config.json").read_text())
     assert config["experiment_type"] == "alert_episode_validation"
@@ -505,6 +508,29 @@ def test_run_alert_episode_experiment_writes_episode_artifacts(tmp_path):
     case_report = (result / "qualitative_case_review_report.md").read_text()
     assert "Qualitative Case Review" in case_report
     assert "Diagnostic Summary" in case_report
+
+    improvement = json.loads(
+        (result / "model_improvement_diagnostics.json").read_text()
+    )
+    assert improvement["experiment_type"] == "model_improvement_diagnostics"
+    assert improvement["diagnostic_row_count"] >= 1
+    assert {
+        "comparison_group",
+        "row_count",
+        "recommended_next_action",
+    }.issubset(improvement["diagnostic_rows"][0])
+
+    improvement_table = pd.read_csv(result / "model_improvement_diagnostics.csv")
+    assert {
+        "comparison_group",
+        "recommended_next_action",
+    }.issubset(improvement_table.columns)
+
+    improvement_report = (
+        result / "model_improvement_diagnostic_report.md"
+    ).read_text()
+    assert "Model Improvement Diagnostics" in improvement_report
+    assert "Recommended next action" in improvement_report
 
 
 # ---------------------------------------------------------------------------

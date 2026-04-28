@@ -5,7 +5,12 @@ from math import ceil
 from pathlib import Path
 
 import pandas as pd
+from sklearn.metrics import brier_score_loss
 
+from risk_stratification_engine.calibration import (
+    build_calibration_bins,
+    build_threshold_table,
+)
 from risk_stratification_engine.evaluation import evaluate_risk_model
 from risk_stratification_engine.events import DEFAULT_HORIZONS, attach_time_to_event_labels
 from risk_stratification_engine.graphs import build_graph_snapshots
@@ -360,6 +365,154 @@ def run_window_model_robustness_experiment(
         robustness,
     )
     return experiment_dir
+
+
+def run_calibration_threshold_experiment(
+    measurements_path: str | Path,
+    injuries_path: str | Path,
+    output_dir: str | Path,
+    experiment_id: str,
+    graph_window_size: int = 4,
+    model_variant: str = "l2",
+    split_count: int = 5,
+) -> Path:
+    if split_count < 1:
+        raise ValueError("split_count must be at least 1")
+    experiment_dir = _experiment_path(output_dir, experiment_id)
+    measurements = load_measurements(measurements_path)
+    injuries = load_injury_events(injuries_path)
+    matrix = build_measurement_matrix(measurements)
+    graph_features = build_graph_snapshots(matrix, window_size=graph_window_size)
+    if graph_features.empty:
+        raise ValueError("no graph snapshots produced")
+    labeled = attach_time_to_event_labels(graph_features, injuries)
+    if labeled.empty:
+        raise ValueError("no labeled graph snapshots produced")
+
+    split_test_ids = _rotating_holdout_splits(labeled["athlete_id"], split_count)
+
+    oof_predictions: dict[int, dict[str, float]] = {}
+    event_policy: str | None = None
+
+    for test_ids in split_test_ids:
+        model_result = train_discrete_time_risk_model(
+            labeled,
+            test_athlete_ids=test_ids,
+            model_variant=model_variant,
+        )
+        if event_policy is None:
+            event_policy = model_result.summary["event_policy"]
+        test_mask = model_result.timeline["athlete_id"].astype(str).isin(
+            [str(i) for i in test_ids]
+        )
+        for idx in model_result.timeline.index[test_mask]:
+            oof_predictions[idx] = {
+                str(horizon): float(
+                    model_result.timeline.at[idx, f"risk_{horizon}d"]
+                )
+                for horizon in DEFAULT_HORIZONS
+            }
+
+    event_policy = event_policy or "event_observed"
+    horizon_summaries: dict[str, object] = {}
+    threshold_rows: list[dict[str, object]] = []
+
+    for horizon in DEFAULT_HORIZONS:
+        label_column = f"event_within_{horizon}d"
+        oof_indices = sorted(oof_predictions.keys())
+        predictions = pd.Series(
+            [oof_predictions[idx][str(horizon)] for idx in oof_indices],
+            index=oof_indices,
+        )
+        labels = _oof_labels(labeled, oof_indices, label_column, event_policy)
+
+        model_brier = (
+            float(brier_score_loss(labels.astype(int), predictions))
+            if len(labels) > 0
+            else None
+        )
+        oof_positive_rate = float(labels.mean()) if len(labels) else 0.0
+        prevalence_brier = (
+            float(brier_score_loss(
+                labels.astype(int),
+                pd.Series(oof_positive_rate, index=labels.index),
+            ))
+            if len(labels) > 0
+            else None
+        )
+        brier_skill = _brier_skill(model_brier, prevalence_brier)
+
+        n_bins = min(10, max(1, len(predictions) // 3))
+        bins = build_calibration_bins(predictions, labels, n_bins=n_bins)
+        horizon_threshold_rows = build_threshold_table(predictions, labels)
+        for row in horizon_threshold_rows:
+            threshold_rows.append({"horizon": horizon, **row})
+
+        horizon_summaries[str(horizon)] = {
+            "oof_snapshot_count": len(oof_indices),
+            "oof_positive_count": int(labels.sum()),
+            "oof_positive_rate": oof_positive_rate if len(labels) else None,
+            "brier_score": model_brier,
+            "brier_skill_score": brier_skill,
+            "calibration_bins": bins,
+            "threshold_rows": horizon_threshold_rows,
+        }
+
+    calibration_summary = {
+        "experiment_type": "calibration_threshold",
+        "model_type": MODEL_TYPE,
+        "model_variant": model_variant,
+        "graph_window_size": graph_window_size,
+        "split_count": split_count,
+        "event_policy": event_policy,
+        "split_policy": "athlete_level_deterministic_rotating_holdout_20pct",
+        "feature_columns": list(GRAPH_SNAPSHOT_FEATURE_COLUMNS),
+        "horizons": horizon_summaries,
+    }
+
+    threshold_frame = pd.DataFrame(threshold_rows)
+
+    _write_json(
+        experiment_dir / "config.json",
+        {
+            "experiment_id": experiment_id,
+            "experiment_type": "calibration_threshold",
+            "measurements_path": str(measurements_path),
+            "injuries_path": str(injuries_path),
+            "graph_window_size": graph_window_size,
+            "model_variant": model_variant,
+            "split_count": split_count,
+            "horizons": list(DEFAULT_HORIZONS),
+        },
+    )
+    _write_json(experiment_dir / "calibration_summary.json", calibration_summary)
+    write_frame(threshold_frame, experiment_dir / "threshold_table.csv")
+    _write_calibration_report(
+        experiment_dir / "calibration_report.md",
+        calibration_summary,
+    )
+    return experiment_dir
+
+
+def _oof_labels(
+    labeled: pd.DataFrame,
+    oof_indices: list[int],
+    label_column: str,
+    event_policy: str,
+) -> pd.Series:
+    labels = labeled.loc[oof_indices, label_column].astype(bool)
+    if event_policy == "primary_model_event" and "primary_model_event" in labeled.columns:
+        labels = labels & labeled.loc[oof_indices, "primary_model_event"].astype(bool)
+    return labels
+
+
+def _brier_skill(
+    model_brier: float | None,
+    prevalence_brier: float | None,
+) -> float | None:
+    if model_brier is None or prevalence_brier in {None, 0.0}:
+        return None
+    return float(1.0 - model_brier / prevalence_brier)
 
 
 def _rotating_holdout_splits(
@@ -907,3 +1060,71 @@ def _format_metric(value: object) -> str:
     if value is None:
         return "n/a"
     return f"{float(value):.3f}"
+
+
+def _write_calibration_report(
+    path: Path,
+    summary: dict[str, object],
+) -> None:
+    lines = [
+        "# Calibration and Threshold Tables",
+        "",
+        f"Model variant: {summary['model_variant']}",
+        f"Graph window size: {summary['graph_window_size']}",
+        f"Split count: {summary['split_count']}",
+        f"Event policy: {summary['event_policy']}",
+        f"Split policy: {summary['split_policy']}",
+        "",
+        "All predictions are out-of-fold: each athlete-season snapshot is scored by a model that did not train on that athlete.",
+        "",
+    ]
+
+    for horizon in DEFAULT_HORIZONS:
+        h = summary["horizons"][str(horizon)]
+        lines.extend(
+            [
+                f"## Horizon {horizon}d",
+                "",
+                f"OOF snapshots: {h['oof_snapshot_count']} | "
+                f"Positives: {h['oof_positive_count']} "
+                f"({_format_metric(h['oof_positive_rate'])})",
+                f"Brier score: {_format_metric(h['brier_score'])} | "
+                f"Brier skill: {_format_metric(h['brier_skill_score'])}",
+                "",
+                "### Calibration Bins",
+                "",
+                "| Bin | Predicted mean | Observed rate | Count | Positives |",
+                "|---:|---:|---:|---:|---:|",
+            ]
+        )
+        for row in h["calibration_bins"]:
+            lines.append(
+                f"| {row['bin_index']} | "
+                f"{_format_metric(row['predicted_risk_mean'])} | "
+                f"{_format_metric(row['observed_event_rate'])} | "
+                f"{row['snapshot_count']} | "
+                f"{row['positive_count']} |"
+            )
+
+        lines.extend(
+            [
+                "",
+                "### Alert Thresholds",
+                "",
+                "| Kind | Threshold | Alerts | Recall | Precision | Lift |",
+                "|---|---:|---:|---:|---:|---:|",
+            ]
+        )
+        for row in h["threshold_rows"]:
+            lines.append(
+                f"| {row['threshold_kind']} | "
+                f"{row['threshold_value']:.2f} | "
+                f"{row['alert_count']} | "
+                f"{_format_metric(row['event_capture'])} | "
+                f"{_format_metric(row['precision'])} | "
+                f"{_format_metric(row['lift'])} |"
+            )
+        lines.append("")
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")

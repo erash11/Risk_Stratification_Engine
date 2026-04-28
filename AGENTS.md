@@ -67,15 +67,30 @@ Future work may add a dashboard performance tab inspired by the Malum/SPEAR mate
 
 ## Latest Completed Step
 
+**Calibration and threshold tables** — implemented and verified on 2026-04-28.
+
+**What changed:** New `calibration.py` module provides `build_calibration_bins` (equal-count quantile binning) and `build_threshold_table` (percentile and fixed-probability thresholds). `run_calibration_threshold_experiment(...)` uses rotating out-of-fold splits so every athlete-season snapshot is scored by a model that did not train on that athlete. CLI: `--calibration-thresholds` (reuses `--model-variant`, `--graph-window-size`, `--stability-splits`). Artifacts: `calibration_summary.json` (OOF stats, calibration bins, and threshold rows per horizon), `threshold_table.csv`, and `calibration_report.md`.
+
+**Verification:** 16 new tests first failed because `calibration.py`, `run_calibration_threshold_experiment`, and the CLI flag did not exist. After implementation, `python -m pytest` collected and passed 109 tests. The live command `risk-engine --from-live-sources --paths-config config/paths.local.yaml --output-dir outputs --experiment-id calibration_threshold_v1 --calibration-thresholds --model-variant l2 --graph-window-size 4 --stability-splits 5` completed and wrote calibration artifacts.
+
+**Live results (`calibration_threshold_v1`, L2, window 4, 5 OOF splits, 39,189 OOF snapshots):**
+- 7d: 601 positives (1.5%), Brier 0.015, Brier skill 0.003. Top 10%: 3,919 alerts, 36% recall, 5.5% PPV, 3.6x lift. Top 5%: 1,959 alerts, 16% recall, 5.1% PPV, 3.3x lift.
+- 14d: 1,046 positives (2.7%), Brier 0.026, Brier skill 0.006. Top 10%: 3,919 alerts, 38% recall, 10.3% PPV, 3.8x lift. Top 5%: 1,959 alerts, 17% recall, 8.9% PPV, 3.3x lift.
+- 30d: 1,932 positives (4.9%), Brier 0.046, Brier skill 0.019. Top 10%: 3,919 alerts, 38% recall, 18.6% PPV, 3.8x lift. Top 5%: 1,959 alerts, 18% recall, 17.3% PPV, 3.5x lift.
+
+**Interpretation:** Fixed probability thresholds (0.10/0.20/0.30) are nearly useless at 7d because L2 predictions concentrate in a narrow low-risk band, leaving almost no snapshots above any fixed threshold. Percentile-based thresholds are the correct operating mode at short horizons: top-10% reliably delivers 3.5-4x lift. At 30d the model is more spread, and a probability threshold of 0.10 gives comparable lift. Calibration bins confirm the model separates risk well in the upper two deciles but is flat across the lower eight, making the score most useful as a ranking signal. Brier skill is modest (0.003-0.019); the 3-4x top-decile lift is the operationally relevant metric. The next sprint should run the same calibration at window 7 to compare the Brier skill profile, and optionally at window 2 to characterize its triage-mode threshold table.
+
+## Previous Completed Step
+
 **Window/model robustness sprint** — implemented and verified on 2026-04-27.
 
 **What changed:** Main research runs now accept a `model_variant` parameter, and the CLI exposes it as `--model-variant`. Pairing `--model-robustness-sprint` with `--window-sensitivity-sizes` now runs a combined window/model robustness sprint across graph windows and model variants, writing `window_model_robustness.json` plus `window_model_robustness_report.md`.
 
 **Verification:** New tests first failed because the main-path model variant, combined runner, and CLI dispatch did not exist. After implementation, `python -m pytest` collected and passed 93 tests. The live command `risk-engine --from-live-sources --paths-config config/paths.local.yaml --output-dir outputs --experiment-id window_model_robustness_v1 --model-robustness-sprint --window-sensitivity-sizes 2 4 7 --stability-splits 5` completed and wrote the combined robustness artifacts.
 
-**Interpretation:** L2 remains the best production-candidate default for calibrated probabilities because it won the calibration decision mode at all horizons when paired with its best window. The shorter window 2 remains best for high-alert triage because it concentrates positives in the top decile. The next sprint should begin calibration and threshold tables for the L2 candidate, with window-specific operating modes explicitly compared rather than hidden behind one global default.
+**Interpretation:** L2 remains the best production-candidate default for calibrated probabilities because it won the calibration decision mode at all horizons when paired with its best window. The shorter window 2 remains best for high-alert triage because it concentrates positives in the top decile.
 
-## Previous Completed Step
+## Earlier Completed Step
 
 **Model robustness sprint** — implemented and verified on 2026-04-27.
 

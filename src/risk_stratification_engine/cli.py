@@ -8,6 +8,7 @@ from risk_stratification_engine.config import (
     load_data_source_paths,
 )
 from risk_stratification_engine.experiments import (
+    run_calibration_threshold_experiment,
     run_model_robustness_experiment,
     run_research_experiment,
     run_window_model_robustness_experiment,
@@ -38,6 +39,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--model-variant", choices=MODEL_VARIANTS, default="baseline")
     parser.add_argument("--window-sensitivity-sizes", nargs="+", type=int)
     parser.add_argument("--model-robustness-sprint", action="store_true")
+    parser.add_argument("--calibration-thresholds", action="store_true")
     parser.add_argument("--stability-splits", type=int, default=5)
     return parser
 
@@ -64,7 +66,18 @@ def main(argv: list[str] | None = None) -> int:
         measurements_path = args.measurements
         injuries_path = args.injuries
 
-    if args.model_robustness_sprint and args.window_sensitivity_sizes:
+    if args.calibration_thresholds:
+        experiment_dir = run_calibration_threshold_experiment(
+            measurements_path=measurements_path,
+            injuries_path=injuries_path,
+            output_dir=args.output_dir,
+            experiment_id=args.experiment_id,
+            graph_window_size=args.graph_window_size,
+            model_variant=args.model_variant,
+            split_count=args.stability_splits,
+        )
+        print(f"Calibration and threshold artifacts written to {experiment_dir}")
+    elif args.model_robustness_sprint and args.window_sensitivity_sizes:
         experiment_dir = run_window_model_robustness_experiment(
             measurements_path=measurements_path,
             injuries_path=injuries_path,

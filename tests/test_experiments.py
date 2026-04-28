@@ -5,6 +5,7 @@ import pandas as pd
 import pytest
 
 from risk_stratification_engine.experiments import (
+    run_calibration_threshold_experiment,
     run_model_robustness_experiment,
     run_research_experiment,
     run_window_model_robustness_experiment,
@@ -366,3 +367,47 @@ def test_run_research_experiment_rejects_empty_labeled_snapshots(tmp_path):
         )
 
     assert not (tmp_path / "experiments" / "post_event_run").exists()
+
+
+def test_run_calibration_threshold_experiment_writes_artifacts(tmp_path):
+    result = run_calibration_threshold_experiment(
+        measurements_path=FIXTURES / "measurements.csv",
+        injuries_path=FIXTURES / "injuries.csv",
+        output_dir=tmp_path,
+        experiment_id="calibration_fixture",
+        graph_window_size=2,
+        model_variant="l2",
+        split_count=2,
+    )
+
+    assert result == tmp_path / "experiments" / "calibration_fixture"
+    assert (result / "config.json").exists()
+    assert (result / "calibration_summary.json").exists()
+    assert (result / "threshold_table.csv").exists()
+    assert (result / "calibration_report.md").exists()
+
+    import pandas as pd
+
+    summary = json.loads((result / "calibration_summary.json").read_text())
+    assert summary["experiment_type"] == "calibration_threshold"
+    assert summary["model_variant"] == "l2"
+    assert summary["graph_window_size"] == 2
+    assert summary["split_count"] == 2
+    assert set(summary["horizons"]) == {"7", "14", "30"}
+
+    horizon_7 = summary["horizons"]["7"]
+    assert "oof_snapshot_count" in horizon_7
+    assert "oof_positive_count" in horizon_7
+    assert "brier_score" in horizon_7
+    assert "calibration_bins" in horizon_7
+    assert isinstance(horizon_7["calibration_bins"], list)
+
+    threshold_table = pd.read_csv(result / "threshold_table.csv")
+    assert {"horizon", "threshold_kind", "threshold_value", "alert_count",
+            "event_capture", "precision", "lift"}.issubset(threshold_table.columns)
+    assert set(threshold_table["threshold_kind"]) == {"percentile", "probability"}
+    assert set(threshold_table["horizon"]) == {7, 14, 30}
+
+    report = (result / "calibration_report.md").read_text()
+    assert "Calibration" in report
+    assert "l2" in report

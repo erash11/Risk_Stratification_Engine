@@ -157,6 +157,28 @@ Pairing `--model-robustness-sprint` with `--window-sensitivity-sizes` writes
 compare those variants across each requested graph window. Single research runs
 also accept `--model-variant baseline|l2|l1|elasticnet`.
 
+Calibration and threshold runs use out-of-fold predictions across rotating
+athlete-level splits so every snapshot is scored by a model that did not train on
+that athlete:
+
+```bash
+risk-engine \
+  --from-live-sources \
+  --paths-config config/paths.local.yaml \
+  --output-dir outputs \
+  --experiment-id calibration_threshold_v1 \
+  --calibration-thresholds \
+  --model-variant l2 \
+  --graph-window-size 4 \
+  --stability-splits 5
+```
+
+These runs write `calibration_summary.json` (OOF stats, calibration bins, and
+threshold rows per horizon), `threshold_table.csv`, and `calibration_report.md`.
+The threshold table reports alert count, event capture (recall), precision (PPV),
+and lift for both percentile-based (top 5/10/20%) and fixed-probability
+(0.10/0.20/0.30/0.50) thresholds at each horizon.
+
 Latest live-source comparison (`intra_individual_deviation_v1`, 349 athletes,
 70 holdout): 7d AUROC 0.723, Brier skill 0.0020; 14d AUROC 0.731, Brier skill
 0.0057; 30d AUROC 0.736, Brier skill 0.0171. Compared with
@@ -186,7 +208,17 @@ the best calibration candidate, winning 7d/14d calibration with window 7 and 30d
 calibration with window 4. Window 2 produced the strongest top-decile lift at all
 horizons, making it the clearest high-alert triage setting. Ranking split by
 horizon: window 2 baseline won 7d AUROC, window 4 L2 won 14d AUROC, and window 7
-L1 narrowly won 30d AUROC. The current test suite has 93 passing tests.
+L1 narrowly won 30d AUROC.
+
+The calibration and threshold run (`calibration_threshold_v1`, L2, window 4,
+5 OOF splits, 39,189 snapshots) confirmed that fixed probability thresholds are
+nearly useless at short horizons because L2 predictions concentrate below 0.05 at
+7d, leaving almost no snapshots above any fixed cutoff. Percentile-based
+thresholds are the correct operating mode: top-10% delivers 3.5-4x lift at all
+horizons. At 30d, a 0.10 probability threshold matches the top-10% percentile
+threshold in alert volume and lift. Calibration bins are flat across the lower
+eight deciles and sharply elevated in the upper two, confirming the score is most
+useful as a ranking signal. The current test suite has 109 passing tests.
 
 The reported risk values are baseline model estimates for research comparison,
 not calibrated clinical probabilities.

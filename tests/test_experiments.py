@@ -438,6 +438,8 @@ def test_run_alert_episode_experiment_writes_episode_artifacts(tmp_path):
     assert (result / "alert_episode_quality.csv").exists()
     assert (result / "alert_episode_quality.json").exists()
     assert (result / "alert_episode_quality_report.md").exists()
+    assert (result / "qualitative_case_review.json").exists()
+    assert (result / "qualitative_case_review_report.md").exists()
 
     config = json.loads((result / "config.json").read_text())
     assert config["experiment_type"] == "alert_episode_validation"
@@ -488,6 +490,21 @@ def test_run_alert_episode_experiment_writes_episode_artifacts(tmp_path):
     quality_report = (result / "alert_episode_quality_report.md").read_text()
     assert "Episode Quality Audit" in quality_report
     assert "Unique event capture" in quality_report
+
+    case_review = json.loads((result / "qualitative_case_review.json").read_text())
+    assert case_review["experiment_type"] == "qualitative_case_review"
+    assert case_review["case_count"] >= 1
+    assert "diagnostic_summary" in case_review
+    assert {
+        "case_type",
+        "review_label",
+        "diagnostic_label",
+        "timeline_context",
+    }.issubset(case_review["cases"][0])
+
+    case_report = (result / "qualitative_case_review_report.md").read_text()
+    assert "Qualitative Case Review" in case_report
+    assert "Diagnostic Summary" in case_report
 
 
 # ---------------------------------------------------------------------------

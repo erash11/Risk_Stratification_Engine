@@ -16,6 +16,7 @@ from risk_stratification_engine.calibration import (
     build_calibration_bins,
     build_threshold_table,
 )
+from risk_stratification_engine.case_review import build_qualitative_case_review
 from risk_stratification_engine.evaluation import evaluate_risk_model
 from risk_stratification_engine.events import DEFAULT_HORIZONS, attach_time_to_event_labels
 from risk_stratification_engine.episode_quality import build_alert_episode_quality
@@ -160,6 +161,11 @@ def run_alert_episode_experiment(
     )
     alert_summary = build_alert_episode_summary(episodes)
     quality = build_alert_episode_quality(episodes, timeline)
+    case_review = build_qualitative_case_review(
+        episodes=episodes,
+        alert_timeline=alert_timeline,
+        quality=quality,
+    )
     alert_summary.update(
         {
             "experiment_type": "alert_episode_validation",
@@ -214,6 +220,16 @@ def run_alert_episode_experiment(
             "representative_cases": quality["representative_cases"],
         },
     )
+    _write_json(
+        experiment_dir / "qualitative_case_review.json",
+        {
+            "experiment_type": "qualitative_case_review",
+            "model_variant": model_variant,
+            "graph_window_size": graph_window_size,
+            "alert_percentile_thresholds": list(percentile_thresholds),
+            **case_review,
+        },
+    )
     _write_alert_episode_report(
         experiment_dir / "alert_episode_report.md",
         alert_summary,
@@ -224,6 +240,14 @@ def run_alert_episode_experiment(
             "model_variant": model_variant,
             "graph_window_size": graph_window_size,
             **quality,
+        },
+    )
+    _write_qualitative_case_review_report(
+        experiment_dir / "qualitative_case_review_report.md",
+        {
+            "model_variant": model_variant,
+            "graph_window_size": graph_window_size,
+            **case_review,
         },
     )
     return experiment_dir
@@ -1331,6 +1355,53 @@ def _write_alert_episode_quality_report(
                 f"{_format_metric(row['threshold_a_overlap_rate'])} | "
                 f"{_format_metric(row['threshold_b_overlap_rate'])} |"
             )
+
+    path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+
+
+def _write_qualitative_case_review_report(
+    path: Path,
+    review: dict[str, object],
+) -> None:
+    lines = [
+        "# Qualitative Case Review",
+        "",
+        f"Model variant: {review['model_variant']}",
+        f"Graph window size: {review['graph_window_size']}",
+        f"Cases: {review['case_count']}",
+        "",
+        "This report samples representative alert and missed-injury cases so the "
+        "next sprint can distinguish model issues from label, data-quality, or "
+        "missing-context issues.",
+        "",
+        "## Diagnostic Summary",
+        "",
+        "| Diagnostic | Cases |",
+        "|---|---:|",
+    ]
+    for label, count in review["diagnostic_summary"].items():
+        lines.append(f"| {label} | {count} |")
+
+    lines.extend(
+        [
+            "",
+            "## Cases",
+            "",
+            "| Type | Label | Diagnosis | Athlete | Season | Horizon | Threshold |",
+            "|---|---|---|---|---|---:|---|",
+        ]
+    )
+    for case in review["cases"]:
+        lines.append(
+            "| "
+            f"{case['case_type']} | "
+            f"{case['review_label']} | "
+            f"{case['diagnostic_label']} | "
+            f"{case['athlete_id']} | "
+            f"{case['season_id']} | "
+            f"{case['horizon_days']}d | "
+            f"{case['threshold']} |"
+        )
 
     path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
 

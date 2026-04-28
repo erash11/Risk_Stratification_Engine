@@ -207,13 +207,17 @@ risk-engine \
 These runs write `alert_episodes.csv`, `alert_episodes.json`,
 `alert_episode_summary.json`, and `alert_episode_report.md`. They also write
 the Episode Quality Audit artifacts: `alert_episode_quality.csv`,
-`alert_episode_quality.json`, and `alert_episode_quality_report.md`. Episodes
-use the top-5% and top-10% percentile thresholds, collapse contiguous alert
-snapshots, record start/peak/end event timing without treating censoring dates
-as injuries, and roll up model contribution and intra-individual z-score flags.
-The quality audit adds start-based true-positive counts, false-positive counts,
-unique injury-event capture, missed observed events, alert burden per
-athlete-season, median lead time, threshold overlap, and representative cases.
+`alert_episode_quality.json`, and `alert_episode_quality_report.md`, plus the
+qualitative case-review artifacts: `qualitative_case_review.json` and
+`qualitative_case_review_report.md`. Episodes use the top-5% and top-10%
+percentile thresholds, collapse contiguous alert snapshots, record start/peak/end
+event timing without treating censoring dates as injuries, and roll up model
+contribution and intra-individual z-score flags. The quality audit adds
+start-based true-positive counts, false-positive counts, unique injury-event
+capture, missed observed events, alert burden per athlete-season, median lead
+time, threshold overlap, and representative cases. The case-review artifact adds
+timeline context and simple diagnostic labels for useful warnings, noisy alerts,
+missed injuries, and high own-baseline-deviation cases.
 
 Latest live-source comparison (`intra_individual_deviation_v1`, 349 athletes,
 70 holdout): 7d AUROC 0.723, Brier skill 0.0020; 14d AUROC 0.731, Brier skill
@@ -290,7 +294,16 @@ of 11 days. Top-10% increased burden without improving unique-event capture
 (54 of 188). Peak risk and elevated z-score rates were similar between
 true-positive and false-positive episodes, so the next useful sprint is
 qualitative case review and explanation refinement rather than dashboard work.
-The current test suite has 127 passing tests.
+
+The qualitative case-review run (`qualitative_case_review_v1`, L2, window 4)
+wrote 24 deterministic review cases across the same horizons and thresholds: 6
+model-supported useful warnings, 6 model misses, 6 missing-context/noisy-alert
+cases, and 6 explanation gaps. The missed-injury cases include modelable events,
+so performance is not only a data-quality problem. Better injury labels and
+exposure/availability context are still likely high-value, but the next
+performance sprint should explicitly compare missed-event feature profiles
+against false-positive and true-positive profiles. The current test suite has
+130 passing tests.
 
 The reported risk values are baseline model estimates for research comparison,
 not calibrated clinical probabilities.

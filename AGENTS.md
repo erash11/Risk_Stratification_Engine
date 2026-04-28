@@ -67,6 +67,23 @@ Future work may add a dashboard performance tab inspired by the Malum/SPEAR mate
 
 ## Latest Completed Step
 
+**Qualitative Case Review + Data Diagnostic v1** — implemented and verified on 2026-04-28.
+
+**What changed:** Added `case_review.py` and extended the existing `--alert-episodes` runner with `qualitative_case_review.json` and `qualitative_case_review_report.md`. The case-review artifact samples deterministic true-positive, false-positive, missed-injury, and high intra-individual deviation cases for each horizon/threshold pair, then attaches compact athlete-season timeline context, model drivers, elevated z-score features, event-window quality, nearest-measurement gap, and a simple diagnostic label.
+
+**Verification:** New TDD tests first failed because `risk_stratification_engine.case_review` did not exist. The experiment integration test then failed because the alert episode runner did not write case-review artifacts. A live-run regression exposed date-format mismatch between missed-injury case references and timeline event dates; the regression now verifies that `YYYY-MM-DD` and `YYYY-MM-DD 00:00:00` match. After implementation, `python -m pytest` collected and passed 130 tests. The live command `risk-engine --from-live-sources --paths-config config/paths.local.yaml --output-dir outputs --experiment-id qualitative_case_review_v1 --alert-episodes --model-variant l2 --graph-window-size 4` completed and wrote the case-review artifacts.
+
+**Live results (`qualitative_case_review_v1`, L2, window 4):**
+- 24 deterministic review cases were written across the 7d/14d/30d horizons and top-5%/top-10% thresholds.
+- Diagnostic counts: 6 `model_signal_supported`, 6 `model_miss`, 6 `missing_context_or_managed_risk`, and 6 `explanation_gap`.
+- The model-supported true-positive cases had modelable event-window quality and near-event measurement coverage, confirming the pipeline can surface coherent early-warning examples.
+- The missed-injury examples included a modelable fracture case that was not captured by the selected alert policy, so current performance limits are not only a data-quality problem.
+- The false-positive and high-deviation examples reinforce the missing-context/explanation gap: high-risk physiology-like patterns are visible, but current artifacts cannot tell whether they were managed-risk periods, benign adaptation, or genuine noise.
+
+**Interpretation:** Improving performance likely needs both data/context work and model refinement. Better injury labels and richer exposure/availability context remain high-value, but the case review also shows true model misses on modelable events. The next sprint should turn case-review findings into a model-improvement diagnostic table: missed-event feature profiles, false-positive context requirements, and candidate features for exposure, availability, injury subtype, and event-severity stratification.
+
+## Previous Completed Step
+
 **Episode Quality Audit v1** — implemented and verified on 2026-04-28.
 
 **What changed:** Added `episode_quality.py` and extended the existing `--alert-episodes` runner with second-pass audit artifacts: `alert_episode_quality.csv`, `alert_episode_quality.json`, and `alert_episode_quality_report.md`. The audit keeps alert episode construction separate from quality analysis, then reports start-based true-positive episodes, false-positive episodes, unique observed injury events captured, missed observed events, alert burden per athlete-season, median lead times, top-5%/top-10% overlap, true-positive vs false-positive explanation summaries, and deterministic representative cases.

@@ -5,6 +5,7 @@ import pandas as pd
 import pytest
 
 from risk_stratification_engine.experiments import (
+    _compute_snapshot_contributions,
     run_calibration_threshold_experiment,
     run_model_robustness_experiment,
     run_research_experiment,
@@ -411,3 +412,153 @@ def test_run_calibration_threshold_experiment_writes_artifacts(tmp_path):
     report = (result / "calibration_report.md").read_text()
     assert "Calibration" in report
     assert "l2" in report
+
+
+# ---------------------------------------------------------------------------
+# Per-snapshot feature contributions
+# ---------------------------------------------------------------------------
+
+def _two_feature_attribution():
+    return [
+        {
+            "feature": "edge_count",
+            "coefficient": 0.5,
+            "train_mean": 2.0,
+            "train_std": 2.0,
+            "standardized_coefficient": 1.0,
+            "abs_standardized_coefficient": 1.0,
+        },
+        {
+            "feature": "mean_abs_correlation",
+            "coefficient": 0.2,
+            "train_mean": 0.3,
+            "train_std": 0.1,
+            "standardized_coefficient": 0.02,
+            "abs_standardized_coefficient": 0.02,
+        },
+    ]
+
+
+def test_compute_snapshot_contributions_correct_math():
+    row = pd.Series({"edge_count": 4.0, "mean_abs_correlation": 0.3})
+    attribution = _two_feature_attribution()
+
+    contribs = _compute_snapshot_contributions(row, attribution, ("edge_count", "mean_abs_correlation"))
+
+    # edge_count: z = (4.0 - 2.0) / 2.0 = 1.0; contribution = 1.0 * 1.0 = 1.0
+    assert contribs["edge_count"] == pytest.approx(1.0)
+    # mean_abs_correlation: z = (0.3 - 0.3) / 0.1 = 0.0; contribution = 0.02 * 0.0 = 0.0
+    assert contribs["mean_abs_correlation"] == pytest.approx(0.0)
+
+
+def test_compute_snapshot_contributions_top_feature_by_absolute_contribution():
+    row = pd.Series({"edge_count": 2.0, "mean_abs_correlation": 0.5})
+    attribution = _two_feature_attribution()
+
+    contribs = _compute_snapshot_contributions(row, attribution, ("edge_count", "mean_abs_correlation"))
+
+    # edge_count: z = (2.0 - 2.0) / 2.0 = 0.0; contribution = 0.0
+    assert contribs["edge_count"] == pytest.approx(0.0)
+    # mean_abs_correlation: z = (0.5 - 0.3) / 0.1 = 2.0; contribution = 0.02 * 2.0 = 0.04
+    assert contribs["mean_abs_correlation"] == pytest.approx(0.04)
+
+    top_feature = max(contribs.items(), key=lambda kv: abs(kv[1]))[0]
+    assert top_feature == "mean_abs_correlation"
+
+
+def test_compute_snapshot_contributions_zero_std_returns_zero():
+    attribution = [
+        {
+            "feature": "edge_count",
+            "coefficient": 0.5,
+            "train_mean": 2.0,
+            "train_std": 0.0,
+            "standardized_coefficient": 0.0,
+            "abs_standardized_coefficient": 0.0,
+        }
+    ]
+    row = pd.Series({"edge_count": 99.0})
+
+    contribs = _compute_snapshot_contributions(row, attribution, ("edge_count",))
+
+    assert contribs["edge_count"] == pytest.approx(0.0)
+
+
+def test_compute_snapshot_contributions_negative_contribution():
+    # Snapshot where feature is below train mean → negative contribution for positive coeff
+    row = pd.Series({"edge_count": 0.0, "mean_abs_correlation": 0.3})
+    attribution = _two_feature_attribution()
+
+    contribs = _compute_snapshot_contributions(row, attribution, ("edge_count", "mean_abs_correlation"))
+
+    # edge_count: z = (0.0 - 2.0) / 2.0 = -1.0; contribution = 1.0 * -1.0 = -1.0
+    assert contribs["edge_count"] == pytest.approx(-1.0)
+
+
+# ---------------------------------------------------------------------------
+# Explanation artifacts from run_research_experiment
+# ---------------------------------------------------------------------------
+
+
+def test_run_research_experiment_explanation_summary_uses_model_contributions(tmp_path):
+    result = run_research_experiment(
+        measurements_path=FIXTURES / "measurements.csv",
+        injuries_path=FIXTURES / "injuries.csv",
+        output_dir=tmp_path,
+        experiment_id="explanation_fixture",
+        graph_window_size=2,
+        model_variant="l2",
+    )
+
+    csv_path = result / "explanations" / "explanation_summary.csv"
+    assert csv_path.exists()
+
+    df = pd.read_csv(csv_path)
+    # Model-informed contribution columns present
+    assert "top_feature_7d" in df.columns
+    assert "top_contribution_7d" in df.columns
+    assert "top_feature_14d" in df.columns
+    assert "top_feature_30d" in df.columns
+    # Hard-coded signal column removed
+    assert "primary_signal" not in df.columns
+    # Contributions are finite numbers
+    assert df["top_contribution_7d"].notna().all()
+
+
+def test_run_research_experiment_writes_athlete_explanations_json(tmp_path):
+    result = run_research_experiment(
+        measurements_path=FIXTURES / "measurements.csv",
+        injuries_path=FIXTURES / "injuries.csv",
+        output_dir=tmp_path,
+        experiment_id="athlete_expl_fixture",
+        graph_window_size=2,
+        model_variant="l2",
+    )
+
+    expl_path = result / "explanations" / "athlete_explanations.json"
+    assert expl_path.exists()
+
+    payload = json.loads(expl_path.read_text())
+    assert "athlete_count" in payload
+    assert "athletes" in payload
+    assert len(payload["athletes"]) == payload["athlete_count"]
+
+    athlete = payload["athletes"][0]
+    assert "athlete_id" in athlete
+    assert "season_id" in athlete
+    assert "snapshot_count" in athlete
+    assert "peak_risk" in athlete
+    assert set(athlete["peak_risk"]) == {"7", "14", "30"}
+    assert "dominant_features" in athlete
+    assert set(athlete["dominant_features"]) == {"7", "14", "30"}
+    assert "snapshots" in athlete
+    assert len(athlete["snapshots"]) == athlete["snapshot_count"]
+
+    snap = athlete["snapshots"][0]
+    assert "time_index" in snap
+    assert "risk_7d" in snap
+    assert "feature_contributions" in snap
+    assert set(snap["feature_contributions"]) == {"7", "14", "30"}
+    assert isinstance(snap["feature_contributions"]["7"], list)
+    assert "feature" in snap["feature_contributions"]["7"][0]
+    assert "contribution" in snap["feature_contributions"]["7"][0]

@@ -143,6 +143,17 @@ prior `original_9` feature set and a `z_score_only` feature set using the same
 athlete-level holdout split. Each horizon includes the same holdout metrics plus
 standardized logistic coefficients for feature attribution.
 
+The `explanations/` subdirectory contains two artifacts that answer Peterson's
+core question — "why is this athlete high-risk right now?" — at the snapshot
+level. `explanation_summary.csv` adds `top_feature_{h}d` and
+`top_contribution_{h}d` columns to the per-snapshot table, where contribution is
+`standardized_coefficient_k × (value_k − train_mean_k) / train_std_k`. This is
+directly comparable across features in log-odds units: a positive contribution
+means the feature pushed risk above the population average, negative means below.
+`athlete_explanations.json` structures the same information per athlete-season:
+peak risk dates per horizon, the top-3 dominant features averaged over the
+season, and per-snapshot top-3 signed feature contributions.
+
 Window-sensitivity runs write `window_sensitivity.json` and
 `window_sensitivity_report.md`, comparing multiple graph `window_size` values
 with the same holdout policy and evaluation metrics.
@@ -226,7 +237,15 @@ thresholds are even less useful at window 7. Window 4 outperforms window 7 on
 lift at every horizon (3.6x vs 3.2x at 7d, 3.8x vs 3.3x at 14d, 3.8x vs 3.6x
 at 30d). Window 7 wins only at 14d Brier skill (0.008 vs 0.006). The confirmed
 primary candidate is L2 + window 4, with percentile-based (top-N%) thresholds as
-the operational interface. The current test suite has 109 passing tests.
+the operational interface.
+
+The per-athlete explanation run (`athlete_explanations_v1`, L2, window 4, 902
+athlete-seasons) shows `mean_abs_correlation` as the dominant risk driver in 99%
+of snapshots at 7d, with positive contributions for elevated correlation
+structure and negative `edge_density` contributions for high-risk snapshots.
+Z-score features (intra-individual deviations) appear as top drivers for a
+targeted subset of snapshots — the high-sensitivity cases Peterson's methodology
+is designed to detect. The current test suite has 115 passing tests.
 
 The reported risk values are baseline model estimates for research comparison,
 not calibrated clinical probabilities.

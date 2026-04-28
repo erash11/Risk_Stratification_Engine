@@ -67,6 +67,21 @@ Future work may add a dashboard performance tab inspired by the Malum/SPEAR mate
 
 ## Latest Completed Step
 
+**Per-athlete feature contribution explanations** — implemented and verified on 2026-04-28.
+
+**What changed:** Replaced the hard-coded `_primary_signal` heuristic (based on `mean_abs_correlation >= 0.7`) with model-informed per-snapshot feature contributions. New `_compute_snapshot_contributions(row, feature_attribution, feature_columns)` computes `contribution_k = standardized_coefficient_k × (value_k − train_mean_k) / train_std_k` for each feature. `_explanation_summary` now produces `top_feature_{h}d` and `top_contribution_{h}d` columns per horizon. New `_athlete_explanations(timeline, model_summary)` produces `athlete_explanations.json`: per-athlete-season peak risk per horizon, top-3 dominant features averaged over the season, and per-snapshot top-3 signed feature contributions. The `primary_signal` column is removed.
+
+**Verification:** 6 new tests first failed because `_compute_snapshot_contributions` and the new artifact structure did not exist. After implementation, `python -m pytest` collected and passed 115 tests. The live command `risk-engine --from-live-sources --paths-config config/paths.local.yaml --output-dir outputs --experiment-id athlete_explanations_v1 --model-variant l2 --graph-window-size 4` completed and wrote `explanation_summary.csv` and `athlete_explanations.json`.
+
+**Live results (`athlete_explanations_v1`, L2, window 4, 902 athlete-seasons, 39,189 snapshots):**
+- `mean_abs_correlation` is the dominant risk driver in 99% of snapshots at 7d (38,760/39,189), followed by `delta_mean_abs_correlation` and `graph_instability`. This is consistent with the model-level standardized coefficient rankings from feature attribution.
+- Dominant features over entire athlete-seasons at both 7d and 30d: `mean_abs_correlation`, `edge_density`, `edge_count`. The z-score features appear infrequently as the top contributor (confirming they are useful ranking modifiers rather than primary signal sources).
+- Contributions are signed: `mean_abs_correlation` typically contributes positively (+0.6), `edge_density` negatively (-0.4) for high-risk snapshots — reflecting that high correlation and low edge density together characterize elevated risk.
+
+**Interpretation:** This is the first artifact that directly answers Peterson's core question: "why is this athlete high-risk right now?" The contribution decomposition ties each snapshot's risk score back to specific graph structural changes relative to the population baseline. The z-score features (which capture intra-individual departure from each athlete's own baseline) appear as top drivers for a small but meaningful subset of snapshots — exactly the high-sensitivity cases Peterson's methodology is designed to detect. The next Peterson-true step is to surface intra-individual z-score signals more directly in the explanation artifact, and eventually to move from population-relative to athlete-relative baselines in the explanation layer.
+
+## Previous Completed Step
+
 **Calibration and threshold tables** — implemented and verified on 2026-04-28.
 
 **What changed:** New `calibration.py` module provides `build_calibration_bins` (equal-count quantile binning) and `build_threshold_table` (percentile and fixed-probability thresholds). `run_calibration_threshold_experiment(...)` uses rotating out-of-fold splits so every athlete-season snapshot is scored by a model that did not train on that athlete. CLI: `--calibration-thresholds` (reuses `--model-variant`, `--graph-window-size`, `--stability-splits`). Artifacts: `calibration_summary.json` (OOF stats, calibration bins, and threshold rows per horizon), `threshold_table.csv`, and `calibration_report.md`.

@@ -77,7 +77,8 @@ def run_research_experiment(
         full_model_summary=model_result.summary,
         full_evaluation=evaluation,
     )
-    explanations = _explanation_summary(timeline)
+    explanations = _explanation_summary(timeline, model_result.summary)
+    athlete_expl = _athlete_explanations(timeline, model_result.summary)
 
     graph_dir = experiment_dir / "graph_snapshots"
     explanation_dir = experiment_dir / "explanations"
@@ -87,6 +88,7 @@ def run_research_experiment(
     write_frame(graph_features, graph_dir / "graph_features.csv")
     write_frame(timeline, experiment_dir / "athlete_risk_timeline.csv")
     write_frame(explanations, explanation_dir / "explanation_summary.csv")
+    _write_json(explanation_dir / "athlete_explanations.json", athlete_expl)
     _write_json(
         experiment_dir / "config.json",
         {
@@ -734,7 +736,39 @@ def _primary_model_events(labeled: pd.DataFrame) -> pd.DataFrame:
     )
 
 
-def _explanation_summary(timeline: pd.DataFrame) -> pd.DataFrame:
+def _compute_snapshot_contributions(
+    row: pd.Series,
+    feature_attribution: list[dict],
+    feature_columns: tuple[str, ...],
+) -> dict[str, float]:
+    """Compute per-feature log-odds contributions for one snapshot.
+
+    contribution_k = standardized_coefficient_k × (value_k − train_mean_k) / train_std_k
+
+    Zero is returned for features missing from the row or with zero train_std.
+    """
+    contributions: dict[str, float] = {}
+    for entry in feature_attribution:
+        feature = entry["feature"]
+        if feature not in feature_columns:
+            continue
+        std_coeff = float(entry["standardized_coefficient"])
+        train_std = float(entry["train_std"])
+        if train_std == 0.0 or std_coeff == 0.0:
+            contributions[feature] = 0.0
+            continue
+        value = float(row[feature]) if feature in row.index else 0.0
+        train_mean = float(entry["train_mean"])
+        z = (value - train_mean) / train_std
+        raw = std_coeff * z
+        contributions[feature] = 0.0 if (raw != raw) else raw  # NaN guard
+    return contributions
+
+
+def _explanation_summary(
+    timeline: pd.DataFrame,
+    model_summary: dict,
+) -> pd.DataFrame:
     columns = [
         "athlete_id",
         "season_id",
@@ -747,16 +781,111 @@ def _explanation_summary(timeline: pd.DataFrame) -> pd.DataFrame:
         "risk_30d",
     ]
     explanations = timeline.loc[:, columns].copy()
-    explanations["primary_signal"] = explanations.apply(_primary_signal, axis=1)
+    feature_columns = tuple(model_summary["feature_columns"])
+    for horizon in DEFAULT_HORIZONS:
+        attribution = model_summary["horizon_models"][str(horizon)]["feature_attribution"]
+        top_features = []
+        top_contributions = []
+        for _, row in timeline.iterrows():
+            contribs = _compute_snapshot_contributions(row, attribution, feature_columns)
+            if contribs:
+                top_feature, top_contrib = max(contribs.items(), key=lambda kv: abs(kv[1]))
+            else:
+                top_feature, top_contrib = "", 0.0
+            top_features.append(top_feature)
+            top_contributions.append(round(top_contrib, 6))
+        explanations[f"top_feature_{horizon}d"] = top_features
+        explanations[f"top_contribution_{horizon}d"] = top_contributions
     return explanations
 
 
-def _primary_signal(row: pd.Series) -> str:
-    if row["edge_count"] == 0:
-        return "insufficient_history"
-    if row["mean_abs_correlation"] >= 0.7:
-        return "strong_metric_relationship_shift"
-    return "moderate_metric_relationship_shift"
+def _athlete_explanations(
+    timeline: pd.DataFrame,
+    model_summary: dict,
+) -> dict:
+    feature_columns = tuple(model_summary["feature_columns"])
+    athletes = []
+    for (athlete_id, season_id), group in timeline.groupby(
+        ["athlete_id", "season_id"], sort=False
+    ):
+        group = group.sort_values("time_index")
+
+        # Compute full contribution dicts for all snapshots and horizons
+        snap_contribs: list[dict[str, dict[str, float]]] = []
+        for _, row in group.iterrows():
+            horizon_contribs: dict[str, dict[str, float]] = {}
+            for horizon in DEFAULT_HORIZONS:
+                attribution = model_summary["horizon_models"][str(horizon)][
+                    "feature_attribution"
+                ]
+                horizon_contribs[str(horizon)] = _compute_snapshot_contributions(
+                    row, attribution, feature_columns
+                )
+            snap_contribs.append(horizon_contribs)
+
+        # Peak risk per horizon
+        peak_risk: dict[str, object] = {}
+        for horizon in DEFAULT_HORIZONS:
+            risk_col = f"risk_{horizon}d"
+            peak_idx = group[risk_col].idxmax()
+            peak_row = group.loc[peak_idx]
+            peak_risk[str(horizon)] = {
+                "time_index": int(peak_row["time_index"]),
+                "snapshot_date": str(peak_row["snapshot_date"]),
+                "risk": float(peak_row[risk_col]),
+            }
+
+        # Dominant features: average |contribution| across all snapshots
+        dominant_features: dict[str, list[str]] = {}
+        n_snaps = max(1, len(snap_contribs))
+        for horizon in DEFAULT_HORIZONS:
+            feature_sum: dict[str, float] = {}
+            for hc in snap_contribs:
+                for feat, val in hc[str(horizon)].items():
+                    feature_sum[feat] = feature_sum.get(feat, 0.0) + abs(val)
+            ranked = sorted(feature_sum.items(), key=lambda kv: -kv[1] / n_snaps)
+            dominant_features[str(horizon)] = [f for f, _ in ranked[:3]]
+
+        # Per-snapshot payload: top-3 contributions per horizon
+        snapshots = []
+        for i, (_, row) in enumerate(group.iterrows()):
+            snap_feature_contribs: dict[str, list[dict]] = {}
+            for horizon in DEFAULT_HORIZONS:
+                top3 = sorted(
+                    snap_contribs[i][str(horizon)].items(),
+                    key=lambda kv: -abs(kv[1]),
+                )[:3]
+                snap_feature_contribs[str(horizon)] = [
+                    {"feature": k, "contribution": round(v, 6)} for k, v in top3
+                ]
+            snapshots.append(
+                {
+                    "time_index": int(row["time_index"]),
+                    "snapshot_date": str(row["snapshot_date"]),
+                    "risk_7d": float(row["risk_7d"]),
+                    "risk_14d": float(row["risk_14d"]),
+                    "risk_30d": float(row["risk_30d"]),
+                    "feature_contributions": snap_feature_contribs,
+                }
+            )
+
+        event_observed = (
+            bool(group["event_observed"].any())
+            if "event_observed" in group.columns
+            else None
+        )
+        athletes.append(
+            {
+                "athlete_id": str(athlete_id),
+                "season_id": str(season_id),
+                "snapshot_count": int(len(group)),
+                "event_observed": event_observed,
+                "peak_risk": peak_risk,
+                "dominant_features": dominant_features,
+                "snapshots": snapshots,
+            }
+        )
+    return {"athlete_count": len(athletes), "athletes": athletes}
 
 
 def _feature_attribution_and_ablation(

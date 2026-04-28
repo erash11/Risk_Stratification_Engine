@@ -67,6 +67,21 @@ Future work may add a dashboard performance tab inspired by the Malum/SPEAR mate
 
 ## Latest Completed Step
 
+**Explicit intra-individual deviation explanations** — implemented and verified on 2026-04-28.
+
+**What changed:** `athlete_explanations.json` now surfaces Peterson-style own-baseline departures directly. Each snapshot includes an `intra_individual_deviations` block for `z_mean_abs_correlation`, `z_edge_density`, `z_edge_count`, and `z_graph_instability`, with the current z-score value, `elevated = abs(value) > 2.0`, and signed risk contributions for the 7d, 14d, and 30d horizons. Each athlete-season also includes `peak_intra_individual_deviation`, the snapshot with the highest combined absolute z-score signal, its flagged features, and its ranked deviation details.
+
+**Verification:** 2 new tests first failed because `intra_individual_deviations` and `peak_intra_individual_deviation` did not exist. After implementation, `python -m pytest` collected and passed 117 tests. The live command `risk-engine --from-live-sources --paths-config config/paths.local.yaml --output-dir outputs --experiment-id intra_individual_explanations_v1 --model-variant l2 --graph-window-size 4` completed and wrote the updated `athlete_explanations.json`.
+
+**Live results (`intra_individual_explanations_v1`, L2, window 4, 902 athlete-seasons, 39,189 snapshots):**
+- 3,529 snapshots had at least one elevated intra-individual z-score feature (`abs(z) > 2.0`).
+- Elevated snapshot counts by feature: `z_graph_instability` 2,092; `z_mean_abs_correlation` 2,028; `z_edge_density` 1,989; `z_edge_count` 1,974.
+- Season-level peak deviation summaries flagged all four z-score features across the cohort: `z_mean_abs_correlation` 175 athlete-seasons, `z_edge_density` 179, `z_edge_count` 179, and `z_graph_instability` 163.
+
+**Interpretation:** The explanation layer now separates two ideas that were previously blended: population-relative model contribution and athlete-relative departure from that athlete's own rolling graph baseline. This makes the artifact more Peterson-true and easier to inspect for high-sensitivity cases where the model's top overall driver is still a population-level graph feature, but the athlete is also showing a meaningful intra-individual deviation.
+
+## Previous Completed Step
+
 **Per-athlete feature contribution explanations** — implemented and verified on 2026-04-28.
 
 **What changed:** Replaced the hard-coded `_primary_signal` heuristic (based on `mean_abs_correlation >= 0.7`) with model-informed per-snapshot feature contributions. New `_compute_snapshot_contributions(row, feature_attribution, feature_columns)` computes `contribution_k = standardized_coefficient_k × (value_k − train_mean_k) / train_std_k` for each feature. `_explanation_summary` now produces `top_feature_{h}d` and `top_contribution_{h}d` columns per horizon. New `_athlete_explanations(timeline, model_summary)` produces `athlete_explanations.json`: per-athlete-season peak risk per horizon, top-3 dominant features averaged over the season, and per-snapshot top-3 signed feature contributions. The `primary_signal` column is removed.

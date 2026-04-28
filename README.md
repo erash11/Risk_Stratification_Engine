@@ -245,7 +245,17 @@ of snapshots at 7d, with positive contributions for elevated correlation
 structure and negative `edge_density` contributions for high-risk snapshots.
 Z-score features (intra-individual deviations) appear as top drivers for a
 targeted subset of snapshots — the high-sensitivity cases Peterson's methodology
-is designed to detect. The current test suite has 115 passing tests.
+is designed to detect.
+
+The follow-up explanation run (`intra_individual_explanations_v1`, L2, window 4)
+adds explicit own-baseline departure details to `athlete_explanations.json`.
+Every snapshot now reports the four intra-individual z-score feature values,
+whether each is elevated (`abs(z) > 2.0`), and its signed contribution at the 7d,
+14d, and 30d horizons. Each athlete-season also reports the peak combined
+intra-individual deviation snapshot. In the live run, 3,529 of 39,189 snapshots
+had at least one elevated z-score feature, led by `z_graph_instability` (2,092
+snapshots) and `z_mean_abs_correlation` (2,028). The current test suite has 117
+passing tests.
 
 The reported risk values are baseline model estimates for research comparison,
 not calibrated clinical probabilities.

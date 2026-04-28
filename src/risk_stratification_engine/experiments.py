@@ -40,6 +40,7 @@ Z_SCORE_GRAPH_FEATURE_COLUMNS = (
     "z_edge_count",
     "z_graph_instability",
 )
+INTRA_INDIVIDUAL_ELEVATED_Z_THRESHOLD = 2.0
 FEATURE_ABLATION_SETS = {
     "full_13": GRAPH_SNAPSHOT_FEATURE_COLUMNS,
     "original_9": ORIGINAL_GRAPH_FEATURE_COLUMNS,
@@ -765,6 +766,72 @@ def _compute_snapshot_contributions(
     return contributions
 
 
+def _intra_individual_deviations(
+    row: pd.Series,
+    horizon_contribs: dict[str, dict[str, float]],
+) -> list[dict[str, object]]:
+    deviations: list[dict[str, object]] = []
+    for feature in Z_SCORE_GRAPH_FEATURE_COLUMNS:
+        value = float(row[feature]) if feature in row.index else 0.0
+        deviations.append(
+            {
+                "feature": feature,
+                "value": round(value, 6),
+                "elevated": abs(value) > INTRA_INDIVIDUAL_ELEVATED_Z_THRESHOLD,
+                "contributions": {
+                    str(horizon): round(
+                        horizon_contribs.get(str(horizon), {}).get(feature, 0.0),
+                        6,
+                    )
+                    for horizon in DEFAULT_HORIZONS
+                },
+            }
+        )
+    return deviations
+
+
+def _peak_intra_individual_deviation(
+    group: pd.DataFrame,
+    snap_contribs: list[dict[str, dict[str, float]]],
+) -> dict[str, object]:
+    peak_row: pd.Series | None = None
+    peak_contribs: dict[str, dict[str, float]] = {}
+    peak_combined = -1.0
+    for idx, (_, row) in enumerate(group.iterrows()):
+        combined = sum(
+            abs(float(row[feature])) if feature in row.index else 0.0
+            for feature in Z_SCORE_GRAPH_FEATURE_COLUMNS
+        )
+        if combined > peak_combined:
+            peak_combined = combined
+            peak_row = row
+            peak_contribs = snap_contribs[idx]
+
+    if peak_row is None:
+        return {
+            "time_index": None,
+            "snapshot_date": None,
+            "combined_abs_z_score": 0.0,
+            "flagged_features": [],
+            "deviations": [],
+        }
+
+    deviations = _intra_individual_deviations(peak_row, peak_contribs)
+    ranked_deviations = sorted(
+        deviations,
+        key=lambda entry: -abs(float(entry["value"])),
+    )
+    return {
+        "time_index": int(peak_row["time_index"]),
+        "snapshot_date": str(peak_row["snapshot_date"]),
+        "combined_abs_z_score": round(peak_combined, 6),
+        "flagged_features": [
+            str(entry["feature"]) for entry in deviations if bool(entry["elevated"])
+        ],
+        "deviations": ranked_deviations,
+    }
+
+
 def _explanation_summary(
     timeline: pd.DataFrame,
     model_summary: dict,
@@ -846,6 +913,10 @@ def _athlete_explanations(
             ranked = sorted(feature_sum.items(), key=lambda kv: -kv[1] / n_snaps)
             dominant_features[str(horizon)] = [f for f, _ in ranked[:3]]
 
+        peak_intra_individual_deviation = _peak_intra_individual_deviation(
+            group, snap_contribs
+        )
+
         # Per-snapshot payload: top-3 contributions per horizon
         snapshots = []
         for i, (_, row) in enumerate(group.iterrows()):
@@ -866,6 +937,9 @@ def _athlete_explanations(
                     "risk_14d": float(row["risk_14d"]),
                     "risk_30d": float(row["risk_30d"]),
                     "feature_contributions": snap_feature_contribs,
+                    "intra_individual_deviations": _intra_individual_deviations(
+                        row, snap_contribs[i]
+                    ),
                 }
             )
 
@@ -882,6 +956,7 @@ def _athlete_explanations(
                 "event_observed": event_observed,
                 "peak_risk": peak_risk,
                 "dominant_features": dominant_features,
+                "peak_intra_individual_deviation": peak_intra_individual_deviation,
                 "snapshots": snapshots,
             }
         )

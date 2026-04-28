@@ -5,6 +5,7 @@ import pandas as pd
 import pytest
 
 from risk_stratification_engine.experiments import (
+    _athlete_explanations,
     _compute_snapshot_contributions,
     run_calibration_threshold_experiment,
     run_model_robustness_experiment,
@@ -562,3 +563,144 @@ def test_run_research_experiment_writes_athlete_explanations_json(tmp_path):
     assert isinstance(snap["feature_contributions"]["7"], list)
     assert "feature" in snap["feature_contributions"]["7"][0]
     assert "contribution" in snap["feature_contributions"]["7"][0]
+
+
+def _z_score_explanation_model_summary():
+    feature_columns = [
+        "edge_count",
+        "z_mean_abs_correlation",
+        "z_edge_density",
+        "z_edge_count",
+        "z_graph_instability",
+    ]
+    base_attribution = [
+        {
+            "feature": "edge_count",
+            "coefficient": 0.1,
+            "train_mean": 2.0,
+            "train_std": 1.0,
+            "standardized_coefficient": 0.1,
+            "abs_standardized_coefficient": 0.1,
+        },
+        {
+            "feature": "z_mean_abs_correlation",
+            "coefficient": 0.4,
+            "train_mean": 0.0,
+            "train_std": 1.0,
+            "standardized_coefficient": 0.4,
+            "abs_standardized_coefficient": 0.4,
+        },
+        {
+            "feature": "z_edge_density",
+            "coefficient": -0.2,
+            "train_mean": 0.0,
+            "train_std": 1.0,
+            "standardized_coefficient": -0.2,
+            "abs_standardized_coefficient": 0.2,
+        },
+        {
+            "feature": "z_edge_count",
+            "coefficient": 0.3,
+            "train_mean": 0.0,
+            "train_std": 1.0,
+            "standardized_coefficient": 0.3,
+            "abs_standardized_coefficient": 0.3,
+        },
+        {
+            "feature": "z_graph_instability",
+            "coefficient": -0.5,
+            "train_mean": 0.0,
+            "train_std": 1.0,
+            "standardized_coefficient": -0.5,
+            "abs_standardized_coefficient": 0.5,
+        },
+    ]
+    return {
+        "feature_columns": feature_columns,
+        "horizon_models": {
+            str(horizon): {"feature_attribution": base_attribution}
+            for horizon in (7, 14, 30)
+        },
+    }
+
+
+def _z_score_explanation_timeline():
+    return pd.DataFrame(
+        [
+            {
+                "athlete_id": "a1",
+                "season_id": "2026",
+                "time_index": 1,
+                "snapshot_date": "2026-01-01",
+                "edge_count": 2.0,
+                "z_mean_abs_correlation": 2.5,
+                "z_edge_density": -1.0,
+                "z_edge_count": 0.0,
+                "z_graph_instability": 2.0,
+                "risk_7d": 0.1,
+                "risk_14d": 0.2,
+                "risk_30d": 0.3,
+                "event_observed": False,
+            },
+            {
+                "athlete_id": "a1",
+                "season_id": "2026",
+                "time_index": 2,
+                "snapshot_date": "2026-01-02",
+                "edge_count": 3.0,
+                "z_mean_abs_correlation": 0.5,
+                "z_edge_density": -4.0,
+                "z_edge_count": 1.5,
+                "z_graph_instability": 0.0,
+                "risk_7d": 0.4,
+                "risk_14d": 0.5,
+                "risk_30d": 0.6,
+                "event_observed": False,
+            },
+        ]
+    )
+
+
+def test_athlete_explanations_reports_snapshot_intra_individual_deviations():
+    payload = _athlete_explanations(
+        _z_score_explanation_timeline(),
+        _z_score_explanation_model_summary(),
+    )
+
+    snapshot = payload["athletes"][0]["snapshots"][0]
+    deviations = snapshot["intra_individual_deviations"]
+
+    assert [entry["feature"] for entry in deviations] == [
+        "z_mean_abs_correlation",
+        "z_edge_density",
+        "z_edge_count",
+        "z_graph_instability",
+    ]
+    assert deviations[0] == {
+        "feature": "z_mean_abs_correlation",
+        "value": 2.5,
+        "elevated": True,
+        "contributions": {"7": 1.0, "14": 1.0, "30": 1.0},
+    }
+    assert deviations[1]["value"] == -1.0
+    assert deviations[1]["elevated"] is False
+    assert deviations[1]["contributions"] == {"7": 0.2, "14": 0.2, "30": 0.2}
+    assert deviations[3]["value"] == 2.0
+    assert deviations[3]["elevated"] is False
+
+
+def test_athlete_explanations_reports_peak_intra_individual_deviation():
+    payload = _athlete_explanations(
+        _z_score_explanation_timeline(),
+        _z_score_explanation_model_summary(),
+    )
+
+    peak = payload["athletes"][0]["peak_intra_individual_deviation"]
+
+    assert peak["time_index"] == 2
+    assert peak["snapshot_date"] == "2026-01-02"
+    assert peak["combined_abs_z_score"] == 6.0
+    assert peak["flagged_features"] == ["z_edge_density"]
+    assert peak["deviations"][0]["feature"] == "z_edge_density"
+    assert peak["deviations"][0]["value"] == -4.0
+    assert peak["deviations"][0]["elevated"] is True

@@ -67,6 +67,23 @@ Future work may add a dashboard performance tab inspired by the Malum/SPEAR mate
 
 ## Latest Completed Step
 
+**Alert episode validation artifacts** — implemented and verified on 2026-04-28.
+
+**What changed:** Added `alert_episodes.py` and a new CLI run mode, `--alert-episodes`, for converting snapshot-level risk scores into contiguous athlete-season alert episodes. The runner trains the selected model variant, adds model contribution and intra-individual z-score explanation context, applies top-5% and top-10% percentile thresholds at the 7d/14d/30d horizons, collapses contiguous alert snapshots, and writes `alert_episodes.csv`, `alert_episodes.json`, `alert_episode_summary.json`, and `alert_episode_report.md`. Censored athlete-seasons now keep event timing fields empty instead of treating censoring dates as injuries.
+
+**Verification:** New TDD tests first failed because `risk_stratification_engine.alert_episodes`, `run_alert_episode_experiment`, and the `--alert-episodes` CLI dispatch did not exist. A regression test also first failed because censored episodes exposed censoring distance as `days_from_*_to_event`. After implementation, `python -m pytest` collected and passed 124 tests. The live command `risk-engine --from-live-sources --paths-config config/paths.local.yaml --output-dir outputs --experiment-id alert_episode_validation_v1 --alert-episodes --model-variant l2 --graph-window-size 4` completed and wrote the alert episode artifacts.
+
+**Live results (`alert_episode_validation_v1`, L2, window 4, 349 athletes, 39,189 snapshots):**
+- Total episodes across horizons and top-5%/top-10% thresholds: 4,268.
+- 7d: top-5% produced 634 episodes, with 38 start-captured, 47 peak-captured, and 57 end-captured events; top-10% produced 844 episodes, with 38/59/77 captured at start/peak/end.
+- 14d: top-5% produced 657 episodes, with 76/83/90 captured at start/peak/end; top-10% produced 824 episodes, with 71/94/108 captured.
+- 30d: top-5% produced 620 episodes, with 130/137/150 captured at start/peak/end; top-10% produced 689 episodes, with 106/126/145 captured.
+- Median episode lengths remained short: top-5% episodes were 2 snapshots across horizons, while top-10% episodes were 3 snapshots at 7d/14d and 4 snapshots at 30d.
+
+**Interpretation:** The model is producing coherent short alert episodes rather than only isolated snapshot spikes. The strongest episode-level evidence is at 30d top-5%, where roughly one in five episodes begins within the forecast horizon of an observed event and roughly one in four ends within that horizon. The 7d episode signal is weaker, so the current candidate looks more defensible as an early-warning workbench than as a same-week injury alarm.
+
+## Previous Completed Step
+
 **Explicit intra-individual deviation explanations** — implemented and verified on 2026-04-28.
 
 **What changed:** `athlete_explanations.json` now surfaces Peterson-style own-baseline departures directly. Each snapshot includes an `intra_individual_deviations` block for `z_mean_abs_correlation`, `z_edge_density`, `z_edge_count`, and `z_graph_instability`, with the current z-score value, `elevated = abs(value) > 2.0`, and signed risk contributions for the 7d, 14d, and 30d horizons. Each athlete-season also includes `peak_intra_individual_deviation`, the snapshot with the highest combined absolute z-score signal, its flagged features, and its ranked deviation details.

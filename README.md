@@ -190,6 +190,26 @@ The threshold table reports alert count, event capture (recall), precision (PPV)
 and lift for both percentile-based (top 5/10/20%) and fixed-probability
 (0.10/0.20/0.30/0.50) thresholds at each horizon.
 
+Alert episode validation turns snapshot-level percentile alerts into contiguous
+athlete-season risk episodes:
+
+```bash
+risk-engine \
+  --from-live-sources \
+  --paths-config config/paths.local.yaml \
+  --output-dir outputs \
+  --experiment-id alert_episode_validation_v1 \
+  --alert-episodes \
+  --model-variant l2 \
+  --graph-window-size 4
+```
+
+These runs write `alert_episodes.csv`, `alert_episodes.json`,
+`alert_episode_summary.json`, and `alert_episode_report.md`. Episodes use the
+top-5% and top-10% percentile thresholds, collapse contiguous alert snapshots,
+record start/peak/end event timing without treating censoring dates as injuries,
+and roll up model contribution and intra-individual z-score flags.
+
 Latest live-source comparison (`intra_individual_deviation_v1`, 349 athletes,
 70 holdout): 7d AUROC 0.723, Brier skill 0.0020; 14d AUROC 0.731, Brier skill
 0.0057; 30d AUROC 0.736, Brier skill 0.0171. Compared with
@@ -254,8 +274,16 @@ whether each is elevated (`abs(z) > 2.0`), and its signed contribution at the 7d
 14d, and 30d horizons. Each athlete-season also reports the peak combined
 intra-individual deviation snapshot. In the live run, 3,529 of 39,189 snapshots
 had at least one elevated z-score feature, led by `z_graph_instability` (2,092
-snapshots) and `z_mean_abs_correlation` (2,028). The current test suite has 117
-passing tests.
+snapshots) and `z_mean_abs_correlation` (2,028).
+
+The alert episode validation run (`alert_episode_validation_v1`, L2, window 4)
+produced 4,268 episodes across the 7d/14d/30d horizons and top-5%/top-10%
+thresholds. Episodes were short: median 2 snapshots at top-5% and 3-4 snapshots
+at top-10%. The strongest capture profile was 30d top-5%: 620 episodes, 130
+with an observed event within 30 days after episode start, 137 after peak, and
+150 after episode end. This suggests the current candidate is more useful for
+30d early-warning episodes than for very short 7d warning periods. The current
+test suite has 124 passing tests.
 
 The reported risk values are baseline model estimates for research comparison,
 not calibrated clinical probabilities.

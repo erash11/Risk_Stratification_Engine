@@ -362,3 +362,61 @@ def test_cli_runs_calibration_thresholds_experiment(tmp_path, monkeypatch):
         "model_variant": "l2",
         "split_count": 3,
     }
+
+
+def test_cli_runs_alert_episode_experiment(tmp_path, monkeypatch):
+    calls = {}
+
+    def fake_run_alert_episode_experiment(
+        measurements_path,
+        injuries_path,
+        output_dir,
+        experiment_id,
+        graph_window_size,
+        model_variant,
+    ):
+        calls["alert_episodes"] = {
+            "measurements_path": measurements_path,
+            "injuries_path": injuries_path,
+            "output_dir": output_dir,
+            "experiment_id": experiment_id,
+            "graph_window_size": graph_window_size,
+            "model_variant": model_variant,
+        }
+        experiment_dir = output_dir / "experiments" / experiment_id
+        experiment_dir.mkdir(parents=True)
+        return experiment_dir
+
+    monkeypatch.setattr(
+        cli,
+        "run_alert_episode_experiment",
+        fake_run_alert_episode_experiment,
+    )
+
+    exit_code = main(
+        [
+            "--measurements",
+            str(FIXTURES / "measurements.csv"),
+            "--injuries",
+            str(FIXTURES / "injuries.csv"),
+            "--output-dir",
+            str(tmp_path),
+            "--experiment-id",
+            "alert_episode_run",
+            "--alert-episodes",
+            "--model-variant",
+            "l2",
+            "--graph-window-size",
+            "4",
+        ]
+    )
+
+    assert exit_code == 0
+    assert calls["alert_episodes"] == {
+        "measurements_path": FIXTURES / "measurements.csv",
+        "injuries_path": FIXTURES / "injuries.csv",
+        "output_dir": tmp_path,
+        "experiment_id": "alert_episode_run",
+        "graph_window_size": 4,
+        "model_variant": "l2",
+    }

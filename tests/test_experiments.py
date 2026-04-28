@@ -7,6 +7,7 @@ import pytest
 from risk_stratification_engine.experiments import (
     _athlete_explanations,
     _compute_snapshot_contributions,
+    run_alert_episode_experiment,
     run_calibration_threshold_experiment,
     run_model_robustness_experiment,
     run_research_experiment,
@@ -412,6 +413,55 @@ def test_run_calibration_threshold_experiment_writes_artifacts(tmp_path):
 
     report = (result / "calibration_report.md").read_text()
     assert "Calibration" in report
+    assert "l2" in report
+
+
+def test_run_alert_episode_experiment_writes_episode_artifacts(tmp_path):
+    result = run_alert_episode_experiment(
+        measurements_path=FIXTURES / "measurements.csv",
+        injuries_path=FIXTURES / "injuries.csv",
+        output_dir=tmp_path,
+        experiment_id="alert_episode_fixture",
+        graph_window_size=2,
+        model_variant="l2",
+        percentile_thresholds=(0.50,),
+    )
+
+    assert result == tmp_path / "experiments" / "alert_episode_fixture"
+    assert (result / "config.json").exists()
+    assert (result / "model_summary.json").exists()
+    assert (result / "athlete_risk_timeline.csv").exists()
+    assert (result / "alert_episodes.csv").exists()
+    assert (result / "alert_episodes.json").exists()
+    assert (result / "alert_episode_summary.json").exists()
+    assert (result / "alert_episode_report.md").exists()
+
+    config = json.loads((result / "config.json").read_text())
+    assert config["experiment_type"] == "alert_episode_validation"
+    assert config["model_variant"] == "l2"
+    assert config["alert_percentile_thresholds"] == [0.5]
+
+    summary = json.loads((result / "alert_episode_summary.json").read_text())
+    assert summary["experiment_type"] == "alert_episode_validation"
+    assert summary["model_variant"] == "l2"
+    assert summary["episode_count"] >= 1
+    assert set(summary["horizons"]) == {"7", "14", "30"}
+
+    episodes_payload = json.loads((result / "alert_episodes.json").read_text())
+    assert episodes_payload["episode_count"] == summary["episode_count"]
+    assert "episodes" in episodes_payload
+    assert {
+        "athlete_id",
+        "horizon_days",
+        "threshold_kind",
+        "start_date",
+        "peak_risk",
+        "top_model_features",
+        "elevated_z_features",
+    }.issubset(episodes_payload["episodes"][0])
+
+    report = (result / "alert_episode_report.md").read_text()
+    assert "Alert Episode Validation" in report
     assert "l2" in report
 
 

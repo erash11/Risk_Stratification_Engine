@@ -7,6 +7,11 @@ from pathlib import Path
 import pandas as pd
 from sklearn.metrics import brier_score_loss
 
+from risk_stratification_engine.alert_episodes import (
+    DEFAULT_ALERT_PERCENTILES,
+    build_alert_episode_summary,
+    build_alert_episodes,
+)
 from risk_stratification_engine.calibration import (
     build_calibration_bins,
     build_threshold_table,
@@ -117,6 +122,82 @@ def run_research_experiment(
     _write_feature_ablation_report(
         experiment_dir / "feature_ablation_report.md",
         feature_attribution,
+    )
+    return experiment_dir
+
+
+def run_alert_episode_experiment(
+    measurements_path: str | Path,
+    injuries_path: str | Path,
+    output_dir: str | Path,
+    experiment_id: str,
+    graph_window_size: int = 4,
+    model_variant: str = "l2",
+    percentile_thresholds: tuple[float, ...] = DEFAULT_ALERT_PERCENTILES,
+) -> Path:
+    experiment_dir = _experiment_path(output_dir, experiment_id)
+    measurements = load_measurements(measurements_path)
+    injuries = load_injury_events(injuries_path)
+    matrix = build_measurement_matrix(measurements)
+    graph_features = build_graph_snapshots(matrix, window_size=graph_window_size)
+    if graph_features.empty:
+        raise ValueError("no graph snapshots produced")
+    labeled = attach_time_to_event_labels(graph_features, injuries)
+    if labeled.empty:
+        raise ValueError("no labeled graph snapshots produced")
+
+    model_result = train_discrete_time_risk_model(
+        labeled,
+        model_variant=model_variant,
+    )
+    timeline = model_result.timeline
+    explanation_summary = _explanation_summary(timeline, model_result.summary)
+    alert_timeline = _alert_episode_timeline(timeline, explanation_summary)
+    episodes = build_alert_episodes(
+        alert_timeline,
+        percentile_thresholds=percentile_thresholds,
+    )
+    alert_summary = build_alert_episode_summary(episodes)
+    alert_summary.update(
+        {
+            "experiment_type": "alert_episode_validation",
+            "model_type": MODEL_TYPE,
+            "model_variant": model_variant,
+            "graph_window_size": graph_window_size,
+            "alert_percentile_thresholds": list(percentile_thresholds),
+            "athlete_count": int(labeled["athlete_id"].nunique()),
+            "snapshot_count": int(len(labeled)),
+        }
+    )
+
+    write_frame(timeline, experiment_dir / "athlete_risk_timeline.csv")
+    write_frame(episodes, experiment_dir / "alert_episodes.csv")
+    _write_json(
+        experiment_dir / "config.json",
+        {
+            "experiment_id": experiment_id,
+            "experiment_type": "alert_episode_validation",
+            "measurements_path": str(measurements_path),
+            "injuries_path": str(injuries_path),
+            "graph_window_size": graph_window_size,
+            "model_variant": model_variant,
+            "horizons": list(DEFAULT_HORIZONS),
+            "alert_percentile_thresholds": list(percentile_thresholds),
+        },
+    )
+    _write_json(experiment_dir / "model_summary.json", model_result.summary)
+    _write_json(experiment_dir / "alert_episode_summary.json", alert_summary)
+    _write_json(
+        experiment_dir / "alert_episodes.json",
+        {
+            "experiment_type": "alert_episode_validation",
+            "episode_count": int(len(episodes)),
+            "episodes": _json_records(episodes),
+        },
+    )
+    _write_alert_episode_report(
+        experiment_dir / "alert_episode_report.md",
+        alert_summary,
     )
     return experiment_dir
 
@@ -963,6 +1044,27 @@ def _athlete_explanations(
     return {"athlete_count": len(athletes), "athletes": athletes}
 
 
+def _alert_episode_timeline(
+    timeline: pd.DataFrame,
+    explanation_summary: pd.DataFrame,
+) -> pd.DataFrame:
+    alert_timeline = timeline.copy()
+    for horizon in DEFAULT_HORIZONS:
+        for prefix in ("top_feature", "top_contribution"):
+            column = f"{prefix}_{horizon}d"
+            alert_timeline[column] = explanation_summary[column].to_list()
+    alert_timeline["elevated_z_features"] = [
+        [
+            feature
+            for feature in Z_SCORE_GRAPH_FEATURE_COLUMNS
+            if feature in row.index
+            and abs(float(row[feature])) > INTRA_INDIVIDUAL_ELEVATED_Z_THRESHOLD
+        ]
+        for _, row in alert_timeline.iterrows()
+    ]
+    return alert_timeline
+
+
 def _feature_attribution_and_ablation(
     labeled: pd.DataFrame,
     full_timeline: pd.DataFrame,
@@ -1013,6 +1115,23 @@ def _feature_attribution_and_ablation(
 def _write_json(path: Path, payload: dict[str, object]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, allow_nan=False), encoding="utf-8")
+
+
+def _json_records(frame: pd.DataFrame) -> list[dict[str, object]]:
+    return [
+        {str(key): _json_value(value) for key, value in row.items()}
+        for row in frame.to_dict(orient="records")
+    ]
+
+
+def _json_value(value: object) -> object:
+    if isinstance(value, dict):
+        return {str(key): _json_value(val) for key, val in value.items()}
+    if isinstance(value, list):
+        return [_json_value(item) for item in value]
+    if pd.isna(value):
+        return None
+    return value
 
 
 def _write_report(
@@ -1089,6 +1208,38 @@ def _write_feature_ablation_report(
             )
             lines.append(f"- {horizon}d: {formatted}")
         lines.append("")
+    path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+
+
+def _write_alert_episode_report(
+    path: Path,
+    summary: dict[str, object],
+) -> None:
+    lines = [
+        "# Alert Episode Validation",
+        "",
+        f"Model variant: {summary['model_variant']}",
+        f"Graph window size: {summary['graph_window_size']}",
+        f"Episodes: {summary['episode_count']}",
+        "",
+        "Episodes collapse contiguous high-risk snapshots selected by percentile thresholds within each athlete-season.",
+        "",
+        "| Horizon | Threshold | Episodes | Start capture | Peak capture | End capture | Median snapshots | Median days |",
+        "|---:|---|---:|---:|---:|---:|---:|---:|",
+    ]
+    for horizon, horizon_payload in summary["horizons"].items():
+        for threshold, row in horizon_payload["thresholds"].items():
+            lines.append(
+                "| "
+                f"{horizon}d | "
+                f"{threshold} | "
+                f"{row['episode_count']} | "
+                f"{_format_metric(row['event_capture_after_start_rate'])} | "
+                f"{_format_metric(row['event_capture_after_peak_rate'])} | "
+                f"{_format_metric(row['event_capture_after_end_rate'])} | "
+                f"{_format_metric(row['median_snapshot_count'])} | "
+                f"{_format_metric(row['median_duration_days'])} |"
+            )
     path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
 
 

@@ -18,6 +18,7 @@ from risk_stratification_engine.calibration import (
 )
 from risk_stratification_engine.evaluation import evaluate_risk_model
 from risk_stratification_engine.events import DEFAULT_HORIZONS, attach_time_to_event_labels
+from risk_stratification_engine.episode_quality import build_alert_episode_quality
 from risk_stratification_engine.graphs import build_graph_snapshots
 from risk_stratification_engine.io import load_injury_events, load_measurements, write_frame
 from risk_stratification_engine.models import (
@@ -158,6 +159,7 @@ def run_alert_episode_experiment(
         percentile_thresholds=percentile_thresholds,
     )
     alert_summary = build_alert_episode_summary(episodes)
+    quality = build_alert_episode_quality(episodes, timeline)
     alert_summary.update(
         {
             "experiment_type": "alert_episode_validation",
@@ -172,6 +174,10 @@ def run_alert_episode_experiment(
 
     write_frame(timeline, experiment_dir / "athlete_risk_timeline.csv")
     write_frame(episodes, experiment_dir / "alert_episodes.csv")
+    write_frame(
+        pd.DataFrame(quality["quality_rows"]),
+        experiment_dir / "alert_episode_quality.csv",
+    )
     _write_json(
         experiment_dir / "config.json",
         {
@@ -195,9 +201,30 @@ def run_alert_episode_experiment(
             "episodes": _json_records(episodes),
         },
     )
+    _write_json(
+        experiment_dir / "alert_episode_quality.json",
+        {
+            "experiment_type": "alert_episode_quality_audit",
+            "model_variant": model_variant,
+            "graph_window_size": graph_window_size,
+            "alert_percentile_thresholds": list(percentile_thresholds),
+            "quality_row_count": len(quality["quality_rows"]),
+            "quality_rows": quality["quality_rows"],
+            "threshold_overlaps": quality["threshold_overlaps"],
+            "representative_cases": quality["representative_cases"],
+        },
+    )
     _write_alert_episode_report(
         experiment_dir / "alert_episode_report.md",
         alert_summary,
+    )
+    _write_alert_episode_quality_report(
+        experiment_dir / "alert_episode_quality_report.md",
+        {
+            "model_variant": model_variant,
+            "graph_window_size": graph_window_size,
+            **quality,
+        },
     )
     return experiment_dir
 
@@ -1240,6 +1267,71 @@ def _write_alert_episode_report(
                 f"{_format_metric(row['median_snapshot_count'])} | "
                 f"{_format_metric(row['median_duration_days'])} |"
             )
+    path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+
+
+def _write_alert_episode_quality_report(
+    path: Path,
+    quality: dict[str, object],
+) -> None:
+    lines = [
+        "# Episode Quality Audit",
+        "",
+        f"Model variant: {quality['model_variant']}",
+        f"Graph window size: {quality['graph_window_size']}",
+        "",
+        "Start-based capture is used as the default true-positive definition: "
+        "an episode is useful when its start date falls within the forecast "
+        "horizon before an observed event.",
+        "",
+        "## Quality Metrics",
+        "",
+        "| Horizon | Threshold | Episodes | TP episodes | FP episodes | "
+        "Unique event capture | Missed events | Episodes / athlete-season | "
+        "Median start lead | TP peak risk | FP peak risk |",
+        "|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+    ]
+    for row in quality["quality_rows"]:
+        lines.append(
+            "| "
+            f"{row['horizon_days']}d | "
+            f"{row['threshold']} | "
+            f"{row['episode_count']} | "
+            f"{row['true_positive_episode_count']} "
+            f"({_format_metric(row['true_positive_episode_rate'])}) | "
+            f"{row['false_positive_episode_count']} "
+            f"({_format_metric(row['false_positive_episode_rate'])}) | "
+            f"{row['unique_captured_event_count']}/"
+            f"{row['unique_observed_event_count']} "
+            f"({_format_metric(row['unique_event_capture_rate'])}) | "
+            f"{row['missed_event_count']} | "
+            f"{_format_metric(row['episodes_per_athlete_season'])} | "
+            f"{_format_metric(row['median_start_lead_days'])} | "
+            f"{_format_metric(row['true_positive_median_peak_risk'])} | "
+            f"{_format_metric(row['false_positive_median_peak_risk'])} |"
+        )
+
+    if quality["threshold_overlaps"]:
+        lines.extend(
+            [
+                "",
+                "## Threshold Overlap",
+                "",
+                "| Horizon | Threshold A | Threshold B | Overlap | A overlap | B overlap |",
+                "|---:|---|---|---:|---:|---:|",
+            ]
+        )
+        for row in quality["threshold_overlaps"]:
+            lines.append(
+                "| "
+                f"{row['horizon_days']}d | "
+                f"{row['threshold_a']} | "
+                f"{row['threshold_b']} | "
+                f"{row['overlap_episode_count']} | "
+                f"{_format_metric(row['threshold_a_overlap_rate'])} | "
+                f"{_format_metric(row['threshold_b_overlap_rate'])} |"
+            )
+
     path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
 
 

@@ -435,6 +435,9 @@ def test_run_alert_episode_experiment_writes_episode_artifacts(tmp_path):
     assert (result / "alert_episodes.json").exists()
     assert (result / "alert_episode_summary.json").exists()
     assert (result / "alert_episode_report.md").exists()
+    assert (result / "alert_episode_quality.csv").exists()
+    assert (result / "alert_episode_quality.json").exists()
+    assert (result / "alert_episode_quality_report.md").exists()
 
     config = json.loads((result / "config.json").read_text())
     assert config["experiment_type"] == "alert_episode_validation"
@@ -463,6 +466,28 @@ def test_run_alert_episode_experiment_writes_episode_artifacts(tmp_path):
     report = (result / "alert_episode_report.md").read_text()
     assert "Alert Episode Validation" in report
     assert "l2" in report
+
+    quality = json.loads((result / "alert_episode_quality.json").read_text())
+    assert quality["experiment_type"] == "alert_episode_quality_audit"
+    assert quality["quality_row_count"] >= 1
+    assert "threshold_overlaps" in quality
+    assert "representative_cases" in quality
+    assert {
+        "horizon_days",
+        "threshold",
+        "true_positive_episode_count",
+        "false_positive_episode_count",
+        "unique_event_capture_rate",
+        "episodes_per_athlete_season",
+    }.issubset(quality["quality_rows"][0])
+
+    quality_table = pd.read_csv(result / "alert_episode_quality.csv")
+    assert set(quality_table["horizon_days"]) == {7, 14, 30}
+    assert "false_positive_episode_rate" in quality_table.columns
+
+    quality_report = (result / "alert_episode_quality_report.md").read_text()
+    assert "Episode Quality Audit" in quality_report
+    assert "Unique event capture" in quality_report
 
 
 # ---------------------------------------------------------------------------

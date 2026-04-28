@@ -67,6 +67,23 @@ Future work may add a dashboard performance tab inspired by the Malum/SPEAR mate
 
 ## Latest Completed Step
 
+**Episode Quality Audit v1** — implemented and verified on 2026-04-28.
+
+**What changed:** Added `episode_quality.py` and extended the existing `--alert-episodes` runner with second-pass audit artifacts: `alert_episode_quality.csv`, `alert_episode_quality.json`, and `alert_episode_quality_report.md`. The audit keeps alert episode construction separate from quality analysis, then reports start-based true-positive episodes, false-positive episodes, unique observed injury events captured, missed observed events, alert burden per athlete-season, median lead times, top-5%/top-10% overlap, true-positive vs false-positive explanation summaries, and deterministic representative cases.
+
+**Verification:** New TDD tests first failed because `risk_stratification_engine.episode_quality` did not exist. The experiment integration test then failed because the alert episode runner did not write quality artifacts. After implementation, `python -m pytest` collected and passed 127 tests. The live command `risk-engine --from-live-sources --paths-config config/paths.local.yaml --output-dir outputs --experiment-id alert_episode_quality_v1 --alert-episodes --model-variant l2 --graph-window-size 4` completed and wrote the new quality artifacts.
+
+**Live results (`alert_episode_quality_v1`, L2, window 4, 349 athletes, 902 athlete-seasons, 39,189 snapshots, 188 unique observed events):**
+- 30d top-5% remains the strongest policy: 620 episodes, 130 start-based true-positive episodes, 490 false-positive episodes, 55/188 unique observed events captured (29.3%), 133 missed observed events, 0.69 episodes per athlete-season, and median start lead time of 11 days.
+- 30d top-10% increased burden without improving unique-event capture: 689 episodes, 106 true-positive episodes, 583 false-positive episodes, 54/188 unique events captured (28.7%), 134 missed events, 0.76 episodes per athlete-season, and median start lead time of 12.5 days.
+- 14d top-5% captured 47/188 unique events (25.0%) with 657 episodes and 76 true-positive episodes; 7d top-5% captured 33/188 unique events (17.6%) with 634 episodes and 38 true-positive episodes.
+- Top-5% and top-10% episode overlap was low by exact episode identity: 13.9% of 30d top-5% episodes overlapped top-10%, 16.0% at 14d, and 21.0% at 7d. This means threshold choice changes episode boundaries materially, not only alert volume.
+- True-positive and false-positive episodes had similar median peak risk and similar elevated z-feature rates. At 30d top-5%, TP median peak risk was 0.136 vs FP 0.137, and elevated z-feature rates were 82.3% vs 79.4%.
+
+**Interpretation:** The audit supports 30d top-5% as the current default early-warning policy because it captures slightly more unique observed events with less alert burden than 30d top-10%. It also exposes the main limitation: peak risk and current z-score flags do not cleanly separate useful warnings from noisy episodes. The next Peterson-aligned step should be qualitative case review and explanation refinement, not dashboard build-out.
+
+## Previous Completed Step
+
 **Alert episode validation artifacts** — implemented and verified on 2026-04-28.
 
 **What changed:** Added `alert_episodes.py` and a new CLI run mode, `--alert-episodes`, for converting snapshot-level risk scores into contiguous athlete-season alert episodes. The runner trains the selected model variant, adds model contribution and intra-individual z-score explanation context, applies top-5% and top-10% percentile thresholds at the 7d/14d/30d horizons, collapses contiguous alert snapshots, and writes `alert_episodes.csv`, `alert_episodes.json`, `alert_episode_summary.json`, and `alert_episode_report.md`. Censored athlete-seasons now keep event timing fields empty instead of treating censoring dates as injuries.

@@ -205,10 +205,15 @@ risk-engine \
 ```
 
 These runs write `alert_episodes.csv`, `alert_episodes.json`,
-`alert_episode_summary.json`, and `alert_episode_report.md`. Episodes use the
-top-5% and top-10% percentile thresholds, collapse contiguous alert snapshots,
-record start/peak/end event timing without treating censoring dates as injuries,
-and roll up model contribution and intra-individual z-score flags.
+`alert_episode_summary.json`, and `alert_episode_report.md`. They also write
+the Episode Quality Audit artifacts: `alert_episode_quality.csv`,
+`alert_episode_quality.json`, and `alert_episode_quality_report.md`. Episodes
+use the top-5% and top-10% percentile thresholds, collapse contiguous alert
+snapshots, record start/peak/end event timing without treating censoring dates
+as injuries, and roll up model contribution and intra-individual z-score flags.
+The quality audit adds start-based true-positive counts, false-positive counts,
+unique injury-event capture, missed observed events, alert burden per
+athlete-season, median lead time, threshold overlap, and representative cases.
 
 Latest live-source comparison (`intra_individual_deviation_v1`, 349 athletes,
 70 holdout): 7d AUROC 0.723, Brier skill 0.0020; 14d AUROC 0.731, Brier skill
@@ -276,14 +281,16 @@ intra-individual deviation snapshot. In the live run, 3,529 of 39,189 snapshots
 had at least one elevated z-score feature, led by `z_graph_instability` (2,092
 snapshots) and `z_mean_abs_correlation` (2,028).
 
-The alert episode validation run (`alert_episode_validation_v1`, L2, window 4)
+The alert episode quality run (`alert_episode_quality_v1`, L2, window 4)
 produced 4,268 episodes across the 7d/14d/30d horizons and top-5%/top-10%
-thresholds. Episodes were short: median 2 snapshots at top-5% and 3-4 snapshots
-at top-10%. The strongest capture profile was 30d top-5%: 620 episodes, 130
-with an observed event within 30 days after episode start, 137 after peak, and
-150 after episode end. This suggests the current candidate is more useful for
-30d early-warning episodes than for very short 7d warning periods. The current
-test suite has 124 passing tests.
+thresholds. The strongest policy remains 30d top-5%: 620 episodes, 130
+start-based true-positive episodes, 490 false-positive episodes, 55 of 188
+unique observed events captured, 133 missed events, and median start lead time
+of 11 days. Top-10% increased burden without improving unique-event capture
+(54 of 188). Peak risk and elevated z-score rates were similar between
+true-positive and false-positive episodes, so the next useful sprint is
+qualitative case review and explanation refinement rather than dashboard work.
+The current test suite has 127 passing tests.
 
 The reported risk values are baseline model estimates for research comparison,
 not calibrated clinical probabilities.

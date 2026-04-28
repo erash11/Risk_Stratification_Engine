@@ -218,7 +218,15 @@ thresholds are the correct operating mode: top-10% delivers 3.5-4x lift at all
 horizons. At 30d, a 0.10 probability threshold matches the top-10% percentile
 threshold in alert volume and lift. Calibration bins are flat across the lower
 eight deciles and sharply elevated in the upper two, confirming the score is most
-useful as a ranking signal. The current test suite has 109 passing tests.
+useful as a ranking signal.
+
+A second calibration run at window 7 (`calibration_threshold_w7_v1`) found that
+window 7 does not spread predictions more than window 4 — fixed probability
+thresholds are even less useful at window 7. Window 4 outperforms window 7 on
+lift at every horizon (3.6x vs 3.2x at 7d, 3.8x vs 3.3x at 14d, 3.8x vs 3.6x
+at 30d). Window 7 wins only at 14d Brier skill (0.008 vs 0.006). The confirmed
+primary candidate is L2 + window 4, with percentile-based (top-N%) thresholds as
+the operational interface. The current test suite has 109 passing tests.
 
 The reported risk values are baseline model estimates for research comparison,
 not calibrated clinical probabilities.

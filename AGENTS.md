@@ -78,7 +78,15 @@ Future work may add a dashboard performance tab inspired by the Malum/SPEAR mate
 - 14d: 1,046 positives (2.7%), Brier 0.026, Brier skill 0.006. Top 10%: 3,919 alerts, 38% recall, 10.3% PPV, 3.8x lift. Top 5%: 1,959 alerts, 17% recall, 8.9% PPV, 3.3x lift.
 - 30d: 1,932 positives (4.9%), Brier 0.046, Brier skill 0.019. Top 10%: 3,919 alerts, 38% recall, 18.6% PPV, 3.8x lift. Top 5%: 1,959 alerts, 18% recall, 17.3% PPV, 3.5x lift.
 
-**Interpretation:** Fixed probability thresholds (0.10/0.20/0.30) are nearly useless at 7d because L2 predictions concentrate in a narrow low-risk band, leaving almost no snapshots above any fixed threshold. Percentile-based thresholds are the correct operating mode at short horizons: top-10% reliably delivers 3.5-4x lift. At 30d the model is more spread, and a probability threshold of 0.10 gives comparable lift. Calibration bins confirm the model separates risk well in the upper two deciles but is flat across the lower eight, making the score most useful as a ranking signal. Brier skill is modest (0.003-0.019); the 3-4x top-decile lift is the operationally relevant metric. The next sprint should run the same calibration at window 7 to compare the Brier skill profile, and optionally at window 2 to characterize its triage-mode threshold table.
+**Interpretation:** Fixed probability thresholds (0.10/0.20/0.30) are nearly useless at 7d because L2 predictions concentrate in a narrow low-risk band, leaving almost no snapshots above any fixed threshold. Percentile-based thresholds are the correct operating mode at short horizons: top-10% reliably delivers 3.5-4x lift. At 30d the model is more spread, and a probability threshold of 0.10 gives comparable lift. Calibration bins confirm the model separates risk well in the upper two deciles but is flat across the lower eight, making the score most useful as a ranking signal. Brier skill is modest (0.003-0.019); the 3-4x top-decile lift is the operationally relevant metric.
+
+**Window 7 comparison (`calibration_threshold_w7_v1`, L2, window 7, 5 OOF splits, 39,189 OOF snapshots):**
+- 7d: Brier skill 0.003, top-10% lift 3.2x (vs W4: 3.6x)
+- 14d: Brier skill 0.008, top-10% lift 3.3x (vs W4: 0.006, 3.8x)
+- 30d: Brier skill 0.018, top-10% lift 3.6x (vs W4: 0.019, 3.8x)
+- Fixed probability thresholds even more useless at W7: prob 0.20 at 7d gives 2 alerts (vs W4's 63). W7 is more prediction-concentrated, not less.
+- W7 beats W4 only at 14d Brier skill (0.008 vs 0.006). W4 wins all lift metrics at all horizons.
+- Conclusion: the robustness sprint's Brier calibration win for W7 does not translate into a better operational threshold profile. W4+L2 is the right primary candidate.
 
 ## Previous Completed Step
 

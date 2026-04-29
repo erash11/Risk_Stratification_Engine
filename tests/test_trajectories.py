@@ -34,5 +34,5 @@ def test_build_measurement_matrix_time_index_resets_by_athlete_season():
     matrix = build_measurement_matrix(measurements)
 
     indices = matrix.groupby(["athlete_id", "season_id"])["time_index"].apply(list)
-    assert indices.loc[("a1", 2026)] == [0, 1]
-    assert indices.loc[("a2", 2026)] == [0, 1]
+    assert indices.loc[("a1", "2026")] == [0, 1]
+    assert indices.loc[("a2", "2026")] == [0, 1]

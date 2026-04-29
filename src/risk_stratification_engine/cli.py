@@ -12,6 +12,7 @@ from risk_stratification_engine.experiments import (
     run_calibration_threshold_experiment,
     run_injury_outcome_policy_experiment,
     run_model_robustness_experiment,
+    run_outcome_policy_model_comparison_experiment,
     run_research_experiment,
     run_window_model_robustness_experiment,
     run_window_sensitivity_experiment,
@@ -44,6 +45,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--calibration-thresholds", action="store_true")
     parser.add_argument("--alert-episodes", action="store_true")
     parser.add_argument("--injury-outcome-policies", action="store_true")
+    parser.add_argument("--outcome-policy-model-comparison", action="store_true")
     parser.add_argument("--stability-splits", type=int, default=5)
     return parser
 
@@ -72,7 +74,26 @@ def main(argv: list[str] | None = None) -> int:
         injuries_path = args.injuries
         detailed_injuries_path = None
 
-    if args.injury_outcome_policies:
+    if args.outcome_policy_model_comparison:
+        if detailed_injuries_path is None:
+            sibling = injuries_path.parent / "injury_events_detailed.csv"
+            if not sibling.exists():
+                parser.error(
+                    "--outcome-policy-model-comparison requires live-source "
+                    "detailed injury events or a sibling injury_events_detailed.csv"
+                )
+            detailed_injuries_path = sibling
+        experiment_dir = run_outcome_policy_model_comparison_experiment(
+            measurements_path=measurements_path,
+            injuries_path=injuries_path,
+            detailed_injuries_path=detailed_injuries_path,
+            output_dir=args.output_dir,
+            experiment_id=args.experiment_id,
+            graph_window_size=args.graph_window_size,
+            model_variant=args.model_variant,
+        )
+        print(f"Outcome policy model comparison artifacts written to {experiment_dir}")
+    elif args.injury_outcome_policies:
         if detailed_injuries_path is None:
             sibling = injuries_path.parent / "injury_events_detailed.csv"
             if not sibling.exists():

@@ -58,6 +58,7 @@ Future work may add a dashboard performance tab inspired by the Malum/SPEAR mate
 - Window sensitivity runs are available through `risk-engine --window-sensitivity-sizes <sizes...>` and write `window_sensitivity.json` plus `window_sensitivity_report.md`. The runner reuses one canonical input set, loops graph `window_size` values, and compares the same holdout metrics across windows.
 - Model robustness sprints are available through `risk-engine --model-robustness-sprint --stability-splits <n>` and write `model_robustness.json` plus `model_robustness_report.md`. The sprint compares `baseline`, `l2`, `l1`, and `elasticnet` logistic variants across deterministic rotating athlete-level holdout splits, then reports decision-mode winners for ranking, calibration, and triage metrics.
 - Combined window/model robustness runs are available by pairing `--model-robustness-sprint` with `--window-sensitivity-sizes <sizes...>`. They write `window_model_robustness.json` plus `window_model_robustness_report.md`, comparing model variants across each requested graph window with the same rotating athlete-level split policy.
+- Outcome-policy model comparison runs are available through `risk-engine --outcome-policy-model-comparison` and write `context_policy_model_comparison.csv`, `context_policy_model_comparison.json`, and `context_policy_model_comparison_report.md`. The runner relabels canonical athlete-seasons against selected detailed injury policies, retrains the same graph model for each target, and compares model metrics plus alert episode quality at top-5% and top-10%.
 - Main single-experiment runs accept `--model-variant baseline|l2|l1|elasticnet`, allowing a regularized candidate to be run through the normal artifact path without using the robustness sweep.
 - Enriched graph features (`enriched_graph_features_v1` run, 349 athletes, 70 holdout): 7d AUROC 0.730 (+0.008), 14d AUROC 0.735 (+0.007), 30d AUROC 0.735 (+0.007); Brier skill 30d improved from 0.0142 to 0.0168 (+18%).
 - Intra-individual deviation features (`intra_individual_deviation_v1` run, 349 athletes, 70 holdout): 7d AUROC 0.723, Brier skill 0.0020, top-decile lift 3.76; 14d AUROC 0.731, Brier skill 0.0057, top-decile lift 3.96; 30d AUROC 0.736, Brier skill 0.0171, top-decile lift 4.48. Versus `enriched_graph_features_v1`, the 30d AUROC, 7d/30d Brier skill, and all top-decile lifts improved, while 7d/14d AUROC declined slightly.
@@ -67,6 +68,24 @@ Future work may add a dashboard performance tab inspired by the Malum/SPEAR mate
 - Window/model robustness (`window_model_robustness_v1` run, windows 2/4/7, 5 rotating splits, 349 athletes): no single window/variant dominates all operating goals. Window 7 + L2 won calibration at 7d/14d, window 4 + L2 won 30d calibration, window 2 regularized variants won triage lift at all horizons, and ranking split by horizon: window 2 baseline at 7d AUROC 0.731, window 4 L2 at 14d AUROC 0.729, and window 7 L1 at 30d AUROC 0.729. This supports using L2 as the calibration-oriented production candidate while keeping window 2 as a high-alert triage setting and window 7 under review for 30d ranking.
 
 ## Latest Completed Step
+
+**Outcome-policy model comparison sprint** — implemented and verified on 2026-04-29.
+
+**What changed:** Added `build_policy_injury_events(...)`, `policy_event_count(...)`, `run_outcome_policy_model_comparison_experiment(...)`, and a new `--outcome-policy-model-comparison` CLI mode. The runner consumes canonical live measurements/injuries plus `injury_events_detailed.csv`, relabels each athlete-season under candidate injury target policies, retrains the same graph model for each target, evaluates the holdout model metrics, builds top-5%/top-10% alert episodes, and writes `context_policy_model_comparison.csv`, `context_policy_model_comparison.json`, and `context_policy_model_comparison_report.md`. CSV key fields are now normalized as text on load so numeric-looking season IDs do not break joins.
+
+**Verification:** New TDD tests first failed because policy relabeling, the outcome-policy comparison runner, and the CLI dispatch did not exist. A focused test then exposed the season-ID dtype mismatch, which is now covered by canonical text normalization. After implementation, `python -m pytest` collected and passed 144 tests. The live command `risk-engine --from-live-sources --paths-config config/paths.local.yaml --output-dir outputs --experiment-id outcome_policy_model_comparison_v1 --outcome-policy-model-comparison --model-variant l2 --graph-window-size 4` completed and wrote the comparison artifacts.
+
+**Live results (`outcome_policy_model_comparison_v1`, L2, window 4):**
+- Compared 7 target policies: `any_injury`, `model_safe_time_loss`, `moderate_plus_time_loss`, `severe_time_loss`, `lower_extremity_soft_tissue`, `concussion_only`, and `exclude_concussion`.
+- Policy event volumes: any injury 638, model-safe time-loss 256, moderate-plus time-loss 177, severe time-loss 69, lower-extremity soft-tissue 241, concussion-only 79, and exclude-concussion 559.
+- At 7d top-10%, `model_safe_time_loss` had the strongest unique-event capture rate: 32/173 observed athlete-season events captured (18.5%), with AUROC 0.667 and top-decile lift 3.28.
+- At 14d top-10%, `model_safe_time_loss` again led unique-event capture: 42/173 captured (24.3%), with AUROC 0.662 and top-decile lift 2.58.
+- At 30d top-5%, `lower_extremity_soft_tissue` led capture rate at 33/168 (19.6%), but with higher alert burden; `exclude_concussion` and `any_injury` retained the strongest Brier skill around 0.017.
+- At 30d top-10%, capture rates clustered tightly: severe time-loss 13/59 (22.0%), lower-extremity soft-tissue 37/168 (22.0%), model-safe time-loss 37/173 (21.4%), and any injury 60/308 (19.5%).
+
+**Interpretation:** This was not a simple "just use severity" win. Cleaner time-loss targets improve 7d/14d alert capture and lift, especially `model_safe_time_loss`, but they reduce event volume and do not improve 30d calibration. `severe_time_loss` is too sparse and noisy as a primary target. The strongest next sprint is an ensemble/policy sprint: keep `any_injury` or `exclude_concussion` as the broad 30d early-warning target, test `model_safe_time_loss` as a secondary severity-oriented alert channel, and audit whether lower-extremity soft-tissue alerts are operationally coherent enough to justify a subtype-specific view.
+
+## Previous Completed Step
 
 **Injury outcome policy and severity semantics audit** — implemented and verified on 2026-04-29.
 

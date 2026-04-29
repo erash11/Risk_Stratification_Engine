@@ -269,6 +269,27 @@ such as time-loss-only, moderate-plus time-loss, severe time-loss,
 lower-extremity, soft-tissue, lower-extremity soft-tissue, concussion-only, and
 exclude-concussion.
 
+Outcome-policy model comparisons relabel athlete-seasons under detailed injury
+target policies and retrain the same graph model for each target:
+
+```bash
+risk-engine \
+  --from-live-sources \
+  --paths-config config/paths.local.yaml \
+  --output-dir outputs \
+  --experiment-id outcome_policy_model_comparison_v1 \
+  --outcome-policy-model-comparison \
+  --model-variant l2 \
+  --graph-window-size 4
+```
+
+These runs write `context_policy_model_comparison.csv`,
+`context_policy_model_comparison.json`, and
+`context_policy_model_comparison_report.md`. The comparison table reports
+holdout AUROC, Brier skill, top-decile lift, alert episodes, unique event
+capture, missed events, alert burden, and median lead time for each target
+policy, horizon, and top-5%/top-10% threshold.
+
 Latest live-source comparison (`intra_individual_deviation_v1`, 349 athletes,
 70 holdout): 7d AUROC 0.723, Brier skill 0.0020; 14d AUROC 0.731, Brier skill
 0.0057; 30d AUROC 0.736, Brier skill 0.0171. Compared with
@@ -383,7 +404,17 @@ and none had missing, negative, or duration/resolved-date mismatch flags. The
 candidate target counts were: time-loss-only 269 events, model-safe time-loss
 256, moderate-plus time-loss 177, severe time-loss 69, lower-extremity 312,
 soft-tissue 367, lower-extremity soft-tissue 241, concussion-only 79, and
-exclude-concussion 559. The current test suite has 141 passing tests.
+exclude-concussion 559.
+
+The outcome-policy model comparison run (`outcome_policy_model_comparison_v1`,
+L2, window 4) compared seven target definitions. `model_safe_time_loss` was the
+clearest short-horizon improvement: at top-10%, it captured 32/173 observed
+athlete-season events at 7d (18.5%) and 42/173 at 14d (24.3%), with top-decile
+lift of 3.28 and 2.58. At 30d, cleaner severity targets did not clearly beat the
+broad target for calibration: `exclude_concussion` and `any_injury` retained
+Brier skill around 0.017. `lower_extremity_soft_tissue` had the best 30d top-5%
+capture rate (33/168, 19.6%) but higher alert burden. The current test suite has
+144 passing tests.
 
 The reported risk values are baseline model estimates for research comparison,
 not calibrated clinical probabilities.

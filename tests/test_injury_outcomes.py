@@ -2,6 +2,7 @@ import pandas as pd
 
 from risk_stratification_engine.injury_outcomes import (
     build_injury_severity_audit,
+    build_policy_injury_events,
     build_outcome_policy_summary,
 )
 
@@ -118,3 +119,94 @@ def test_build_outcome_policy_summary_counts_context_policies():
     assert rows.loc["concussion_only", "event_count"] == 1
     assert rows.loc["exclude_concussion", "event_count"] == 2
     assert rows.loc["recurrent_only", "event_count"] == 1
+
+
+def test_build_policy_injury_events_relabels_canonical_seasons_by_policy():
+    canonical = pd.DataFrame(
+        [
+            {
+                "athlete_id": "a1",
+                "season_id": "2026",
+                "injury_date": "2026-02-01",
+                "injury_type": "any injury",
+                "event_observed": True,
+                "censor_date": "2026-04-01",
+                "nearest_measurement_date": "2026-01-30",
+                "nearest_measurement_gap_days": 2,
+                "event_window_quality": "modelable",
+                "primary_model_event": True,
+            },
+            {
+                "athlete_id": "a2",
+                "season_id": "2026",
+                "injury_date": "",
+                "injury_type": "censored",
+                "event_observed": False,
+                "censor_date": "2026-04-01",
+                "nearest_measurement_date": "",
+                "nearest_measurement_gap_days": "",
+                "event_window_quality": "censored",
+                "primary_model_event": False,
+            },
+        ]
+    )
+    detailed = pd.DataFrame(
+        [
+            {
+                "injury_event_id": "inj_1",
+                "athlete_id": "a1",
+                "season_id": "2026",
+                "injury_date": "2026-01-15",
+                "injury_type": "Soreness",
+                "classification": "Other",
+                "pathology": "Soreness",
+                "body_area": "Shoulder",
+                "time_loss_days": 0,
+                "caused_unavailability": "No",
+                "recurrent": "No",
+            },
+            {
+                "injury_event_id": "inj_2",
+                "athlete_id": "a1",
+                "season_id": "2026",
+                "injury_date": "2026-02-10",
+                "injury_type": "Hamstring strain",
+                "classification": "Soft tissue",
+                "pathology": "Hamstring strain/tear",
+                "body_area": "Thigh",
+                "time_loss_days": 12,
+                "caused_unavailability": "Yes",
+                "recurrent": "No",
+            },
+        ]
+    )
+
+    relabeled = build_policy_injury_events(
+        canonical,
+        detailed,
+        policy_name="time_loss_only",
+    )
+
+    observed, censored = relabeled.to_dict("records")
+    assert observed == {
+        "athlete_id": "a1",
+        "season_id": "2026",
+        "injury_date": pd.Timestamp("2026-02-10"),
+        "injury_type": "Hamstring strain",
+        "event_observed": True,
+        "censor_date": pd.Timestamp("2026-04-01"),
+        "nearest_measurement_date": pd.Timestamp("2026-01-30"),
+        "nearest_measurement_gap_days": 2.0,
+        "event_window_quality": "modelable",
+        "primary_model_event": True,
+    }
+    assert censored["athlete_id"] == "a2"
+    assert censored["season_id"] == "2026"
+    assert pd.isna(censored["injury_date"])
+    assert censored["injury_type"] == "censored"
+    assert censored["event_observed"] is False
+    assert censored["censor_date"] == pd.Timestamp("2026-04-01")
+    assert pd.isna(censored["nearest_measurement_date"])
+    assert pd.isna(censored["nearest_measurement_gap_days"])
+    assert censored["event_window_quality"] == "censored"
+    assert censored["primary_model_event"] is False

@@ -23,8 +23,11 @@ from risk_stratification_engine.episode_quality import build_alert_episode_quali
 from risk_stratification_engine.graphs import build_graph_snapshots
 from risk_stratification_engine.injury_context import build_injury_context_outcomes
 from risk_stratification_engine.injury_outcomes import (
+    DEFAULT_MODEL_COMPARISON_POLICIES,
     build_injury_severity_audit,
+    build_policy_injury_events,
     build_outcome_policy_summary,
+    policy_event_count,
 )
 from risk_stratification_engine.io import load_injury_events, load_measurements, write_frame
 from risk_stratification_engine.models import (
@@ -380,6 +383,113 @@ def run_injury_outcome_policy_experiment(
     _write_outcome_policy_report(
         experiment_dir / "outcome_policy_report.md",
         policy_summary,
+    )
+    return experiment_dir
+
+
+def run_outcome_policy_model_comparison_experiment(
+    measurements_path: str | Path,
+    injuries_path: str | Path,
+    detailed_injuries_path: str | Path,
+    output_dir: str | Path,
+    experiment_id: str,
+    graph_window_size: int = 4,
+    model_variant: str = "l2",
+    policy_names: tuple[str, ...] = DEFAULT_MODEL_COMPARISON_POLICIES,
+    percentile_thresholds: tuple[float, ...] = DEFAULT_ALERT_PERCENTILES,
+) -> Path:
+    experiment_dir = _experiment_path(output_dir, experiment_id)
+    measurements = load_measurements(measurements_path)
+    canonical_injuries = load_injury_events(injuries_path)
+    detailed_injuries = pd.read_csv(detailed_injuries_path)
+    matrix = build_measurement_matrix(measurements)
+    graph_features = build_graph_snapshots(matrix, window_size=graph_window_size)
+    if graph_features.empty:
+        raise ValueError("no graph snapshots produced")
+
+    rows: list[dict[str, object]] = []
+    policy_summaries: dict[str, object] = {}
+    for policy_name in policy_names:
+        policy_injuries = build_policy_injury_events(
+            canonical_injuries,
+            detailed_injuries,
+            policy_name=policy_name,
+        )
+        labeled = attach_time_to_event_labels(graph_features, policy_injuries)
+        if labeled.empty:
+            raise ValueError(f"no labeled graph snapshots produced for {policy_name}")
+        model_result = train_discrete_time_risk_model(
+            labeled,
+            model_variant=model_variant,
+        )
+        evaluation = evaluate_risk_model(model_result.timeline, model_result.summary)
+        explanation_summary = _explanation_summary(
+            model_result.timeline,
+            model_result.summary,
+        )
+        alert_timeline = _alert_episode_timeline(
+            model_result.timeline,
+            explanation_summary,
+        )
+        episodes = build_alert_episodes(
+            alert_timeline,
+            percentile_thresholds=percentile_thresholds,
+        )
+        quality = build_alert_episode_quality(episodes, model_result.timeline)
+        policy_event_total = policy_event_count(detailed_injuries, policy_name)
+        policy_summaries[policy_name] = {
+            "policy_event_count": policy_event_total,
+            "observed_athlete_season_count": int(
+                policy_injuries["event_observed"].sum()
+            ),
+            "timeline_snapshot_count": int(len(model_result.timeline)),
+            "episode_count": int(len(episodes)),
+        }
+        rows.extend(
+            _policy_comparison_rows(
+                policy_name=policy_name,
+                policy_event_count=policy_event_total,
+                evaluation=evaluation,
+                quality_rows=quality["quality_rows"],
+            )
+        )
+
+    comparison = {
+        "experiment_type": "context_policy_model_comparison",
+        "model_variant": model_variant,
+        "graph_window_size": graph_window_size,
+        "policy_names": list(policy_names),
+        "policy_count": len(policy_names),
+        "comparison_row_count": len(rows),
+        "policy_summaries": policy_summaries,
+        "comparison_rows": rows,
+        "best_by_horizon": _best_policies_by_horizon(rows),
+    }
+    write_frame(
+        pd.DataFrame(rows),
+        experiment_dir / "context_policy_model_comparison.csv",
+    )
+    _write_json(
+        experiment_dir / "config.json",
+        {
+            "experiment_id": experiment_id,
+            "experiment_type": "context_policy_model_comparison",
+            "measurements_path": str(measurements_path),
+            "injuries_path": str(injuries_path),
+            "detailed_injuries_path": str(detailed_injuries_path),
+            "graph_window_size": graph_window_size,
+            "model_variant": model_variant,
+            "policy_names": list(policy_names),
+            "alert_percentile_thresholds": list(percentile_thresholds),
+        },
+    )
+    _write_json(
+        experiment_dir / "context_policy_model_comparison.json",
+        comparison,
+    )
+    _write_context_policy_model_comparison_report(
+        experiment_dir / "context_policy_model_comparison_report.md",
+        comparison,
     )
     return experiment_dir
 
@@ -952,6 +1062,91 @@ def _best_windows_by_horizon(windows: dict[str, object]) -> dict[str, object]:
                     key=lambda candidate: candidate["value"],
                 )
         best[str(horizon)] = horizon_best
+    return best
+
+
+def _policy_comparison_rows(
+    policy_name: str,
+    policy_event_count: int,
+    evaluation: dict[str, object],
+    quality_rows: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    rows = []
+    quality_by_horizon_threshold = {
+        (
+            int(row["horizon_days"]),
+            str(row["threshold"]),
+        ): row
+        for row in quality_rows
+    }
+    for horizon in DEFAULT_HORIZONS:
+        metrics = evaluation["horizons"][str(horizon)]
+        for threshold in ("percentile:0.05", "percentile:0.1"):
+            quality = quality_by_horizon_threshold.get((horizon, threshold), {})
+            rows.append(
+                {
+                    "policy_name": policy_name,
+                    "policy_event_count": int(policy_event_count),
+                    "horizon_days": horizon,
+                    "threshold": threshold,
+                    "test_positive_count": metrics["test_positive_count"],
+                    "test_positive_rate": metrics["test_positive_rate"],
+                    "roc_auc": metrics["roc_auc"],
+                    "average_precision": metrics["average_precision"],
+                    "brier_skill_score": metrics["brier_skill_score"],
+                    "top_decile_lift": metrics["top_decile_lift"],
+                    "episode_count": quality.get("episode_count"),
+                    "true_positive_episode_count": quality.get(
+                        "true_positive_episode_count"
+                    ),
+                    "false_positive_episode_count": quality.get(
+                        "false_positive_episode_count"
+                    ),
+                    "unique_observed_event_count": quality.get(
+                        "unique_observed_event_count"
+                    ),
+                    "unique_captured_event_count": quality.get(
+                        "unique_captured_event_count"
+                    ),
+                    "unique_event_capture_rate": quality.get(
+                        "unique_event_capture_rate"
+                    ),
+                    "missed_event_count": quality.get("missed_event_count"),
+                    "episodes_per_athlete_season": quality.get(
+                        "episodes_per_athlete_season"
+                    ),
+                    "median_start_lead_days": quality.get("median_start_lead_days"),
+                }
+            )
+    return rows
+
+
+def _best_policies_by_horizon(rows: list[dict[str, object]]) -> dict[str, object]:
+    frame = pd.DataFrame(rows)
+    if frame.empty:
+        return {}
+    best: dict[str, object] = {}
+    for horizon, group in frame.groupby("horizon_days", sort=True):
+        horizon_best: dict[str, object] = {}
+        for metric_name in (
+            "roc_auc",
+            "brier_skill_score",
+            "top_decile_lift",
+            "unique_event_capture_rate",
+        ):
+            values = group.dropna(subset=[metric_name])
+            if values.empty:
+                continue
+            row = values.sort_values(
+                [metric_name, "policy_name"],
+                ascending=[False, True],
+            ).iloc[0]
+            horizon_best[metric_name] = {
+                "policy_name": str(row["policy_name"]),
+                "threshold": str(row["threshold"]),
+                "value": float(row[metric_name]),
+            }
+        best[str(int(horizon))] = horizon_best
     return best
 
 
@@ -1717,6 +1912,61 @@ def _write_outcome_policy_report(
             f"{_format_metric(row['median_time_loss_days'])} | "
             f"{row['athlete_count']} | "
             f"{row['recommended_use']} |"
+        )
+
+    path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+
+
+def _write_context_policy_model_comparison_report(
+    path: Path,
+    comparison: dict[str, object],
+) -> None:
+    lines = [
+        "# Context Policy Model Comparison",
+        "",
+        f"Model variant: {comparison['model_variant']}",
+        f"Graph window size: {comparison['graph_window_size']}",
+        f"Policies: {comparison['policy_count']}",
+        f"Rows: {comparison['comparison_row_count']}",
+        "",
+        "This report compares the same graph model and alert policy across "
+        "candidate injury outcome definitions.",
+        "",
+        "## Best Policies By Horizon",
+        "",
+    ]
+    for horizon in DEFAULT_HORIZONS:
+        best = comparison["best_by_horizon"].get(str(horizon), {})
+        lines.append(f"### {horizon}d")
+        if not best:
+            lines.append("- n/a")
+            continue
+        for metric_name, row in best.items():
+            lines.append(
+                f"- {metric_name}: {row['policy_name']} "
+                f"({row['threshold']}, {_format_metric(row['value'])})"
+            )
+        lines.append("")
+
+    lines.extend(
+        [
+            "## Comparison Rows",
+            "",
+            "| Policy | Horizon | Threshold | AUROC | Brier skill | Top-decile lift | Capture | Missed |",
+            "|---|---:|---|---:|---:|---:|---:|---:|",
+        ]
+    )
+    for row in comparison["comparison_rows"]:
+        lines.append(
+            "| "
+            f"{row['policy_name']} | "
+            f"{row['horizon_days']}d | "
+            f"{row['threshold']} | "
+            f"{_format_metric(row['roc_auc'])} | "
+            f"{_format_metric(row['brier_skill_score'])} | "
+            f"{_format_metric(row['top_decile_lift'])} | "
+            f"{_format_metric(row['unique_event_capture_rate'])} | "
+            f"{row['missed_event_count']} |"
         )
 
     path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")

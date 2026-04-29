@@ -10,6 +10,7 @@ from risk_stratification_engine.experiments import (
     run_alert_episode_experiment,
     run_calibration_threshold_experiment,
     run_injury_outcome_policy_experiment,
+    run_outcome_policy_model_comparison_experiment,
     run_model_robustness_experiment,
     run_research_experiment,
     run_window_model_robustness_experiment,
@@ -665,6 +666,121 @@ def test_run_injury_outcome_policy_experiment_writes_audit_and_policy_artifacts(
     report = (result / "outcome_policy_report.md").read_text()
     assert "Outcome Policy Summary" in report
     assert "moderate_plus_time_loss" in report
+
+
+def test_run_outcome_policy_model_comparison_writes_policy_metrics(tmp_path):
+    measurements_path = tmp_path / "measurements.csv"
+    injuries_path = tmp_path / "canonical_injuries.csv"
+    detailed_path = tmp_path / "injury_events_detailed.csv"
+    pd.DataFrame(
+        [
+            ("a1", "2026-01-01", "2026", "force_plate", "jump_height", 42.0),
+            ("a1", "2026-01-01", "2026", "force_plate", "asymmetry", 8.0),
+            ("a1", "2026-01-08", "2026", "force_plate", "jump_height", 39.0),
+            ("a1", "2026-01-08", "2026", "force_plate", "asymmetry", 14.0),
+            ("a2", "2026-01-01", "2026", "force_plate", "jump_height", 35.0),
+            ("a2", "2026-01-01", "2026", "force_plate", "asymmetry", 5.0),
+            ("a2", "2026-01-08", "2026", "force_plate", "jump_height", 36.0),
+            ("a2", "2026-01-08", "2026", "force_plate", "asymmetry", 6.0),
+            ("a3", "2026-01-01", "2026", "force_plate", "jump_height", 34.0),
+            ("a3", "2026-01-01", "2026", "force_plate", "asymmetry", 4.0),
+            ("a3", "2026-01-08", "2026", "force_plate", "jump_height", 33.0),
+            ("a3", "2026-01-08", "2026", "force_plate", "asymmetry", 6.0),
+        ],
+        columns=[
+            "athlete_id",
+            "date",
+            "season_id",
+            "source",
+            "metric_name",
+            "metric_value",
+        ],
+    ).to_csv(measurements_path, index=False)
+    pd.DataFrame(
+        [
+            {
+                "athlete_id": "a1",
+                "season_id": "2026",
+                "injury_date": "2026-01-20",
+                "injury_type": "Hamstring strain",
+                "event_observed": True,
+                "censor_date": "2026-01-20",
+                "event_window_quality": "modelable",
+                "primary_model_event": True,
+            },
+            {
+                "athlete_id": "a2",
+                "season_id": "2026",
+                "injury_date": "",
+                "injury_type": "censored",
+                "event_observed": False,
+                "censor_date": "2026-02-01",
+                "event_window_quality": "censored",
+                "primary_model_event": False,
+            },
+            {
+                "athlete_id": "a3",
+                "season_id": "2026",
+                "injury_date": "",
+                "injury_type": "censored",
+                "event_observed": False,
+                "censor_date": "2026-02-01",
+                "event_window_quality": "censored",
+                "primary_model_event": False,
+            },
+        ]
+    ).to_csv(injuries_path, index=False)
+    pd.DataFrame(
+        [
+            {
+                "injury_event_id": "inj_1",
+                "athlete_id": "a1",
+                "season_id": "2026",
+                "injury_date": "2026-01-20",
+                "injury_type": "Hamstring strain",
+                "classification": "Soft tissue",
+                "pathology": "Hamstring strain/tear",
+                "body_area": "Thigh",
+                "time_loss_days": 12,
+                "caused_unavailability": "Yes",
+                "recurrent": "No",
+            }
+        ]
+    ).to_csv(detailed_path, index=False)
+
+    result = run_outcome_policy_model_comparison_experiment(
+        measurements_path=measurements_path,
+        injuries_path=injuries_path,
+        detailed_injuries_path=detailed_path,
+        output_dir=tmp_path,
+        experiment_id="policy_model_compare",
+        graph_window_size=2,
+        model_variant="l2",
+        policy_names=("any_injury", "time_loss_only"),
+    )
+
+    assert (result / "context_policy_model_comparison.csv").exists()
+    assert (result / "context_policy_model_comparison.json").exists()
+    assert (result / "context_policy_model_comparison_report.md").exists()
+
+    table = pd.read_csv(result / "context_policy_model_comparison.csv")
+    assert set(table["policy_name"]) == {"any_injury", "time_loss_only"}
+    assert set(table["horizon_days"]) == {7, 14, 30}
+    assert {
+        "roc_auc",
+        "brier_skill_score",
+        "top_decile_lift",
+        "unique_event_capture_rate",
+    }.issubset(table.columns)
+
+    payload = json.loads((result / "context_policy_model_comparison.json").read_text())
+    assert payload["experiment_type"] == "context_policy_model_comparison"
+    assert payload["policy_count"] == 2
+    assert payload["comparison_row_count"] == len(table)
+
+    report = (result / "context_policy_model_comparison_report.md").read_text()
+    assert "Context Policy Model Comparison" in report
+    assert "time_loss_only" in report
 
 
 # ---------------------------------------------------------------------------

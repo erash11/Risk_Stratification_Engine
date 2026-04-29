@@ -9,6 +9,15 @@ import pandas as pd
 EXTREME_TIME_LOSS_DAYS = 365
 MODERATE_TIME_LOSS_DAYS = 8
 SEVERE_TIME_LOSS_DAYS = 29
+DEFAULT_MODEL_COMPARISON_POLICIES = (
+    "any_injury",
+    "model_safe_time_loss",
+    "moderate_plus_time_loss",
+    "severe_time_loss",
+    "lower_extremity_soft_tissue",
+    "concussion_only",
+    "exclude_concussion",
+)
 
 
 def build_injury_severity_audit(detailed_events: pd.DataFrame) -> dict[str, object]:
@@ -47,6 +56,64 @@ def build_outcome_policy_summary(detailed_events: pd.DataFrame) -> dict[str, obj
         "policy_count": len(rows),
         "policy_rows": rows,
     }
+
+
+def build_policy_injury_events(
+    canonical_injuries: pd.DataFrame,
+    detailed_events: pd.DataFrame,
+    policy_name: str,
+) -> pd.DataFrame:
+    events = _events_for_policy(detailed_events, policy_name)
+    if not events.empty:
+        events = (
+            events.sort_values(["athlete_id", "season_id", "injury_date"])
+            .drop_duplicates(["athlete_id", "season_id"], keep="first")
+            .loc[:, ["athlete_id", "season_id", "injury_date", "injury_type"]]
+        )
+        events["athlete_id"] = events["athlete_id"].astype(str)
+        events["season_id"] = events["season_id"].astype(str)
+    output = canonical_injuries.copy()
+    output["athlete_id"] = output["athlete_id"].astype(str)
+    output["season_id"] = output["season_id"].astype(str)
+    output["censor_date"] = pd.to_datetime(output["censor_date"], errors="coerce")
+    if "nearest_measurement_date" in output:
+        output["nearest_measurement_date"] = pd.to_datetime(
+            output["nearest_measurement_date"],
+            errors="coerce",
+        )
+    if "nearest_measurement_gap_days" in output:
+        output["nearest_measurement_gap_days"] = pd.to_numeric(
+            output["nearest_measurement_gap_days"],
+            errors="coerce",
+        )
+    output = output.drop(columns=["injury_date", "injury_type"], errors="ignore")
+    if events.empty:
+        output["injury_date"] = pd.NaT
+        output["injury_type"] = "censored"
+    else:
+        output = output.merge(
+            events,
+            on=["athlete_id", "season_id"],
+            how="left",
+        )
+        output["injury_date"] = pd.to_datetime(output["injury_date"], errors="coerce")
+        output.loc[output["injury_date"].isna(), "injury_type"] = "censored"
+    output["event_observed"] = output["injury_date"].notna()
+    if "event_window_quality" in output:
+        output.loc[~output["event_observed"], "event_window_quality"] = "censored"
+    else:
+        output["event_window_quality"] = output["event_observed"].map(
+            lambda observed: "modelable" if observed else "censored"
+        )
+    output["primary_model_event"] = output["event_observed"]
+    return output.loc[:, _policy_injury_columns(output)]
+
+
+def policy_event_count(
+    detailed_events: pd.DataFrame,
+    policy_name: str,
+) -> int:
+    return int(len(_events_for_policy(detailed_events, policy_name)))
 
 
 def _severity_row(event: pd.Series) -> dict[str, object]:
@@ -155,6 +222,37 @@ def _outcome_policies() -> tuple[
         ("concussion_only", _is_concussion),
         ("exclude_concussion", lambda row: not _is_concussion(row)),
     )
+
+
+def _events_for_policy(
+    detailed_events: pd.DataFrame,
+    policy_name: str,
+) -> pd.DataFrame:
+    events = _normalized_events(detailed_events)
+    policies = dict(_outcome_policies())
+    if policy_name not in policies:
+        raise ValueError(f"unknown outcome policy: {policy_name}")
+    return events.loc[events.apply(policies[policy_name], axis=1)].copy()
+
+
+def _policy_injury_columns(frame: pd.DataFrame) -> list[str]:
+    columns = [
+        "athlete_id",
+        "season_id",
+        "injury_date",
+        "injury_type",
+        "event_observed",
+        "censor_date",
+    ]
+    for column in (
+        "nearest_measurement_date",
+        "nearest_measurement_gap_days",
+        "event_window_quality",
+        "primary_model_event",
+    ):
+        if column in frame:
+            columns.append(column)
+    return columns
 
 
 def _normalized_events(events: pd.DataFrame) -> pd.DataFrame:

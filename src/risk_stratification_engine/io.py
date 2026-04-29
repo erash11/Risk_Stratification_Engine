@@ -41,6 +41,8 @@ def load_measurements(path: str | Path) -> pd.DataFrame:
         raise ValueError("measurements contains unparseable date values")
     if frame["metric_value"].isna().any():
         raise ValueError("measurements contains non-numeric metric_value values")
+    frame["athlete_id"] = frame["athlete_id"].astype(str)
+    frame["season_id"] = frame["season_id"].astype(str)
     return frame
 
 
@@ -68,6 +70,8 @@ def load_injury_events(path: str | Path) -> pd.DataFrame:
         )
     if "primary_model_event" in frame.columns:
         frame["primary_model_event"] = frame["primary_model_event"].map(_parse_bool)
+    frame["athlete_id"] = frame["athlete_id"].astype(str)
+    frame["season_id"] = frame["season_id"].astype(str)
     if frame.loc[populated_injury_date, "injury_date"].isna().any():
         raise ValueError("injury_events contains unparseable injury_date values")
     if frame["censor_date"].isna().any():

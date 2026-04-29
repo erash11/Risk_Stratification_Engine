@@ -11,6 +11,7 @@ from risk_stratification_engine.experiments import (
     run_calibration_threshold_experiment,
     run_injury_outcome_policy_experiment,
     run_outcome_policy_model_comparison_experiment,
+    run_policy_decision_sprint_experiment,
     run_model_robustness_experiment,
     run_research_experiment,
     run_window_model_robustness_experiment,
@@ -783,6 +784,40 @@ def test_run_outcome_policy_model_comparison_writes_policy_metrics(tmp_path):
     assert "time_loss_only" in report
 
 
+def test_run_policy_decision_sprint_writes_three_sprint_artifacts(tmp_path):
+    measurements_path, injuries_path, detailed_path = _write_policy_fixture_inputs(
+        tmp_path
+    )
+
+    result = run_policy_decision_sprint_experiment(
+        measurements_path=measurements_path,
+        injuries_path=injuries_path,
+        detailed_injuries_path=detailed_path,
+        output_dir=tmp_path,
+        experiment_id="policy_decision_sprint",
+        graph_window_sizes=(2,),
+        model_variant="l2",
+        policy_names=("any_injury", "model_safe_time_loss"),
+    )
+
+    assert (result / "two_channel_alert_policy.json").exists()
+    assert (result / "two_channel_alert_policy_report.md").exists()
+    assert (result / "policy_window_sensitivity.csv").exists()
+    assert (result / "policy_window_sensitivity.json").exists()
+    assert (result / "policy_window_sensitivity_report.md").exists()
+    assert (result / "operational_policy_package.json").exists()
+    assert (result / "operational_policy_package_report.md").exists()
+
+    package = json.loads((result / "operational_policy_package.json").read_text())
+    assert package["experiment_type"] == "operational_policy_package"
+    assert package["sprint_count"] == 3
+    assert package["status"] == "research_shadow_mode"
+
+    report = (result / "operational_policy_package_report.md").read_text()
+    assert "Operational Policy Package" in report
+    assert "research_shadow_mode" in report
+
+
 # ---------------------------------------------------------------------------
 # Per-snapshot feature contributions
 # ---------------------------------------------------------------------------
@@ -806,6 +841,88 @@ def _two_feature_attribution():
             "abs_standardized_coefficient": 0.02,
         },
     ]
+
+
+def _write_policy_fixture_inputs(tmp_path):
+    measurements_path = tmp_path / "measurements.csv"
+    injuries_path = tmp_path / "canonical_injuries.csv"
+    detailed_path = tmp_path / "injury_events_detailed.csv"
+    pd.DataFrame(
+        [
+            ("a1", "2026-01-01", "2026", "force_plate", "jump_height", 42.0),
+            ("a1", "2026-01-01", "2026", "force_plate", "asymmetry", 8.0),
+            ("a1", "2026-01-08", "2026", "force_plate", "jump_height", 39.0),
+            ("a1", "2026-01-08", "2026", "force_plate", "asymmetry", 14.0),
+            ("a2", "2026-01-01", "2026", "force_plate", "jump_height", 35.0),
+            ("a2", "2026-01-01", "2026", "force_plate", "asymmetry", 5.0),
+            ("a2", "2026-01-08", "2026", "force_plate", "jump_height", 36.0),
+            ("a2", "2026-01-08", "2026", "force_plate", "asymmetry", 6.0),
+            ("a3", "2026-01-01", "2026", "force_plate", "jump_height", 34.0),
+            ("a3", "2026-01-01", "2026", "force_plate", "asymmetry", 4.0),
+            ("a3", "2026-01-08", "2026", "force_plate", "jump_height", 33.0),
+            ("a3", "2026-01-08", "2026", "force_plate", "asymmetry", 6.0),
+        ],
+        columns=[
+            "athlete_id",
+            "date",
+            "season_id",
+            "source",
+            "metric_name",
+            "metric_value",
+        ],
+    ).to_csv(measurements_path, index=False)
+    pd.DataFrame(
+        [
+            {
+                "athlete_id": "a1",
+                "season_id": "2026",
+                "injury_date": "2026-01-20",
+                "injury_type": "Hamstring strain",
+                "event_observed": True,
+                "censor_date": "2026-01-20",
+                "event_window_quality": "modelable",
+                "primary_model_event": True,
+            },
+            {
+                "athlete_id": "a2",
+                "season_id": "2026",
+                "injury_date": "",
+                "injury_type": "censored",
+                "event_observed": False,
+                "censor_date": "2026-02-01",
+                "event_window_quality": "censored",
+                "primary_model_event": False,
+            },
+            {
+                "athlete_id": "a3",
+                "season_id": "2026",
+                "injury_date": "",
+                "injury_type": "censored",
+                "event_observed": False,
+                "censor_date": "2026-02-01",
+                "event_window_quality": "censored",
+                "primary_model_event": False,
+            },
+        ]
+    ).to_csv(injuries_path, index=False)
+    pd.DataFrame(
+        [
+            {
+                "injury_event_id": "inj_1",
+                "athlete_id": "a1",
+                "season_id": "2026",
+                "injury_date": "2026-01-20",
+                "injury_type": "Hamstring strain",
+                "classification": "Soft tissue",
+                "pathology": "Hamstring strain/tear",
+                "body_area": "Thigh",
+                "time_loss_days": 12,
+                "caused_unavailability": "Yes",
+                "recurrent": "No",
+            }
+        ]
+    ).to_csv(detailed_path, index=False)
+    return measurements_path, injuries_path, detailed_path
 
 
 def test_compute_snapshot_contributions_correct_math():

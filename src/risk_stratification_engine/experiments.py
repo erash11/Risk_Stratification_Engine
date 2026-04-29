@@ -39,6 +39,16 @@ from risk_stratification_engine.models import (
 from risk_stratification_engine.model_diagnostics import (
     build_model_improvement_diagnostics,
 )
+from risk_stratification_engine.policy_sprints import (
+    DEFAULT_POLICY_DECISION_POLICIES,
+    DEFAULT_POLICY_WINDOW_SIZES,
+    build_operational_policy_package,
+    build_policy_window_sensitivity,
+    build_two_channel_alert_policy,
+    write_operational_policy_package_report,
+    write_policy_window_sensitivity_report,
+    write_two_channel_alert_policy_report,
+)
 from risk_stratification_engine.trajectories import build_measurement_matrix
 
 ORIGINAL_GRAPH_FEATURE_COLUMNS = (
@@ -449,6 +459,7 @@ def run_outcome_policy_model_comparison_experiment(
             _policy_comparison_rows(
                 policy_name=policy_name,
                 policy_event_count=policy_event_total,
+                graph_window_size=graph_window_size,
                 evaluation=evaluation,
                 quality_rows=quality["quality_rows"],
             )
@@ -490,6 +501,130 @@ def run_outcome_policy_model_comparison_experiment(
     _write_context_policy_model_comparison_report(
         experiment_dir / "context_policy_model_comparison_report.md",
         comparison,
+    )
+    return experiment_dir
+
+
+def run_policy_decision_sprint_experiment(
+    measurements_path: str | Path,
+    injuries_path: str | Path,
+    detailed_injuries_path: str | Path,
+    output_dir: str | Path,
+    experiment_id: str,
+    graph_window_sizes: tuple[int, ...] = DEFAULT_POLICY_WINDOW_SIZES,
+    model_variant: str = "l2",
+    policy_names: tuple[str, ...] = DEFAULT_POLICY_DECISION_POLICIES,
+) -> Path:
+    experiment_dir = _experiment_path(output_dir, experiment_id)
+    window_sizes = _normalize_window_sizes(graph_window_sizes)
+    measurements = load_measurements(measurements_path)
+    canonical_injuries = load_injury_events(injuries_path)
+    detailed_injuries = pd.read_csv(detailed_injuries_path)
+    matrix = build_measurement_matrix(measurements)
+
+    rows: list[dict[str, object]] = []
+    policy_summaries: dict[str, object] = {}
+    for window_size in window_sizes:
+        graph_features = build_graph_snapshots(matrix, window_size=window_size)
+        if graph_features.empty:
+            raise ValueError("no graph snapshots produced")
+        for policy_name in policy_names:
+            policy_injuries = build_policy_injury_events(
+                canonical_injuries,
+                detailed_injuries,
+                policy_name=policy_name,
+            )
+            labeled = attach_time_to_event_labels(graph_features, policy_injuries)
+            if labeled.empty:
+                raise ValueError(
+                    f"no labeled graph snapshots produced for {policy_name}"
+                )
+            model_result = train_discrete_time_risk_model(
+                labeled,
+                model_variant=model_variant,
+            )
+            evaluation = evaluate_risk_model(
+                model_result.timeline,
+                model_result.summary,
+            )
+            explanation_summary = _explanation_summary(
+                model_result.timeline,
+                model_result.summary,
+            )
+            alert_timeline = _alert_episode_timeline(
+                model_result.timeline,
+                explanation_summary,
+            )
+            episodes = build_alert_episodes(alert_timeline)
+            quality = build_alert_episode_quality(episodes, model_result.timeline)
+            policy_event_total = policy_event_count(detailed_injuries, policy_name)
+            summary_key = f"window_{window_size}:{policy_name}"
+            policy_summaries[summary_key] = {
+                "graph_window_size": window_size,
+                "policy_name": policy_name,
+                "policy_event_count": policy_event_total,
+                "observed_athlete_season_count": int(
+                    policy_injuries["event_observed"].sum()
+                ),
+                "timeline_snapshot_count": int(len(model_result.timeline)),
+                "episode_count": int(len(episodes)),
+            }
+            rows.extend(
+                _policy_comparison_rows(
+                    policy_name=policy_name,
+                    policy_event_count=policy_event_total,
+                    graph_window_size=window_size,
+                    evaluation=evaluation,
+                    quality_rows=quality["quality_rows"],
+                )
+            )
+
+    comparison_rows = pd.DataFrame(rows)
+    primary_window = 4 if 4 in window_sizes else window_sizes[0]
+    primary_rows = comparison_rows[
+        comparison_rows["graph_window_size"].astype(int).eq(primary_window)
+    ]
+    two_channel = build_two_channel_alert_policy(primary_rows, policy_summaries)
+    window_sensitivity = build_policy_window_sensitivity(comparison_rows)
+    operational_package = build_operational_policy_package(
+        two_channel,
+        window_sensitivity,
+    )
+
+    write_frame(comparison_rows, experiment_dir / "policy_window_sensitivity.csv")
+    _write_json(
+        experiment_dir / "config.json",
+        {
+            "experiment_id": experiment_id,
+            "experiment_type": "policy_decision_sprint",
+            "measurements_path": str(measurements_path),
+            "injuries_path": str(injuries_path),
+            "detailed_injuries_path": str(detailed_injuries_path),
+            "graph_window_sizes": list(window_sizes),
+            "model_variant": model_variant,
+            "policy_names": list(policy_names),
+        },
+    )
+    _write_json(experiment_dir / "two_channel_alert_policy.json", two_channel)
+    _write_json(
+        experiment_dir / "policy_window_sensitivity.json",
+        window_sensitivity,
+    )
+    _write_json(
+        experiment_dir / "operational_policy_package.json",
+        operational_package,
+    )
+    write_two_channel_alert_policy_report(
+        experiment_dir / "two_channel_alert_policy_report.md",
+        two_channel,
+    )
+    write_policy_window_sensitivity_report(
+        experiment_dir / "policy_window_sensitivity_report.md",
+        window_sensitivity,
+    )
+    write_operational_policy_package_report(
+        experiment_dir / "operational_policy_package_report.md",
+        operational_package,
     )
     return experiment_dir
 
@@ -1068,6 +1203,7 @@ def _best_windows_by_horizon(windows: dict[str, object]) -> dict[str, object]:
 def _policy_comparison_rows(
     policy_name: str,
     policy_event_count: int,
+    graph_window_size: int,
     evaluation: dict[str, object],
     quality_rows: list[dict[str, object]],
 ) -> list[dict[str, object]]:
@@ -1085,6 +1221,7 @@ def _policy_comparison_rows(
             quality = quality_by_horizon_threshold.get((horizon, threshold), {})
             rows.append(
                 {
+                    "graph_window_size": int(graph_window_size),
                     "policy_name": policy_name,
                     "policy_event_count": int(policy_event_count),
                     "horizon_days": horizon,

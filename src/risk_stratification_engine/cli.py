@@ -13,6 +13,7 @@ from risk_stratification_engine.experiments import (
     run_injury_outcome_policy_experiment,
     run_model_robustness_experiment,
     run_outcome_policy_model_comparison_experiment,
+    run_policy_decision_sprint_experiment,
     run_research_experiment,
     run_window_model_robustness_experiment,
     run_window_sensitivity_experiment,
@@ -41,11 +42,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--graph-window-size", type=int, default=4)
     parser.add_argument("--model-variant", choices=MODEL_VARIANTS, default="baseline")
     parser.add_argument("--window-sensitivity-sizes", nargs="+", type=int)
+    parser.add_argument("--policy-window-sizes", nargs="+", type=int, default=[2, 4, 7])
     parser.add_argument("--model-robustness-sprint", action="store_true")
     parser.add_argument("--calibration-thresholds", action="store_true")
     parser.add_argument("--alert-episodes", action="store_true")
     parser.add_argument("--injury-outcome-policies", action="store_true")
     parser.add_argument("--outcome-policy-model-comparison", action="store_true")
+    parser.add_argument("--policy-decision-sprint", action="store_true")
     parser.add_argument("--stability-splits", type=int, default=5)
     return parser
 
@@ -74,7 +77,26 @@ def main(argv: list[str] | None = None) -> int:
         injuries_path = args.injuries
         detailed_injuries_path = None
 
-    if args.outcome_policy_model_comparison:
+    if args.policy_decision_sprint:
+        if detailed_injuries_path is None:
+            sibling = injuries_path.parent / "injury_events_detailed.csv"
+            if not sibling.exists():
+                parser.error(
+                    "--policy-decision-sprint requires live-source detailed "
+                    "injury events or a sibling injury_events_detailed.csv"
+                )
+            detailed_injuries_path = sibling
+        experiment_dir = run_policy_decision_sprint_experiment(
+            measurements_path=measurements_path,
+            injuries_path=injuries_path,
+            detailed_injuries_path=detailed_injuries_path,
+            output_dir=args.output_dir,
+            experiment_id=args.experiment_id,
+            graph_window_sizes=tuple(args.policy_window_sizes),
+            model_variant=args.model_variant,
+        )
+        print(f"Policy decision sprint artifacts written to {experiment_dir}")
+    elif args.outcome_policy_model_comparison:
         if detailed_injuries_path is None:
             sibling = injuries_path.parent / "injury_events_detailed.csv"
             if not sibling.exists():

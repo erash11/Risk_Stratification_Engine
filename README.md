@@ -290,6 +290,27 @@ holdout AUROC, Brier skill, top-decile lift, alert episodes, unique event
 capture, missed events, alert burden, and median lead time for each target
 policy, horizon, and top-5%/top-10% threshold.
 
+Policy decision sprint runs execute the next three research iterations in one
+reproducible pass: two-channel policy selection, policy/window sensitivity, and
+an operational shadow-mode package.
+
+```bash
+risk-engine \
+  --from-live-sources \
+  --paths-config config/paths.local.yaml \
+  --output-dir outputs \
+  --experiment-id policy_decision_sprint_v1 \
+  --policy-decision-sprint \
+  --policy-window-sizes 2 4 7 \
+  --model-variant l2
+```
+
+These runs write `two_channel_alert_policy.json`,
+`two_channel_alert_policy_report.md`, `policy_window_sensitivity.csv`,
+`policy_window_sensitivity.json`, `policy_window_sensitivity_report.md`,
+`operational_policy_package.json`, and
+`operational_policy_package_report.md`.
+
 Latest live-source comparison (`intra_individual_deviation_v1`, 349 athletes,
 70 holdout): 7d AUROC 0.723, Brier skill 0.0020; 14d AUROC 0.731, Brier skill
 0.0057; 30d AUROC 0.736, Brier skill 0.0171. Compared with
@@ -413,8 +434,18 @@ athlete-season events at 7d (18.5%) and 42/173 at 14d (24.3%), with top-decile
 lift of 3.28 and 2.58. At 30d, cleaner severity targets did not clearly beat the
 broad target for calibration: `exclude_concussion` and `any_injury` retained
 Brier skill around 0.017. `lower_extremity_soft_tissue` had the best 30d top-5%
-capture rate (33/168, 19.6%) but higher alert burden. The current test suite has
-144 passing tests.
+capture rate (33/168, 19.6%) but higher alert burden.
+
+The policy decision sprint (`policy_decision_sprint_v1`, L2, windows 2/4/7)
+wrote 90 comparison rows across five target policies. The recommended
+shadow-mode policy is now two-channel: `exclude_concussion`, window 4, 30d
+top-5% for broad early warning; and `model_safe_time_loss`, window 4, top-10%
+for 7d/14d severity triage. The broad channel captured 44/292 unique observed
+events with Brier skill 0.0168 and median start lead of 12 days. The severity
+channel captured 32/173 unique events at 7d and 42/173 at 14d. Window 2 improved
+30d lower-extremity soft-tissue capture to 40/168, but with higher alert burden,
+so that remains a subtype-review view. The current test suite has 149 passing
+tests.
 
 The reported risk values are baseline model estimates for research comparison,
 not calibrated clinical probabilities.

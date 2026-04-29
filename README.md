@@ -247,6 +247,28 @@ rolls capture rates up by injury type, pathology, classification, body area,
 tissue type, side, recurrence, unavailability, activity context, and time-loss
 bucket.
 
+Injury outcome policy runs audit severity semantics and define candidate target
+policies before changing the model target:
+
+```bash
+risk-engine \
+  --from-live-sources \
+  --paths-config config/paths.local.yaml \
+  --output-dir outputs \
+  --experiment-id injury_outcome_policy_v1 \
+  --injury-outcome-policies
+```
+
+These runs write `injury_severity_audit.csv`,
+`injury_severity_audit.json`, `injury_severity_audit_report.md`,
+`outcome_policy_table.csv`, `outcome_policy_summary.json`, and
+`outcome_policy_report.md`. The severity audit checks time-loss availability,
+negative values, extreme values above 365 days, and consistency between
+duration and issue/resolved dates. The policy table defines candidate targets
+such as time-loss-only, moderate-plus time-loss, severe time-loss,
+lower-extremity, soft-tissue, lower-extremity soft-tissue, concussion-only, and
+exclude-concussion.
+
 Latest live-source comparison (`intra_individual_deviation_v1`, 349 athletes,
 70 holdout): 7d AUROC 0.723, Brier skill 0.0020; 14d AUROC 0.731, Brier skill
 0.0057; 30d AUROC 0.736, Brier skill 0.0171. Compared with
@@ -355,7 +377,13 @@ group events, tendinopathy, bone stress injury, and hamstring strain/tear. Some
 time-loss values are extremely large, so severity should be audited before it
 becomes a model target, but the artifact confirms that injury subtype and
 activity context are now visible enough to drive the next modeling sprint. The
-current test suite has 137 passing tests.
+injury outcome policy run (`injury_outcome_policy_v1`) audited 638 detailed
+events: 625 were marked usable, 13 had extreme time-loss values above 365 days,
+and none had missing, negative, or duration/resolved-date mismatch flags. The
+candidate target counts were: time-loss-only 269 events, model-safe time-loss
+256, moderate-plus time-loss 177, severe time-loss 69, lower-extremity 312,
+soft-tissue 367, lower-extremity soft-tissue 241, concussion-only 79, and
+exclude-concussion 559. The current test suite has 141 passing tests.
 
 The reported risk values are baseline model estimates for research comparison,
 not calibrated clinical probabilities.

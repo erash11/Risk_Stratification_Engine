@@ -68,6 +68,22 @@ Future work may add a dashboard performance tab inspired by the Malum/SPEAR mate
 
 ## Latest Completed Step
 
+**Injury outcome policy and severity semantics audit** — implemented and verified on 2026-04-29.
+
+**What changed:** Added `injury_outcomes.py`, a new `--injury-outcome-policies` CLI mode, and `run_injury_outcome_policy_experiment(...)`. The run consumes `injury_events_detailed.csv` from live-source preparation and writes `injury_severity_audit.csv`, `injury_severity_audit.json`, `injury_severity_audit_report.md`, `outcome_policy_table.csv`, `outcome_policy_summary.json`, and `outcome_policy_report.md`. The severity audit checks missing/negative/extreme time-loss values, duration/resolved-date consistency, time-loss buckets, and event-level severity semantics flags. The policy table defines candidate model targets including any injury, time-loss-only, model-safe time-loss, moderate-plus time-loss, severe time-loss, caused-unavailability, recurrent, lower-extremity, soft-tissue, lower-extremity soft-tissue, concussion-only, and exclude-concussion.
+
+**Verification:** New TDD tests first failed because `risk_stratification_engine.injury_outcomes`, `run_injury_outcome_policy_experiment`, and the `--injury-outcome-policies` CLI dispatch did not exist. After implementation, `python -m pytest` collected and passed 141 tests. The live command `risk-engine --from-live-sources --paths-config config/paths.local.yaml --output-dir outputs --experiment-id injury_outcome_policy_v1 --injury-outcome-policies` completed and wrote the severity audit plus policy artifacts.
+
+**Live results (`injury_outcome_policy_v1`):**
+- Detailed injury events audited: 638.
+- Severity semantics flags: 625 usable, 13 `review_extreme_time_loss`, 0 missing time-loss, 0 negative time-loss, and 0 duration/resolved-date mismatches.
+- Time-loss buckets: 369 `0d`, 79 `1-7d`, 108 `8-28d`, 69 `29-365d`, and 13 `extreme_366d+`.
+- Candidate target volumes: time-loss-only 269 events, model-safe time-loss 256, moderate-plus time-loss 177, severe time-loss 69, caused-unavailability 272, lower-extremity 312, soft-tissue 367, lower-extremity soft-tissue 241, concussion-only 79, and exclude-concussion 559.
+
+**Interpretation:** The severity fields are usable enough to support the next modeling iteration, but the 13 extreme time-loss events should be excluded or audited before training severity-weighted models. The next sprint should run model and alert comparisons across the strongest candidate targets: model-safe time-loss, moderate-plus time-loss, severe time-loss, lower-extremity soft-tissue, concussion-only, and exclude-concussion.
+
+## Previous Completed Step
+
 **Injury context outcome artifacts** — implemented and verified on 2026-04-29.
 
 **What changed:** Added `injury_context.py` and extended the existing `--alert-episodes` runner to consume `injury_events_detailed.csv` when it is available beside live canonical inputs. The alert run now writes `injury_event_context_profiles.csv`, `injury_context_outcomes.csv`, `injury_context_outcomes.json`, and `injury_context_outcome_report.md`. Event profiles compare each detailed injury event against each horizon/threshold alert policy, marking whether an alert episode started, peaked, or ended within the horizon before the injury. Context rows roll those profiles up by injury type, pathology, classification, body area, tissue type, side, recurrence, unavailability, activity group/type, and time-loss bucket.

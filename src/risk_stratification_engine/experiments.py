@@ -22,6 +22,10 @@ from risk_stratification_engine.events import DEFAULT_HORIZONS, attach_time_to_e
 from risk_stratification_engine.episode_quality import build_alert_episode_quality
 from risk_stratification_engine.graphs import build_graph_snapshots
 from risk_stratification_engine.injury_context import build_injury_context_outcomes
+from risk_stratification_engine.injury_outcomes import (
+    build_injury_severity_audit,
+    build_outcome_policy_summary,
+)
 from risk_stratification_engine.io import load_injury_events, load_measurements, write_frame
 from risk_stratification_engine.models import (
     GRAPH_SNAPSHOT_FEATURE_COLUMNS,
@@ -324,6 +328,59 @@ def run_alert_episode_experiment(
                 **injury_context_outcomes,
             },
         )
+    return experiment_dir
+
+
+def run_injury_outcome_policy_experiment(
+    detailed_injuries_path: str | Path,
+    output_dir: str | Path,
+    experiment_id: str,
+) -> Path:
+    experiment_dir = _experiment_path(output_dir, experiment_id)
+    detailed_injuries = pd.read_csv(detailed_injuries_path)
+    severity_audit = build_injury_severity_audit(detailed_injuries)
+    policy_summary = build_outcome_policy_summary(detailed_injuries)
+
+    write_frame(
+        pd.DataFrame(severity_audit["event_rows"]),
+        experiment_dir / "injury_severity_audit.csv",
+    )
+    write_frame(
+        pd.DataFrame(policy_summary["policy_rows"]),
+        experiment_dir / "outcome_policy_table.csv",
+    )
+    _write_json(
+        experiment_dir / "config.json",
+        {
+            "experiment_id": experiment_id,
+            "experiment_type": "injury_outcome_policy",
+            "detailed_injuries_path": str(detailed_injuries_path),
+        },
+    )
+    _write_json(
+        experiment_dir / "injury_severity_audit.json",
+        {
+            "experiment_type": "injury_severity_audit",
+            "detailed_injuries_path": str(detailed_injuries_path),
+            **severity_audit,
+        },
+    )
+    _write_json(
+        experiment_dir / "outcome_policy_summary.json",
+        {
+            "experiment_type": "outcome_policy_summary",
+            "detailed_injuries_path": str(detailed_injuries_path),
+            **policy_summary,
+        },
+    )
+    _write_injury_severity_audit_report(
+        experiment_dir / "injury_severity_audit_report.md",
+        severity_audit,
+    )
+    _write_outcome_policy_report(
+        experiment_dir / "outcome_policy_report.md",
+        policy_summary,
+    )
     return experiment_dir
 
 
@@ -1593,6 +1650,73 @@ def _write_injury_context_outcome_report(
             f"{_format_metric(row['start_capture_rate'])} | "
             f"{_format_metric(row['median_time_loss_days'])} | "
             f"{row['recommended_next_action']} |"
+        )
+
+    path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+
+
+def _write_injury_severity_audit_report(
+    path: Path,
+    audit: dict[str, object],
+) -> None:
+    lines = [
+        "# Injury Severity Audit",
+        "",
+        f"Events: {audit['event_count']}",
+        f"Missing time-loss values: {audit['missing_time_loss_count']}",
+        f"Negative time-loss values: {audit['negative_time_loss_count']}",
+        f"Extreme time-loss values: {audit['extreme_time_loss_count']}",
+        "Extreme time-loss threshold: >365 days",
+        f"Duration/resolved-date mismatches: {audit['duration_resolution_mismatch_count']}",
+        "",
+        "## Time-Loss Buckets",
+        "",
+        "| Bucket | Events |",
+        "|---|---:|",
+    ]
+    for bucket, count in audit["time_loss_bucket_counts"].items():
+        lines.append(f"| {bucket} | {count} |")
+
+    lines.extend(
+        [
+            "",
+            "## Severity Semantics Flags",
+            "",
+            "| Flag | Events |",
+            "|---|---:|",
+        ]
+    )
+    for flag, count in audit["severity_semantics_flag_counts"].items():
+        lines.append(f"| {flag} | {count} |")
+
+    path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+
+
+def _write_outcome_policy_report(
+    path: Path,
+    summary: dict[str, object],
+) -> None:
+    lines = [
+        "# Outcome Policy Summary",
+        "",
+        f"Detailed injury events: {summary['event_count']}",
+        f"Outcome policies: {summary['policy_count']}",
+        "",
+        "This report defines candidate injury outcome policies before changing "
+        "the model target.",
+        "",
+        "| Policy | Events | Share | Median time-loss | Athletes | Recommended use |",
+        "|---|---:|---:|---:|---:|---|",
+    ]
+    for row in summary["policy_rows"]:
+        lines.append(
+            "| "
+            f"{row['policy_name']} | "
+            f"{row['event_count']} | "
+            f"{_format_metric(row['event_share'])} | "
+            f"{_format_metric(row['median_time_loss_days'])} | "
+            f"{row['athlete_count']} | "
+            f"{row['recommended_use']} |"
         )
 
     path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")

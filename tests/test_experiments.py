@@ -9,6 +9,7 @@ from risk_stratification_engine.experiments import (
     _compute_snapshot_contributions,
     run_alert_episode_experiment,
     run_calibration_threshold_experiment,
+    run_injury_outcome_policy_experiment,
     run_model_robustness_experiment,
     run_research_experiment,
     run_window_model_robustness_experiment,
@@ -583,6 +584,87 @@ def test_run_alert_episode_experiment_writes_episode_artifacts(tmp_path):
     context_report = (result / "injury_context_outcome_report.md").read_text()
     assert "Injury Context Outcomes" in context_report
     assert "Lowest capture contexts" in context_report
+
+
+def test_run_injury_outcome_policy_experiment_writes_audit_and_policy_artifacts(
+    tmp_path,
+):
+    detailed_path = tmp_path / "injury_events_detailed.csv"
+    pd.DataFrame(
+        [
+            {
+                "injury_event_id": "inj_fixture_1",
+                "athlete_id": "a1",
+                "season_id": "2026",
+                "injury_date": "2026-01-01",
+                "issue_resolved_date": "2026-01-11",
+                "injury_type": "Hamstring strain",
+                "classification": "Soft tissue",
+                "pathology": "Hamstring strain/tear",
+                "body_area": "Thigh",
+                "activity_group": "Practice",
+                "duration_days": 10,
+                "time_loss_days": 8,
+                "caused_unavailability": "Yes",
+                "recurrent": "No",
+            },
+            {
+                "injury_event_id": "inj_fixture_2",
+                "athlete_id": "a2",
+                "season_id": "2026",
+                "injury_date": "2026-02-01",
+                "issue_resolved_date": "2026-02-10",
+                "injury_type": "Concussion",
+                "classification": "Concussion",
+                "pathology": "Concussion",
+                "body_area": "Head",
+                "activity_group": "Game",
+                "duration_days": 9,
+                "time_loss_days": 900,
+                "caused_unavailability": "Yes",
+                "recurrent": "No",
+            },
+        ]
+    ).to_csv(detailed_path, index=False)
+
+    result = run_injury_outcome_policy_experiment(
+        detailed_injuries_path=detailed_path,
+        output_dir=tmp_path,
+        experiment_id="injury_outcome_fixture",
+    )
+
+    assert result == tmp_path / "experiments" / "injury_outcome_fixture"
+    assert (result / "config.json").exists()
+    assert (result / "injury_severity_audit.csv").exists()
+    assert (result / "injury_severity_audit.json").exists()
+    assert (result / "injury_severity_audit_report.md").exists()
+    assert (result / "outcome_policy_table.csv").exists()
+    assert (result / "outcome_policy_summary.json").exists()
+    assert (result / "outcome_policy_report.md").exists()
+
+    config = json.loads((result / "config.json").read_text())
+    assert config["experiment_type"] == "injury_outcome_policy"
+    assert config["detailed_injuries_path"] == str(detailed_path)
+
+    severity = json.loads((result / "injury_severity_audit.json").read_text())
+    assert severity["experiment_type"] == "injury_severity_audit"
+    assert severity["event_count"] == 2
+    assert severity["extreme_time_loss_count"] == 1
+
+    policies = pd.read_csv(result / "outcome_policy_table.csv").set_index(
+        "policy_name"
+    )
+    assert policies.loc["any_injury", "event_count"] == 2
+    assert policies.loc["moderate_plus_time_loss", "event_count"] == 1
+    assert policies.loc["concussion_only", "event_count"] == 1
+
+    policy_summary = json.loads((result / "outcome_policy_summary.json").read_text())
+    assert policy_summary["experiment_type"] == "outcome_policy_summary"
+    assert policy_summary["policy_count"] >= 8
+
+    report = (result / "outcome_policy_report.md").read_text()
+    assert "Outcome Policy Summary" in report
+    assert "moderate_plus_time_loss" in report
 
 
 # ---------------------------------------------------------------------------

@@ -54,11 +54,14 @@ def test_cli_prepares_live_sources_before_running_experiment(tmp_path, monkeypat
         output_dir.mkdir(parents=True)
         measurements = output_dir / "canonical_measurements.csv"
         injuries = output_dir / "canonical_injuries.csv"
+        detailed_injuries = output_dir / "injury_events_detailed.csv"
         measurements.write_text("measurements", encoding="utf-8")
         injuries.write_text("injuries", encoding="utf-8")
+        detailed_injuries.write_text("detailed injuries", encoding="utf-8")
         return cli.LiveSourcePreparationResult(
             measurements_path=measurements,
             injuries_path=injuries,
+            detailed_injuries_path=detailed_injuries,
             metadata_path=output_dir / "prep_metadata.json",
             audit_path=output_dir / "data_quality_audit.json",
             metadata={"canonical_rows": {"measurements": 1, "injury_events": 1}},

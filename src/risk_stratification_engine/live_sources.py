@@ -54,6 +54,7 @@ LOW_CONFIDENCE_EVENT_WINDOW_DAYS = 30
 class LiveSourcePreparationResult:
     measurements_path: Path
     injuries_path: Path
+    detailed_injuries_path: Path
     metadata_path: Path
     audit_path: Path
     metadata: dict[str, Any]
@@ -199,6 +200,102 @@ def build_injury_event_rows(
     ]
 
 
+DETAILED_INJURY_EVENT_COLUMNS = (
+    "injury_event_id",
+    "athlete_id",
+    "season_id",
+    "injury_date",
+    "issue_entry_date",
+    "issue_resolved_date",
+    "injury_type",
+    "pathology",
+    "classification",
+    "body_area",
+    "tissue_type",
+    "side",
+    "recurrent",
+    "caused_unavailability",
+    "activity",
+    "activity_group",
+    "activity_group_type",
+    "participation_level",
+    "session_completed",
+    "competition",
+    "game_date",
+    "training_session_type",
+    "surface_type",
+    "duration_days",
+    "time_loss_days",
+    "modified_available_days",
+    "not_modified_available_days",
+    "raw_code",
+    "icd_code",
+    "source_file",
+    "source_row_number",
+)
+
+
+def build_detailed_injury_event_rows(injury_export: pd.DataFrame) -> pd.DataFrame:
+    injuries = injury_export.copy()
+    output = pd.DataFrame(index=injuries.index)
+    output["athlete_id"] = _text_column(injuries, "Athlete").map(stable_athlete_id)
+    output["injury_date"] = pd.to_datetime(
+        _text_column(injuries, "Issue Date"),
+        errors="coerce",
+    )
+    output["season_id"] = _season_id_for_dates(output["injury_date"])
+    output["issue_entry_date"] = pd.to_datetime(
+        _text_column(injuries, "Issue Entry Date"),
+        errors="coerce",
+    )
+    output["issue_resolved_date"] = pd.to_datetime(
+        _text_column(injuries, "Issue Resolved Date"),
+        errors="coerce",
+    )
+    output["injury_type"] = _injury_type(injuries)
+    output["pathology"] = _text_column(injuries, "Pathology")
+    output["classification"] = _text_column(injuries, "Classification")
+    output["body_area"] = _text_column(injuries, "Body Area")
+    output["tissue_type"] = _text_column(injuries, "Tissue Type")
+    output["side"] = _text_column(injuries, "Side")
+    output["recurrent"] = _text_column(injuries, "Recurrent")
+    output["caused_unavailability"] = _text_column(injuries, "Caused Unavailability")
+    output["activity"] = _text_column(injuries, "Activity")
+    output["activity_group"] = _text_column(injuries, "Activity Group")
+    output["activity_group_type"] = _text_column(injuries, "Activity Group Type")
+    output["participation_level"] = _text_column(injuries, "Participation Level")
+    output["session_completed"] = _text_column(injuries, "Session Completed")
+    output["competition"] = _text_column(injuries, "Competition")
+    output["game_date"] = pd.to_datetime(
+        _text_column(injuries, "Game Date/Time"),
+        errors="coerce",
+    )
+    output["training_session_type"] = _text_column(injuries, "Training Session Type")
+    output["surface_type"] = _text_column(injuries, "Surface Type")
+    output["duration_days"] = _numeric_column(injuries, "Duration")
+    output["time_loss_days"] = _numeric_column(
+        injuries,
+        "Status duration: Unavailable - time-loss",
+    )
+    output["modified_available_days"] = _numeric_column(
+        injuries,
+        "Status duration: Available - modified",
+    )
+    output["not_modified_available_days"] = _numeric_column(
+        injuries,
+        "Status duration: Available - not modified",
+    )
+    output["raw_code"] = _text_column(injuries, "Code")
+    output["icd_code"] = _text_column(injuries, "ICD")
+    output["source_file"] = _text_column(injuries, "_source_file")
+    output["source_row_number"] = _integer_column(injuries, "_source_row_number")
+    output = output.loc[
+        output["athlete_id"].ne("") & output["injury_date"].notna()
+    ].reset_index(drop=True)
+    output["injury_event_id"] = _stable_injury_event_ids(output)
+    return output.loc[:, list(DETAILED_INJURY_EVENT_COLUMNS)]
+
+
 def prepare_live_source_inputs(
     paths: DataSourcePaths,
     output_dir: str | Path,
@@ -213,23 +310,28 @@ def prepare_live_source_inputs(
         .sort_values(["athlete_id", "season_id", "date", "source", "metric_name"])
     )
     measurements, aggregation_summary = aggregate_same_day_measurements(measurements)
-    injury_export = pd.read_csv(paths.injury_csv)
+    injury_export = _load_injury_exports(paths.injury_csv)
+    source_metadata["sources"]["injury"] = _injury_source_summary(injury_export)
     source_identities["injury"] = _identity_frame(injury_export, "Athlete")
+    detailed_injuries = build_detailed_injury_event_rows(injury_export)
     injuries = build_injury_event_rows(measurements, injury_export)
 
     measurements_path = output_path / "canonical_measurements.csv"
     injuries_path = output_path / "canonical_injuries.csv"
+    detailed_injuries_path = output_path / "injury_events_detailed.csv"
     metadata_path = output_path / "prep_metadata.json"
     audit_path = output_path / "data_quality_audit.json"
 
     write_frame(_csv_ready(measurements), measurements_path)
     write_frame(_csv_ready(injuries), injuries_path)
+    write_frame(_csv_ready(detailed_injuries), detailed_injuries_path)
 
     metadata = _preparation_metadata(
         paths,
         source_metadata,
         measurements,
         injuries,
+        detailed_injuries,
         aggregation_summary,
     )
     audit = build_data_quality_audit(measurements, injuries, source_identities)
@@ -244,6 +346,7 @@ def prepare_live_source_inputs(
     return LiveSourcePreparationResult(
         measurements_path=measurements_path,
         injuries_path=injuries_path,
+        detailed_injuries_path=detailed_injuries_path,
         metadata_path=metadata_path,
         audit_path=audit_path,
         metadata=metadata,
@@ -340,6 +443,31 @@ def _load_source_measurements(
     metadata["sources"]["perch"] = _source_summary(perch, perch_metrics)
     identities["perch"] = _identity_frame(perch, "name_normalized")
     return [gps_frame, forceplate_frame, bodyweight_frame, perch_frame], metadata, identities
+
+
+def _load_injury_exports(path: Path) -> pd.DataFrame:
+    paths = _injury_export_paths(path)
+    frames = []
+    for export_path in paths:
+        frame = pd.read_csv(export_path)
+        frame["_source_file"] = export_path.name
+        frame["_source_row_number"] = range(1, len(frame) + 1)
+        frames.append(frame)
+    combined = pd.concat(frames, ignore_index=True)
+    raw_columns = [
+        column
+        for column in combined.columns
+        if column not in {"_source_file", "_source_row_number"}
+    ]
+    return combined.drop_duplicates(subset=raw_columns).reset_index(drop=True)
+
+
+def _injury_export_paths(path: Path) -> list[Path]:
+    if re.fullmatch(r"injuries-summary-export-.+\.csv", path.name):
+        paths = sorted(path.parent.glob("injuries-summary-export-*.csv"))
+        if paths:
+            return paths
+    return [path]
 
 
 def _normalize_name(value: object) -> str:
@@ -451,6 +579,48 @@ def _injury_type(injuries: pd.DataFrame) -> pd.Series:
     return injury_type.where(injury_type.astype(str).str.strip().ne(""), "unspecified")
 
 
+def _text_column(frame: pd.DataFrame, column: str) -> pd.Series:
+    if column not in frame:
+        return pd.Series("", index=frame.index, dtype=object)
+    return frame[column].fillna("").astype(str).str.strip()
+
+
+def _numeric_column(frame: pd.DataFrame, column: str) -> pd.Series:
+    if column not in frame:
+        return pd.Series(pd.NA, index=frame.index, dtype="Float64")
+    return pd.to_numeric(frame[column], errors="coerce").astype("Float64")
+
+
+def _integer_column(frame: pd.DataFrame, column: str) -> pd.Series:
+    if column not in frame:
+        return pd.Series(pd.NA, index=frame.index, dtype="Int64")
+    return pd.to_numeric(frame[column], errors="coerce").astype("Int64")
+
+
+def _stable_injury_event_ids(events: pd.DataFrame) -> pd.Series:
+    seeds = events.loc[
+        :,
+        [
+            "athlete_id",
+            "injury_date",
+            "issue_entry_date",
+            "raw_code",
+            "pathology",
+            "classification",
+            "source_file",
+            "source_row_number",
+        ],
+    ].copy()
+    for column in ("injury_date", "issue_entry_date"):
+        seeds[column] = pd.to_datetime(seeds[column], errors="coerce").dt.strftime(
+            "%Y-%m-%d"
+        )
+    seed_text = seeds.fillna("").astype(str).agg("|".join, axis=1)
+    return "inj_" + seed_text.map(
+        lambda value: hashlib.sha256(value.encode("utf-8")).hexdigest()[:12]
+    )
+
+
 def _top_metric_names(
     frame: pd.DataFrame,
     *,
@@ -494,11 +664,29 @@ def _source_summary(frame: pd.DataFrame, selected_metrics: list[str]) -> dict[st
     }
 
 
+def _injury_source_summary(frame: pd.DataFrame) -> dict[str, Any]:
+    files = (
+        sorted(frame["_source_file"].dropna().astype(str).unique().tolist())
+        if "_source_file" in frame
+        else []
+    )
+    return {
+        "row_count": int(len(frame)),
+        "columns": [
+            str(column)
+            for column in frame.columns
+            if column not in {"_source_file", "_source_row_number"}
+        ],
+        "files": files,
+    }
+
+
 def _preparation_metadata(
     paths: DataSourcePaths,
     source_metadata: dict[str, Any],
     measurements: pd.DataFrame,
     injuries: pd.DataFrame,
+    detailed_injuries: pd.DataFrame,
     aggregation_summary: dict[str, Any],
 ) -> dict[str, Any]:
     return {
@@ -530,6 +718,7 @@ def _preparation_metadata(
         "canonical_rows": {
             "measurements": int(len(measurements)),
             "injury_events": int(len(injuries)),
+            "detailed_injury_events": int(len(detailed_injuries)),
             "observed_events": int(injuries["event_observed"].sum()),
         },
         "canonical_distinct": {

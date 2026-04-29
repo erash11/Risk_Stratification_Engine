@@ -3,6 +3,7 @@ import pandas as pd
 from risk_stratification_engine.config import DataSourcePaths
 from risk_stratification_engine.live_sources import (
     aggregate_same_day_measurements,
+    build_detailed_injury_event_rows,
     build_injury_event_rows,
     canonicalize_long_measurements,
     canonicalize_wide_measurements,
@@ -318,6 +319,109 @@ def test_build_injury_event_rows_assigns_event_window_quality_labels():
     }
 
 
+def test_build_detailed_injury_event_rows_preserves_rich_context_without_names():
+    injuries = pd.DataFrame(
+        [
+            {
+                "Athlete": "Jane Athlete",
+                "DOB": "2001-01-01",
+                "Issue Date": "2026-08-04",
+                "Issue Entry Date": "2026-08-05",
+                "Issue Resolved Date": "2026-08-20",
+                "Duration": "16.0",
+                "Classification": "soft tissue",
+                "Pathology": "hamstring strain",
+                "Type": "injury",
+                "Body Area": "thigh",
+                "Tissue Type": "muscle",
+                "Side": "left",
+                "Recurrent": "Yes",
+                "Caused Unavailability": "Yes",
+                "Activity": "sprint",
+                "Activity Group": "training",
+                "Activity Group Type": "field",
+                "Participation Level": "modified",
+                "Session Completed": "No",
+                "Competition": "",
+                "Game Date/Time": "",
+                "Training Session Type": "practice",
+                "Surface Type": "grass",
+                "Status duration: Unavailable - time-loss": "6",
+                "Status duration: Available - modified": "10",
+                "Status duration: Available - not modified": "0",
+                "Code": "HAM-1",
+                "ICD": "S76",
+                "_source_file": "injuries-summary-export-test.csv",
+                "_source_row_number": 1,
+            },
+            {
+                "Athlete": "Jane Athlete",
+                "Issue Date": "2026-09-10",
+                "Issue Entry Date": "2026-09-10",
+                "Classification": "",
+                "Pathology": "ankle sprain",
+                "Type": "injury",
+                "Code": "ANK-1",
+                "_source_file": "injuries-summary-export-test.csv",
+                "_source_row_number": 2,
+            },
+        ]
+    )
+
+    frame = build_detailed_injury_event_rows(injuries)
+
+    assert list(frame.columns) == [
+        "injury_event_id",
+        "athlete_id",
+        "season_id",
+        "injury_date",
+        "issue_entry_date",
+        "issue_resolved_date",
+        "injury_type",
+        "pathology",
+        "classification",
+        "body_area",
+        "tissue_type",
+        "side",
+        "recurrent",
+        "caused_unavailability",
+        "activity",
+        "activity_group",
+        "activity_group_type",
+        "participation_level",
+        "session_completed",
+        "competition",
+        "game_date",
+        "training_session_type",
+        "surface_type",
+        "duration_days",
+        "time_loss_days",
+        "modified_available_days",
+        "not_modified_available_days",
+        "raw_code",
+        "icd_code",
+        "source_file",
+        "source_row_number",
+    ]
+    assert len(frame) == 2
+    assert "Athlete" not in frame.columns
+    assert "DOB" not in frame.columns
+
+    first = frame.iloc[0].to_dict()
+    assert first["athlete_id"] == stable_athlete_id("Jane Athlete")
+    assert first["season_id"] == "2026-2027"
+    assert first["injury_date"] == pd.Timestamp("2026-08-04")
+    assert first["injury_type"] == "soft tissue"
+    assert first["pathology"] == "hamstring strain"
+    assert first["body_area"] == "thigh"
+    assert first["recurrent"] == "Yes"
+    assert first["duration_days"] == 16.0
+    assert first["time_loss_days"] == 6.0
+    assert first["modified_available_days"] == 10.0
+    assert first["source_file"] == "injuries-summary-export-test.csv"
+    assert first["source_row_number"] == 1
+
+
 def test_prepare_live_source_inputs_writes_data_quality_audit(
     tmp_path,
     monkeypatch,
@@ -426,3 +530,126 @@ def test_prepare_live_source_inputs_writes_data_quality_audit(
         "injury": 1,
         "perch": 1,
     }
+
+
+def test_prepare_live_source_inputs_writes_detailed_events_from_sibling_exports(
+    tmp_path,
+    monkeypatch,
+):
+    paths = DataSourcePaths(
+        forceplate_db=tmp_path / "forceplate.duckdb",
+        gps_db=tmp_path / "gps.duckdb",
+        bodyweight_csv=tmp_path / "bodyweight.csv",
+        perch_db=tmp_path / "perch.duckdb",
+        injury_csv=tmp_path / "injuries-summary-export-a.csv",
+    )
+    pd.DataFrame(
+        [
+            {
+                "DATE": "2026-01-01",
+                "NAME": "Shared Athlete",
+                "WEIGHT": 190.0,
+            }
+        ]
+    ).to_csv(paths.bodyweight_csv, index=False)
+    pd.DataFrame(
+        [
+            {
+                "Athlete": "Shared Athlete",
+                "Issue Date": "2026-01-20",
+                "Classification": "soft tissue",
+                "Pathology": "hamstring strain",
+                "Body Area": "thigh",
+                "Type": "injury",
+                "Duration": "12",
+                "Status duration: Unavailable - time-loss": "4",
+            }
+        ]
+    ).to_csv(paths.injury_csv, index=False)
+    pd.DataFrame(
+        [
+            {
+                "Athlete": "Shared Athlete",
+                "Issue Date": "2026-03-01",
+                "Classification": "joint",
+                "Pathology": "ankle sprain",
+                "Body Area": "ankle",
+                "Type": "injury",
+                "Duration": "8",
+                "Status duration: Unavailable - time-loss": "2",
+            }
+        ]
+    ).to_csv(tmp_path / "injuries-summary-export-b.csv", index=False)
+
+    def fake_read_duckdb(_duckdb, path, _query):
+        if path == paths.gps_db:
+            return pd.DataFrame(
+                [
+                    {
+                        "name": "Shared Athlete",
+                        "session_date": "2026-01-01",
+                        "total_player_load": 10.0,
+                        "total_distance_m": 100.0,
+                    }
+                ]
+            )
+        if path == paths.forceplate_db:
+            return pd.DataFrame(
+                [
+                    {
+                        "athlete_name": "Shared Athlete",
+                        "test_date": "2026-01-10",
+                        "metric_name": "Peak Power",
+                        "metric_value": 200.0,
+                    }
+                ]
+            )
+        if path == paths.perch_db:
+            return pd.DataFrame(
+                [
+                    {
+                        "name_normalized": "Shared Athlete",
+                        "test_date": "2026-01-12",
+                        "exercise": "Bench Press",
+                        "one_rm_lbs": 300.0,
+                    }
+                ]
+            )
+        raise AssertionError(f"unexpected path: {path}")
+
+    monkeypatch.setattr(
+        "risk_stratification_engine.live_sources._require_duckdb",
+        lambda: object(),
+    )
+    monkeypatch.setattr(
+        "risk_stratification_engine.live_sources._read_duckdb",
+        fake_read_duckdb,
+    )
+
+    result = prepare_live_source_inputs(paths, tmp_path / "prepared")
+    detailed = pd.read_csv(result.detailed_injuries_path)
+    canonical = pd.read_csv(result.injuries_path)
+
+    assert result.detailed_injuries_path.name == "injury_events_detailed.csv"
+    assert detailed[["source_file", "injury_type", "body_area"]].to_dict(
+        "records"
+    ) == [
+        {
+            "source_file": "injuries-summary-export-a.csv",
+            "injury_type": "soft tissue",
+            "body_area": "thigh",
+        },
+        {
+            "source_file": "injuries-summary-export-b.csv",
+            "injury_type": "joint",
+            "body_area": "ankle",
+        },
+    ]
+    assert len(canonical) == 1
+    assert canonical.loc[0, "injury_type"] == "soft tissue"
+    assert result.metadata["sources"]["injury"]["row_count"] == 2
+    assert result.metadata["sources"]["injury"]["files"] == [
+        "injuries-summary-export-a.csv",
+        "injuries-summary-export-b.csv",
+    ]
+    assert result.metadata["canonical_rows"]["detailed_injury_events"] == 2

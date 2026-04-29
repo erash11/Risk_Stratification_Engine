@@ -40,10 +40,11 @@ Future work may add a dashboard performance tab inspired by the Malum/SPEAR mate
 - Use `config/paths.example.yaml` as the committed template and `config/paths.local.yaml` as the ignored machine-specific file for live source paths.
 - The current live-source keys are `forceplate_db`, `gps_db`, `bodyweight_csv`, `perch_db`, and `injury_csv`.
 - As of 2026-04-25, the local `config/paths.local.yaml` resolves all five live-source keys successfully.
-- The local injury export is in `data/raw/` as `injuries-summary-export-3ad17d.csv`; keep raw injury data ignored.
+- Local injury exports are in `data/raw/` as ignored `injuries-summary-export-*.csv` files; keep raw injury data ignored.
 - When running against live source files, record path metadata, file existence, schemas, and row counts in experiment/data-quality artifacts for reproducibility.
 - As of 2026-04-27, live-source ingestion is available through `risk-engine --from-live-sources --paths-config config/paths.local.yaml --output-dir outputs --experiment-id <id>`.
 - Live-source ingestion writes ignored canonical inputs to `outputs/live_inputs/<experiment-id>/`, uses stable hashed athlete IDs from normalized names, starts seasons on July 1, and uses the earliest injury issue date per athlete-season with censoring at the last measurement date.
+- If `injury_csv` points to a file named `injuries-summary-export-*.csv`, live-source ingestion loads all sibling files with that pattern, de-duplicates exact raw rows, and writes `injury_events_detailed.csv` with one de-identified row per raw injury event. The detailed artifact preserves issue/resolved dates, duration and time-loss fields, recurrence, unavailability, activity, classification/pathology, body area, tissue type, side, participation level, training/game context, source file, and source row number while leaving `canonical_injuries.csv` as the current first-event-per-athlete-season modeling label file.
 - Live-source ingestion also writes `data_quality_audit.json` with hashed source-overlap checks, sparse athlete-season flags, large within-season date gaps, duplicate same-day metric rows, and injury events without nearby measurements.
 - Live-source name normalization reconciles common `Last, First` export names with `First Last` names before hashing, and duplicate same-day metric rows are aggregated by mean value before modeling with counts recorded in `prep_metadata.json`.
 - `data_quality_audit.json` includes privacy-preserving review context for remaining single-source hashed identities and observed injury events outside the nearby-measurement window.
@@ -66,6 +67,24 @@ Future work may add a dashboard performance tab inspired by the Malum/SPEAR mate
 - Window/model robustness (`window_model_robustness_v1` run, windows 2/4/7, 5 rotating splits, 349 athletes): no single window/variant dominates all operating goals. Window 7 + L2 won calibration at 7d/14d, window 4 + L2 won 30d calibration, window 2 regularized variants won triage lift at all horizons, and ranking split by horizon: window 2 baseline at 7d AUROC 0.731, window 4 L2 at 14d AUROC 0.729, and window 7 L1 at 30d AUROC 0.729. This supports using L2 as the calibration-oriented production candidate while keeping window 2 as a high-alert triage setting and window 7 under review for 30d ranking.
 
 ## Latest Completed Step
+
+**Detailed injury event enrichment ingestion** — implemented and verified on 2026-04-29.
+
+**What changed:** Live-source injury ingestion now discovers all sibling `injuries-summary-export-*.csv` files when `injury_csv` points at one of those exports, de-duplicates exact raw rows, and writes `injury_events_detailed.csv` beside `canonical_measurements.csv` and `canonical_injuries.csv`. The detailed artifact keeps one de-identified row per injury event with hashed `athlete_id`, stable `injury_event_id`, season, issue/entry/resolved dates, injury type, pathology, classification, body area, tissue type, side, recurrence, unavailability, activity context, participation/training/game context, duration/time-loss/availability-day fields, ICD/code fields, source file, and source row number. The existing `canonical_injuries.csv` modeling contract is unchanged and still uses the earliest injury issue date per athlete-season.
+
+**Verification:** New TDD tests first failed because `build_detailed_injury_event_rows`, `LiveSourcePreparationResult.detailed_injuries_path`, and the sibling-export preparation behavior did not exist. After implementation, `python -m pytest` collected and passed 136 tests. The live command `risk-engine --from-live-sources --paths-config config/paths.local.yaml --output-dir outputs --experiment-id injury_event_enrichment_v1 --alert-episodes --model-variant l2 --graph-window-size 4` completed and wrote the enriched live inputs plus alert episode artifacts.
+
+**Live results (`injury_event_enrichment_v1`, L2, window 4):**
+- Injury source files loaded: `injuries-summary-export-306ff9.csv`, `injuries-summary-export-3ad17d.csv`, and `injuries-summary-export-e433b3.csv`.
+- Detailed injury events: 638 rows, spanning 2022-09-01 through 2026-04-23.
+- Canonical athlete-season injury label rows: 954, with 322 observed events and 300 primary modelable events.
+- Event-window quality counts: 632 censored, 300 modelable, 8 low-confidence, 14 out-of-window, and 0 no-measurements.
+- Rich injury field coverage was high for model-relevant context: pathology 638/638, time-loss days 638/638, recurrence 638/638, caused unavailability 638/638, activity 637/638, classification 600/638, body area 599/638, and duration 583/638.
+- Alert episode output shifted with the expanded injury history: 4,246 total episodes; at 30d top-5%, 392 episodes captured 76 events after episode start, 87 after peak, and 100 after episode end.
+
+**Interpretation:** The data richness bottleneck is now less about missing injury column headings and more about using the preserved context in modeling. The next sprint should build severity/subtype/context-aware outcome artifacts from `injury_events_detailed.csv`, then test whether time-loss, recurrence, body area, activity context, and injury subtype explain noisy alerts or missed events better than graph dynamics alone.
+
+## Previous Completed Step
 
 **Model Improvement Diagnostic Table v1** — implemented and verified on 2026-04-28.
 

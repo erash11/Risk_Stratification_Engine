@@ -36,6 +36,11 @@ The expected sources are:
 - `perch_db`
 - `injury_csv`
 
+When `injury_csv` points at a file named `injuries-summary-export-*.csv`, live
+preparation loads all sibling injury summary exports with that pattern from the
+same folder. This supports period-sliced injury exports without manually
+concatenating them.
+
 ## Run Live-Source Experiment
 
 When `config/paths.local.yaml` points to available local sources, the CLI can
@@ -91,23 +96,31 @@ risk-engine \
 
 Live-source preparation writes ignored canonical CSVs under
 `outputs/live_inputs/<experiment-id>/` and records preparation metadata plus a
-`data_quality_audit.json` beside them. The audit reports hashed identity overlap
-across sources, sparse athlete-seasons, large within-season measurement gaps,
-duplicate same-day metric rows, and observed injury events without nearby
-measurements. It also includes review context for remaining single-source hashed
-identities and injury events outside the nearby-measurement window. Athlete
-identities are stable hashes of normalized names, seasons start on July 1, and
-the current injury label policy uses the earliest injury issue date per
-athlete-season while censoring event-free athlete-seasons at their last
-measurement date. Name normalization reconciles common `Last, First` export style
-with `First Last` names before hashing. Duplicate same-day metric rows are
-aggregated by mean `metric_value` per athlete, season, date, source, and metric
-before modeling; the aggregation counts are recorded in `prep_metadata.json`.
-Observed injury events are labeled by nearest same-season measurement distance:
-`modelable` at 14 days or less, `low_confidence` at 15-30 days, and
-`out_of_window` beyond 30 days. When `primary_model_event` is available, the
-discrete-time baseline uses it as the positive-event policy so low-confidence
-and out-of-window observed events do not become training positives.
+`data_quality_audit.json` beside them. It writes `canonical_measurements.csv`,
+`canonical_injuries.csv`, and `injury_events_detailed.csv`. The detailed injury
+event file preserves one de-identified row per raw injury event with richer
+context such as issue/resolved dates, duration, time-loss days, modified
+availability days, recurrence, unavailability, activity, classification,
+pathology, body area, tissue type, side, participation level, training/game
+context, source file, and source row number.
+
+The audit reports hashed identity overlap across sources, sparse
+athlete-seasons, large within-season measurement gaps, duplicate same-day metric
+rows, and observed injury events without nearby measurements. It also includes
+review context for remaining single-source hashed identities and injury events
+outside the nearby-measurement window. Athlete identities are stable hashes of
+normalized names, seasons start on July 1, and the current modeling label policy
+still uses the earliest injury issue date per athlete-season while censoring
+event-free athlete-seasons at their last measurement date. Name normalization
+reconciles common `Last, First` export style with `First Last` names before
+hashing. Duplicate same-day metric rows are aggregated by mean `metric_value` per
+athlete, season, date, source, and metric before modeling; the aggregation counts
+are recorded in `prep_metadata.json`. Observed injury events are labeled by
+nearest same-season measurement distance: `modelable` at 14 days or less,
+`low_confidence` at 15-30 days, and `out_of_window` beyond 30 days. When
+`primary_model_event` is available, the discrete-time baseline uses it as the
+positive-event policy so low-confidence and out-of-window observed events do not
+become training positives.
 
 ## Modeling Baseline
 

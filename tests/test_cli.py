@@ -377,6 +377,7 @@ def test_cli_runs_alert_episode_experiment(tmp_path, monkeypatch):
         experiment_id,
         graph_window_size,
         model_variant,
+        detailed_injuries_path,
     ):
         calls["alert_episodes"] = {
             "measurements_path": measurements_path,
@@ -385,6 +386,7 @@ def test_cli_runs_alert_episode_experiment(tmp_path, monkeypatch):
             "experiment_id": experiment_id,
             "graph_window_size": graph_window_size,
             "model_variant": model_variant,
+            "detailed_injuries_path": detailed_injuries_path,
         }
         experiment_dir = output_dir / "experiments" / experiment_id
         experiment_dir.mkdir(parents=True)
@@ -422,4 +424,5 @@ def test_cli_runs_alert_episode_experiment(tmp_path, monkeypatch):
         "experiment_id": "alert_episode_run",
         "graph_window_size": 4,
         "model_variant": "l2",
+        "detailed_injuries_path": None,
     }

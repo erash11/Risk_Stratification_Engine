@@ -68,6 +68,24 @@ Future work may add a dashboard performance tab inspired by the Malum/SPEAR mate
 
 ## Latest Completed Step
 
+**Injury context outcome artifacts** — implemented and verified on 2026-04-29.
+
+**What changed:** Added `injury_context.py` and extended the existing `--alert-episodes` runner to consume `injury_events_detailed.csv` when it is available beside live canonical inputs. The alert run now writes `injury_event_context_profiles.csv`, `injury_context_outcomes.csv`, `injury_context_outcomes.json`, and `injury_context_outcome_report.md`. Event profiles compare each detailed injury event against each horizon/threshold alert policy, marking whether an alert episode started, peaked, or ended within the horizon before the injury. Context rows roll those profiles up by injury type, pathology, classification, body area, tissue type, side, recurrence, unavailability, activity group/type, and time-loss bucket.
+
+**Verification:** New TDD tests first failed because `risk_stratification_engine.injury_context` and the alert-run context artifacts did not exist. After implementation, `python -m pytest` collected and passed 137 tests. The live command `risk-engine --from-live-sources --paths-config config/paths.local.yaml --output-dir outputs --experiment-id injury_context_outcomes_v1 --alert-episodes --model-variant l2 --graph-window-size 4` completed and wrote the injury-context outcome artifacts.
+
+**Live results (`injury_context_outcomes_v1`, L2, window 4):**
+- Event profiles: 3,828 rows for 638 detailed injury events across 7d/14d/30d and top-5%/top-10% policies.
+- Grouped context rows: 2,046.
+- At 30d top-5%, time-loss bucket capture rates remained low: `0d` 27/369 events (7.3%), `1-7d` 12/79 (15.2%), `8-28d` 9/108 (8.3%), and `29d+` 7/82 (8.5%).
+- Low-capture 30d top-5% body-area contexts included lower leg, elbow, neck, thigh, and groin/hip. Low-capture activity contexts included S&C, practice, game, and other groups.
+- Low-capture subtype contexts included tendinopathy, bone stress injury, bone contusion, bursitis, arthritis, hamstring strain/tear, and several isolated high time-loss fracture/ligament cases.
+- Some time-loss values are extremely large, so severity fields need a semantics/data-quality audit before being used directly as model targets.
+
+**Interpretation:** The context artifact confirms the next performance lever is not just more graph tuning. The current alert policy misses recognizable injury categories and severity buckets, including some high time-loss events. The next sprint should audit time-loss semantics and then test context-aware event targets/features: subtype-specific outcomes, time-loss-weighted events, recurrence/unavailability indicators, and training/game/S&C context.
+
+## Previous Completed Step
+
 **Detailed injury event enrichment ingestion** — implemented and verified on 2026-04-29.
 
 **What changed:** Live-source injury ingestion now discovers all sibling `injuries-summary-export-*.csv` files when `injury_csv` points at one of those exports, de-duplicates exact raw rows, and writes `injury_events_detailed.csv` beside `canonical_measurements.csv` and `canonical_injuries.csv`. The detailed artifact keeps one de-identified row per injury event with hashed `athlete_id`, stable `injury_event_id`, season, issue/entry/resolved dates, injury type, pathology, classification, body area, tissue type, side, recurrence, unavailability, activity context, participation/training/game context, duration/time-loss/availability-day fields, ICD/code fields, source file, and source row number. The existing `canonical_injuries.csv` modeling contract is unchanged and still uses the earliest injury issue date per athlete-season.

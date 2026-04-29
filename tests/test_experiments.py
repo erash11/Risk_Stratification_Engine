@@ -417,9 +417,35 @@ def test_run_calibration_threshold_experiment_writes_artifacts(tmp_path):
 
 
 def test_run_alert_episode_experiment_writes_episode_artifacts(tmp_path):
+    detailed_path = tmp_path / "injury_events_detailed.csv"
+    pd.DataFrame(
+        [
+            {
+                "injury_event_id": "inj_fixture",
+                "athlete_id": "a1",
+                "season_id": "2026",
+                "injury_date": "2026-01-20",
+                "injury_type": "lower_extremity_soft_tissue",
+                "pathology": "hamstring strain",
+                "classification": "soft tissue",
+                "body_area": "thigh",
+                "tissue_type": "muscle",
+                "side": "left",
+                "recurrent": "No",
+                "caused_unavailability": "Yes",
+                "activity_group": "training",
+                "activity_group_type": "field",
+                "duration_days": 14,
+                "time_loss_days": 7,
+                "modified_available_days": 3,
+            }
+        ]
+    ).to_csv(detailed_path, index=False)
+
     result = run_alert_episode_experiment(
         measurements_path=FIXTURES / "measurements.csv",
         injuries_path=FIXTURES / "injuries.csv",
+        detailed_injuries_path=detailed_path,
         output_dir=tmp_path,
         experiment_id="alert_episode_fixture",
         graph_window_size=2,
@@ -443,11 +469,16 @@ def test_run_alert_episode_experiment_writes_episode_artifacts(tmp_path):
     assert (result / "model_improvement_diagnostics.csv").exists()
     assert (result / "model_improvement_diagnostics.json").exists()
     assert (result / "model_improvement_diagnostic_report.md").exists()
+    assert (result / "injury_event_context_profiles.csv").exists()
+    assert (result / "injury_context_outcomes.csv").exists()
+    assert (result / "injury_context_outcomes.json").exists()
+    assert (result / "injury_context_outcome_report.md").exists()
 
     config = json.loads((result / "config.json").read_text())
     assert config["experiment_type"] == "alert_episode_validation"
     assert config["model_variant"] == "l2"
     assert config["alert_percentile_thresholds"] == [0.5]
+    assert config["detailed_injuries_path"] == str(detailed_path)
 
     summary = json.loads((result / "alert_episode_summary.json").read_text())
     assert summary["experiment_type"] == "alert_episode_validation"
@@ -531,6 +562,27 @@ def test_run_alert_episode_experiment_writes_episode_artifacts(tmp_path):
     ).read_text()
     assert "Model Improvement Diagnostics" in improvement_report
     assert "Recommended next action" in improvement_report
+
+    context_payload = json.loads((result / "injury_context_outcomes.json").read_text())
+    assert context_payload["experiment_type"] == "injury_context_outcomes"
+    assert context_payload["event_profile_count"] >= 1
+    assert context_payload["context_row_count"] >= 1
+    assert {
+        "context_field",
+        "context_value",
+        "event_count",
+        "captured_after_start_count",
+    }.issubset(context_payload["context_rows"][0])
+
+    context_table = pd.read_csv(result / "injury_context_outcomes.csv")
+    assert "time_loss_bucket" in pd.read_csv(
+        result / "injury_event_context_profiles.csv"
+    ).columns
+    assert "body_area" in set(context_table["context_field"])
+
+    context_report = (result / "injury_context_outcome_report.md").read_text()
+    assert "Injury Context Outcomes" in context_report
+    assert "Lowest capture contexts" in context_report
 
 
 # ---------------------------------------------------------------------------

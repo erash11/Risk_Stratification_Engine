@@ -225,10 +225,15 @@ qualitative case-review artifacts: `qualitative_case_review.json` and
 `qualitative_case_review_report.md`, plus the model-improvement diagnostic
 artifacts: `model_improvement_diagnostics.csv`,
 `model_improvement_diagnostics.json`, and
-`model_improvement_diagnostic_report.md`. Episodes use the top-5% and top-10%
-percentile thresholds, collapse contiguous alert snapshots, record start/peak/end
-event timing without treating censoring dates as injuries, and roll up model
-contribution and intra-individual z-score flags. The quality audit adds
+`model_improvement_diagnostic_report.md`. When
+`injury_events_detailed.csv` is available beside the canonical live inputs, the
+same run also writes injury-context outcome artifacts:
+`injury_event_context_profiles.csv`, `injury_context_outcomes.csv`,
+`injury_context_outcomes.json`, and `injury_context_outcome_report.md`.
+Episodes use the top-5% and top-10% percentile thresholds, collapse contiguous
+alert snapshots, record start/peak/end event timing without treating censoring
+dates as injuries, and roll up model contribution and intra-individual z-score
+flags. The quality audit adds
 start-based true-positive counts, false-positive counts, unique injury-event
 capture, missed observed events, alert burden per athlete-season, median lead
 time, threshold overlap, and representative cases. The case-review artifact adds
@@ -236,7 +241,11 @@ timeline context and simple diagnostic labels for useful warnings, noisy alerts,
 missed injuries, and high own-baseline-deviation cases. The model-improvement
 diagnostic table compares useful alerts, noisy alerts, and missed observed
 injuries side by side so the next modeling sprint can target missing context,
-threshold policy, or event-specific feature gaps.
+threshold policy, or event-specific feature gaps. The injury-context outcome
+artifact profiles each detailed injury event against each horizon/threshold and
+rolls capture rates up by injury type, pathology, classification, body area,
+tissue type, side, recurrence, unavailability, activity context, and time-loss
+bucket.
 
 Latest live-source comparison (`intra_individual_deviation_v1`, 349 athletes,
 70 holdout): 7d AUROC 0.723, Brier skill 0.0020; 14d AUROC 0.731, Brier skill
@@ -333,7 +342,20 @@ z-feature rates (82.3% vs 79.4%), reinforcing the need for added context
 features. Missed 30d top-5% events were mostly modelable (129 of 133) and had a
 maximum pre-event risk of 0.701 but low median pre-event risk (0.034), pointing
 to threshold/policy review plus event-specific feature work rather than data
-cleanup alone. The current test suite has 134 passing tests.
+cleanup alone.
+
+The injury-context outcome run (`injury_context_outcomes_v1`, L2, window 4)
+used the three uploaded detailed injury exports and wrote 3,828 event profiles
+for 638 unique detailed injury events across the six horizon/threshold views,
+plus 2,046 grouped context rows. At 30d top-5%, the lowest-capture severity
+buckets were `0d` time-loss (369 events, 7.3% start-capture rate), `8-28d` (108
+events, 8.3%), and `29d+` (82 events, 8.5%). Low-capture contexts included
+lower-leg, elbow, neck, thigh, and groin/hip body-area events, S&C activity
+group events, tendinopathy, bone stress injury, and hamstring strain/tear. Some
+time-loss values are extremely large, so severity should be audited before it
+becomes a model target, but the artifact confirms that injury subtype and
+activity context are now visible enough to drive the next modeling sprint. The
+current test suite has 137 passing tests.
 
 The reported risk values are baseline model estimates for research comparison,
 not calibrated clinical probabilities.

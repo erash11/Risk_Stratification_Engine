@@ -21,6 +21,7 @@ from risk_stratification_engine.evaluation import evaluate_risk_model
 from risk_stratification_engine.events import DEFAULT_HORIZONS, attach_time_to_event_labels
 from risk_stratification_engine.episode_quality import build_alert_episode_quality
 from risk_stratification_engine.graphs import build_graph_snapshots
+from risk_stratification_engine.injury_context import build_injury_context_outcomes
 from risk_stratification_engine.io import load_injury_events, load_measurements, write_frame
 from risk_stratification_engine.models import (
     GRAPH_SNAPSHOT_FEATURE_COLUMNS,
@@ -139,6 +140,7 @@ def run_alert_episode_experiment(
     graph_window_size: int = 4,
     model_variant: str = "l2",
     percentile_thresholds: tuple[float, ...] = DEFAULT_ALERT_PERCENTILES,
+    detailed_injuries_path: str | Path | None = None,
 ) -> Path:
     experiment_dir = _experiment_path(output_dir, experiment_id)
     measurements = load_measurements(measurements_path)
@@ -174,6 +176,16 @@ def run_alert_episode_experiment(
         alert_timeline=alert_timeline,
         quality=quality,
     )
+    resolved_detailed_injuries_path = _resolve_detailed_injuries_path(
+        injuries_path,
+        detailed_injuries_path,
+    )
+    injury_context_outcomes = None
+    if resolved_detailed_injuries_path is not None:
+        injury_context_outcomes = build_injury_context_outcomes(
+            detailed_events=pd.read_csv(resolved_detailed_injuries_path),
+            episodes=episodes,
+        )
     alert_summary.update(
         {
             "experiment_type": "alert_episode_validation",
@@ -203,6 +215,9 @@ def run_alert_episode_experiment(
             "experiment_type": "alert_episode_validation",
             "measurements_path": str(measurements_path),
             "injuries_path": str(injuries_path),
+            "detailed_injuries_path": str(resolved_detailed_injuries_path)
+            if resolved_detailed_injuries_path is not None
+            else None,
             "graph_window_size": graph_window_size,
             "model_variant": model_variant,
             "horizons": list(DEFAULT_HORIZONS),
@@ -252,6 +267,26 @@ def run_alert_episode_experiment(
             **model_diagnostics,
         },
     )
+    if injury_context_outcomes is not None:
+        write_frame(
+            pd.DataFrame(injury_context_outcomes["event_profile_rows"]),
+            experiment_dir / "injury_event_context_profiles.csv",
+        )
+        write_frame(
+            pd.DataFrame(injury_context_outcomes["context_rows"]),
+            experiment_dir / "injury_context_outcomes.csv",
+        )
+        _write_json(
+            experiment_dir / "injury_context_outcomes.json",
+            {
+                "experiment_type": "injury_context_outcomes",
+                "model_variant": model_variant,
+                "graph_window_size": graph_window_size,
+                "detailed_injuries_path": str(resolved_detailed_injuries_path),
+                "alert_percentile_thresholds": list(percentile_thresholds),
+                **injury_context_outcomes,
+            },
+        )
     _write_alert_episode_report(
         experiment_dir / "alert_episode_report.md",
         alert_summary,
@@ -280,6 +315,15 @@ def run_alert_episode_experiment(
             **model_diagnostics,
         },
     )
+    if injury_context_outcomes is not None:
+        _write_injury_context_outcome_report(
+            experiment_dir / "injury_context_outcome_report.md",
+            {
+                "model_variant": model_variant,
+                "graph_window_size": graph_window_size,
+                **injury_context_outcomes,
+            },
+        )
     return experiment_dir
 
 
@@ -866,6 +910,17 @@ def _experiment_path(output_dir: str | Path, experiment_id: str) -> Path:
     ):
         raise ValueError("experiment_id must be a simple identifier")
     return Path(output_dir) / "experiments" / experiment_id
+
+
+def _resolve_detailed_injuries_path(
+    injuries_path: str | Path,
+    detailed_injuries_path: str | Path | None,
+) -> Path | None:
+    if detailed_injuries_path is not None:
+        path = Path(detailed_injuries_path)
+        return path if path.exists() else None
+    sibling = Path(injuries_path).parent / "injury_events_detailed.csv"
+    return sibling if sibling.exists() else None
 
 
 def _model_metrics(
@@ -1478,6 +1533,65 @@ def _write_model_improvement_diagnostic_report(
             f"{_format_metric(row['median_peak_risk'])} | "
             f"{_format_metric(row['max_pre_event_risk'])} | "
             f"{_format_metric(row['elevated_z_rate'])} | "
+            f"{row['recommended_next_action']} |"
+        )
+
+    path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+
+
+def _write_injury_context_outcome_report(
+    path: Path,
+    outcomes: dict[str, object],
+) -> None:
+    lines = [
+        "# Injury Context Outcomes",
+        "",
+        f"Model variant: {outcomes['model_variant']}",
+        f"Graph window size: {outcomes['graph_window_size']}",
+        f"Event profiles: {outcomes['event_profile_count']}",
+        f"Context rows: {outcomes['context_row_count']}",
+        "",
+        "This report checks whether injury severity, subtype, body area, "
+        "recurrence, unavailability, and activity context explain which "
+        "events the alert policy captures or misses.",
+        "",
+        "## Lowest capture contexts",
+        "",
+        "| Horizon | Threshold | Field | Value | Events | Captured | Capture rate | Median time-loss |",
+        "|---:|---|---|---|---:|---:|---:|---:|",
+    ]
+    for row in outcomes["lowest_capture_contexts"]:
+        lines.append(
+            "| "
+            f"{row['horizon_days']}d | "
+            f"{row['threshold']} | "
+            f"{row['context_field']} | "
+            f"{row['context_value']} | "
+            f"{row['event_count']} | "
+            f"{row['captured_after_start_count']} | "
+            f"{_format_metric(row['start_capture_rate'])} | "
+            f"{_format_metric(row['median_time_loss_days'])} |"
+        )
+
+    lines.extend(
+        [
+            "",
+            "## High time-loss missed contexts",
+            "",
+            "| Horizon | Threshold | Field | Value | Missed | Capture rate | Median time-loss | Action |",
+            "|---:|---|---|---|---:|---:|---:|---|",
+        ]
+    )
+    for row in outcomes["high_time_loss_missed_contexts"]:
+        lines.append(
+            "| "
+            f"{row['horizon_days']}d | "
+            f"{row['threshold']} | "
+            f"{row['context_field']} | "
+            f"{row['context_value']} | "
+            f"{row['missed_after_start_count']} | "
+            f"{_format_metric(row['start_capture_rate'])} | "
+            f"{_format_metric(row['median_time_loss_days'])} | "
             f"{row['recommended_next_action']} |"
         )
 

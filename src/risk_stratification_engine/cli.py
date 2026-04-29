@@ -57,6 +57,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         measurements_path = prepared.measurements_path
         injuries_path = prepared.injuries_path
+        detailed_injuries_path = prepared.detailed_injuries_path
         print(f"Canonical live inputs written to {prepared.measurements_path.parent}")
         print(f"Data quality audit written to {prepared.audit_path}")
     else:
@@ -67,6 +68,7 @@ def main(argv: list[str] | None = None) -> int:
             )
         measurements_path = args.measurements
         injuries_path = args.injuries
+        detailed_injuries_path = None
 
     if args.alert_episodes:
         experiment_dir = run_alert_episode_experiment(
@@ -76,6 +78,7 @@ def main(argv: list[str] | None = None) -> int:
             experiment_id=args.experiment_id,
             graph_window_size=args.graph_window_size,
             model_variant=args.model_variant,
+            detailed_injuries_path=detailed_injuries_path,
         )
         print(f"Alert episode artifacts written to {experiment_dir}")
     elif args.calibration_thresholds:

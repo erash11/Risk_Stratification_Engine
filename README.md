@@ -311,6 +311,25 @@ These runs write `two_channel_alert_policy.json`,
 `operational_policy_package.json`, and
 `operational_policy_package_report.md`.
 
+Shadow-mode stability runs freeze the selected policy package and evaluate
+whether it holds up across season slices:
+
+```bash
+risk-engine \
+  --from-live-sources \
+  --paths-config config/paths.local.yaml \
+  --output-dir outputs \
+  --experiment-id shadow_mode_stability_v1 \
+  --shadow-mode-stability \
+  --model-variant l2
+```
+
+These runs write `shadow_mode_stability.csv`,
+`shadow_mode_stability.json`, and `shadow_mode_stability_report.md`. The audit
+uses season-local percentile thresholds so each season is evaluated like a
+shadow-mode cohort, then summarizes capture-rate range and alert burden for each
+fixed channel.
+
 Latest live-source comparison (`intra_individual_deviation_v1`, 349 athletes,
 70 holdout): 7d AUROC 0.723, Brier skill 0.0020; 14d AUROC 0.731, Brier skill
 0.0057; 30d AUROC 0.736, Brier skill 0.0171. Compared with
@@ -444,8 +463,16 @@ for 7d/14d severity triage. The broad channel captured 44/292 unique observed
 events with Brier skill 0.0168 and median start lead of 12 days. The severity
 channel captured 32/173 unique events at 7d and 42/173 at 14d. Window 2 improved
 30d lower-extremity soft-tissue capture to 40/168, but with higher alert burden,
-so that remains a subtype-review view. The current test suite has 149 passing
-tests.
+so that remains a subtype-review view.
+
+The shadow-mode stability audit (`shadow_mode_stability_v1`, L2) evaluated the
+fixed policy package across six season slices. All four channels were unstable.
+The broad 30d channel averaged 14.8% capture but ranged from 6.1% to 33.3% in
+event seasons. The 7d and 14d severity channels ranged from 0.0% to 25.5% and
+0.0% to 36.2%, respectively. The lower-extremity soft-tissue review channel
+ranged from 4.3% to 63.3%. The recommendation is
+`review_before_shadow_pilot`; the model should stay research-only until the
+season drift is explained. The current test suite has 153 passing tests.
 
 The reported risk values are baseline model estimates for research comparison,
 not calibrated clinical probabilities.

@@ -60,6 +60,7 @@ Future work may add a dashboard performance tab inspired by the Malum/SPEAR mate
 - Combined window/model robustness runs are available by pairing `--model-robustness-sprint` with `--window-sensitivity-sizes <sizes...>`. They write `window_model_robustness.json` plus `window_model_robustness_report.md`, comparing model variants across each requested graph window with the same rotating athlete-level split policy.
 - Outcome-policy model comparison runs are available through `risk-engine --outcome-policy-model-comparison` and write `context_policy_model_comparison.csv`, `context_policy_model_comparison.json`, and `context_policy_model_comparison_report.md`. The runner relabels canonical athlete-seasons against selected detailed injury policies, retrains the same graph model for each target, and compares model metrics plus alert episode quality at top-5% and top-10%.
 - Policy decision sprint runs are available through `risk-engine --policy-decision-sprint --policy-window-sizes 2 4 7` and write `two_channel_alert_policy.json`, `two_channel_alert_policy_report.md`, `policy_window_sensitivity.csv`, `policy_window_sensitivity.json`, `policy_window_sensitivity_report.md`, `operational_policy_package.json`, and `operational_policy_package_report.md`. The sprint converts policy-comparison evidence into a two-channel research policy, window-sensitivity recommendations, and a shadow-mode operating package.
+- Shadow-mode stability runs are available through `risk-engine --shadow-mode-stability` and write `shadow_mode_stability.csv`, `shadow_mode_stability.json`, and `shadow_mode_stability_report.md`. The runner evaluates the fixed policy package by season using season-local percentile thresholds, then marks channel stability from capture-rate variability and alert burden.
 - Main single-experiment runs accept `--model-variant baseline|l2|l1|elasticnet`, allowing a regularized candidate to be run through the normal artifact path without using the robustness sweep.
 - Enriched graph features (`enriched_graph_features_v1` run, 349 athletes, 70 holdout): 7d AUROC 0.730 (+0.008), 14d AUROC 0.735 (+0.007), 30d AUROC 0.735 (+0.007); Brier skill 30d improved from 0.0142 to 0.0168 (+18%).
 - Intra-individual deviation features (`intra_individual_deviation_v1` run, 349 athletes, 70 holdout): 7d AUROC 0.723, Brier skill 0.0020, top-decile lift 3.76; 14d AUROC 0.731, Brier skill 0.0057, top-decile lift 3.96; 30d AUROC 0.736, Brier skill 0.0171, top-decile lift 4.48. Versus `enriched_graph_features_v1`, the 30d AUROC, 7d/30d Brier skill, and all top-decile lifts improved, while 7d/14d AUROC declined slightly.
@@ -69,6 +70,24 @@ Future work may add a dashboard performance tab inspired by the Malum/SPEAR mate
 - Window/model robustness (`window_model_robustness_v1` run, windows 2/4/7, 5 rotating splits, 349 athletes): no single window/variant dominates all operating goals. Window 7 + L2 won calibration at 7d/14d, window 4 + L2 won 30d calibration, window 2 regularized variants won triage lift at all horizons, and ranking split by horizon: window 2 baseline at 7d AUROC 0.731, window 4 L2 at 14d AUROC 0.729, and window 7 L1 at 30d AUROC 0.729. This supports using L2 as the calibration-oriented production candidate while keeping window 2 as a high-alert triage setting and window 7 under review for 30d ranking.
 
 ## Latest Completed Step
+
+**Shadow-mode policy stability audit** — implemented and verified on 2026-04-29.
+
+**What changed:** Added `shadow_mode.py`, `run_shadow_mode_stability_experiment(...)`, and the `--shadow-mode-stability` CLI mode. The audit freezes the current policy package rather than reselecting targets: `broad_30d` (`exclude_concussion`, window 4, 30d top-5%), `severity_7d` and `severity_14d` (`model_safe_time_loss`, window 4, top-10%), and `subtype_lower_extremity_soft_tissue_30d` (window 2, 30d top-10%). It evaluates each channel by season using season-local percentile thresholds and writes `shadow_mode_stability.csv`, `shadow_mode_stability.json`, and `shadow_mode_stability_report.md`.
+
+**Verification:** New TDD tests first failed because `risk_stratification_engine.shadow_mode`, `run_shadow_mode_stability_experiment`, and the `--shadow-mode-stability` CLI dispatch did not exist. After implementation, `python -m pytest` collected and passed 153 tests. The live command `risk-engine --from-live-sources --paths-config config/paths.local.yaml --output-dir outputs --experiment-id shadow_mode_stability_v1 --shadow-mode-stability --model-variant l2` completed and wrote the stability artifacts.
+
+**Live results (`shadow_mode_stability_v1`, L2):**
+- Evaluated 4 fixed channels across 6 season slices.
+- Overall recommendation: `review_before_shadow_pilot`.
+- `broad_30d`: unstable; mean capture 14.8%, range 6.1%-33.3% across event seasons, 44 total captured events, mean burden 0.97 episodes per athlete-season.
+- `severity_7d`: unstable; mean capture 10.5%, range 0.0%-25.5%, 19 total captured events, mean burden 1.27 episodes per athlete-season.
+- `severity_14d`: unstable; mean capture 13.1%, range 0.0%-36.2%, 24 total captured events, mean burden 1.20 episodes per athlete-season.
+- `subtype_lower_extremity_soft_tissue_30d`: unstable; mean capture 24.5%, range 4.3%-63.3%, 42 total captured events, mean burden 0.96 episodes per athlete-season.
+
+**Interpretation:** The policy package is not stable enough for a dashboard or pilot escalation yet. Capture is much stronger in 2025-2026 than in earlier event seasons even when thresholds are computed within each season. The next major sprint should explain this season drift: source coverage/freshness, roster overlap, measurement density, injury mix, or true monitoring-pattern change.
+
+## Previous Completed Step
 
 **Three policy decision sprints** — implemented and verified on 2026-04-29.
 

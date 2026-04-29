@@ -49,6 +49,11 @@ from risk_stratification_engine.policy_sprints import (
     write_policy_window_sensitivity_report,
     write_two_channel_alert_policy_report,
 )
+from risk_stratification_engine.shadow_mode import (
+    DEFAULT_SHADOW_MODE_CHANNELS,
+    build_shadow_mode_stability_audit,
+    write_shadow_mode_stability_report,
+)
 from risk_stratification_engine.trajectories import build_measurement_matrix
 
 ORIGINAL_GRAPH_FEATURE_COLUMNS = (
@@ -625,6 +630,86 @@ def run_policy_decision_sprint_experiment(
     write_operational_policy_package_report(
         experiment_dir / "operational_policy_package_report.md",
         operational_package,
+    )
+    return experiment_dir
+
+
+def run_shadow_mode_stability_experiment(
+    measurements_path: str | Path,
+    injuries_path: str | Path,
+    detailed_injuries_path: str | Path,
+    output_dir: str | Path,
+    experiment_id: str,
+    model_variant: str = "l2",
+) -> Path:
+    experiment_dir = _experiment_path(output_dir, experiment_id)
+    measurements = load_measurements(measurements_path)
+    canonical_injuries = load_injury_events(injuries_path)
+    detailed_injuries = pd.read_csv(detailed_injuries_path)
+    matrix = build_measurement_matrix(measurements)
+
+    rows: list[dict[str, object]] = []
+    graph_cache: dict[int, pd.DataFrame] = {}
+    for channel in DEFAULT_SHADOW_MODE_CHANNELS:
+        window_size = int(channel["graph_window_size"])
+        horizon = int(channel["horizon_days"])
+        threshold_value = float(channel["threshold_value"])
+        if window_size not in graph_cache:
+            graph_cache[window_size] = build_graph_snapshots(
+                matrix,
+                window_size=window_size,
+            )
+        graph_features = graph_cache[window_size]
+        if graph_features.empty:
+            raise ValueError("no graph snapshots produced")
+        policy_injuries = build_policy_injury_events(
+            canonical_injuries,
+            detailed_injuries,
+            policy_name=str(channel["policy_name"]),
+        )
+        labeled = attach_time_to_event_labels(graph_features, policy_injuries)
+        if labeled.empty:
+            raise ValueError(
+                f"no labeled graph snapshots produced for {channel['policy_name']}"
+            )
+        model_result = train_discrete_time_risk_model(
+            labeled,
+            model_variant=model_variant,
+        )
+        explanation_summary = _explanation_summary(
+            model_result.timeline,
+            model_result.summary,
+        )
+        alert_timeline = _alert_episode_timeline(
+            model_result.timeline,
+            explanation_summary,
+        )
+        rows.extend(
+            _shadow_mode_stability_rows(
+                channel=channel,
+                timeline=alert_timeline,
+            )
+        )
+
+    stability_frame = pd.DataFrame(rows)
+    audit = build_shadow_mode_stability_audit(stability_frame)
+    write_frame(stability_frame, experiment_dir / "shadow_mode_stability.csv")
+    _write_json(
+        experiment_dir / "config.json",
+        {
+            "experiment_id": experiment_id,
+            "experiment_type": "shadow_mode_policy_stability",
+            "measurements_path": str(measurements_path),
+            "injuries_path": str(injuries_path),
+            "detailed_injuries_path": str(detailed_injuries_path),
+            "model_variant": model_variant,
+            "channels": list(DEFAULT_SHADOW_MODE_CHANNELS),
+        },
+    )
+    _write_json(experiment_dir / "shadow_mode_stability.json", audit)
+    write_shadow_mode_stability_report(
+        experiment_dir / "shadow_mode_stability_report.md",
+        audit,
     )
     return experiment_dir
 
@@ -1256,6 +1341,90 @@ def _policy_comparison_rows(
                 }
             )
     return rows
+
+
+def _shadow_mode_stability_rows(
+    channel: dict[str, object],
+    timeline: pd.DataFrame,
+) -> list[dict[str, object]]:
+    rows = []
+    for season_id, season_timeline in timeline.groupby("season_id", sort=True):
+        horizon = int(channel["horizon_days"])
+        threshold_value = float(channel["threshold_value"])
+        season_episodes = build_alert_episodes(
+            season_timeline,
+            horizons=(horizon,),
+            percentile_thresholds=(threshold_value,),
+        )
+        quality_rows = build_alert_episode_quality(
+            season_episodes,
+            season_timeline,
+        )["quality_rows"]
+        quality = (
+            quality_rows[0]
+            if quality_rows
+            else _empty_shadow_quality_row(season_timeline)
+        )
+        rows.append(
+            {
+                "channel_name": str(channel["channel_name"]),
+                "role": str(channel["role"]),
+                "slice_type": "season",
+                "slice_id": str(season_id),
+                "policy_name": str(channel["policy_name"]),
+                "graph_window_size": int(channel["graph_window_size"]),
+                "horizon_days": int(channel["horizon_days"]),
+                "threshold_scope": "season_local",
+                "threshold": (
+                    f"percentile:{float(channel['threshold_value']):g}"
+                ),
+                "episode_count": quality["episode_count"],
+                "true_positive_episode_count": quality[
+                    "true_positive_episode_count"
+                ],
+                "false_positive_episode_count": quality[
+                    "false_positive_episode_count"
+                ],
+                "unique_observed_event_count": quality[
+                    "unique_observed_event_count"
+                ],
+                "unique_captured_event_count": quality[
+                    "unique_captured_event_count"
+                ],
+                "unique_event_capture_rate": quality[
+                    "unique_event_capture_rate"
+                ],
+                "missed_event_count": quality["missed_event_count"],
+                "episodes_per_athlete_season": quality[
+                    "episodes_per_athlete_season"
+                ],
+                "median_start_lead_days": quality["median_start_lead_days"],
+            }
+        )
+    return rows
+
+
+def _empty_shadow_quality_row(timeline: pd.DataFrame) -> dict[str, object]:
+    observed = timeline[timeline["event_observed"].astype(bool)]
+    event_count = int(
+        observed[["athlete_id", "season_id", "event_date", "injury_type"]]
+        .drop_duplicates()
+        .shape[0]
+    )
+    athlete_seasons = int(
+        timeline[["athlete_id", "season_id"]].drop_duplicates().shape[0]
+    )
+    return {
+        "episode_count": 0,
+        "true_positive_episode_count": 0,
+        "false_positive_episode_count": 0,
+        "unique_observed_event_count": event_count,
+        "unique_captured_event_count": 0,
+        "unique_event_capture_rate": 0.0 if event_count else None,
+        "missed_event_count": event_count,
+        "episodes_per_athlete_season": 0.0 if athlete_seasons else None,
+        "median_start_lead_days": None,
+    }
 
 
 def _best_policies_by_horizon(rows: list[dict[str, object]]) -> dict[str, object]:

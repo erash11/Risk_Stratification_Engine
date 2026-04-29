@@ -12,6 +12,7 @@ from risk_stratification_engine.experiments import (
     run_injury_outcome_policy_experiment,
     run_outcome_policy_model_comparison_experiment,
     run_policy_decision_sprint_experiment,
+    run_shadow_mode_stability_experiment,
     run_model_robustness_experiment,
     run_research_experiment,
     run_window_model_robustness_experiment,
@@ -816,6 +817,38 @@ def test_run_policy_decision_sprint_writes_three_sprint_artifacts(tmp_path):
     report = (result / "operational_policy_package_report.md").read_text()
     assert "Operational Policy Package" in report
     assert "research_shadow_mode" in report
+
+
+def test_run_shadow_mode_stability_writes_policy_audit(tmp_path):
+    measurements_path, injuries_path, detailed_path = _write_policy_fixture_inputs(
+        tmp_path
+    )
+
+    result = run_shadow_mode_stability_experiment(
+        measurements_path=measurements_path,
+        injuries_path=injuries_path,
+        detailed_injuries_path=detailed_path,
+        output_dir=tmp_path,
+        experiment_id="shadow_mode_stability",
+        model_variant="l2",
+    )
+
+    assert (result / "shadow_mode_stability.csv").exists()
+    assert (result / "shadow_mode_stability.json").exists()
+    assert (result / "shadow_mode_stability_report.md").exists()
+
+    table = pd.read_csv(result / "shadow_mode_stability.csv")
+    assert "channel_name" in table.columns
+    assert "slice_id" in table.columns
+    assert set(table["threshold_scope"]) == {"season_local"}
+    assert "unique_event_capture_rate" in table.columns
+
+    payload = json.loads((result / "shadow_mode_stability.json").read_text())
+    assert payload["experiment_type"] == "shadow_mode_policy_stability"
+    assert payload["channel_count"] >= 1
+
+    report = (result / "shadow_mode_stability_report.md").read_text()
+    assert "Shadow-Mode Policy Stability" in report
 
 
 # ---------------------------------------------------------------------------

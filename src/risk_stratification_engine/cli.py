@@ -15,6 +15,7 @@ from risk_stratification_engine.experiments import (
     run_outcome_policy_model_comparison_experiment,
     run_policy_decision_sprint_experiment,
     run_research_experiment,
+    run_season_drift_diagnostic_experiment,
     run_shadow_mode_stability_experiment,
     run_window_model_robustness_experiment,
     run_window_sensitivity_experiment,
@@ -51,6 +52,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--outcome-policy-model-comparison", action="store_true")
     parser.add_argument("--policy-decision-sprint", action="store_true")
     parser.add_argument("--shadow-mode-stability", action="store_true")
+    parser.add_argument("--season-drift-diagnostic", action="store_true")
     parser.add_argument("--stability-splits", type=int, default=5)
     return parser
 
@@ -79,7 +81,25 @@ def main(argv: list[str] | None = None) -> int:
         injuries_path = args.injuries
         detailed_injuries_path = None
 
-    if args.shadow_mode_stability:
+    if args.season_drift_diagnostic:
+        if detailed_injuries_path is None:
+            sibling = injuries_path.parent / "injury_events_detailed.csv"
+            if not sibling.exists():
+                parser.error(
+                    "--season-drift-diagnostic requires live-source detailed "
+                    "injury events or a sibling injury_events_detailed.csv"
+                )
+            detailed_injuries_path = sibling
+        experiment_dir = run_season_drift_diagnostic_experiment(
+            measurements_path=measurements_path,
+            injuries_path=injuries_path,
+            detailed_injuries_path=detailed_injuries_path,
+            output_dir=args.output_dir,
+            experiment_id=args.experiment_id,
+            model_variant=args.model_variant,
+        )
+        print(f"Season drift diagnostic artifacts written to {experiment_dir}")
+    elif args.shadow_mode_stability:
         if detailed_injuries_path is None:
             sibling = injuries_path.parent / "injury_events_detailed.csv"
             if not sibling.exists():

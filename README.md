@@ -330,6 +330,25 @@ uses season-local percentile thresholds so each season is evaluated like a
 shadow-mode cohort, then summarizes capture-rate range and alert burden for each
 fixed channel.
 
+Season drift diagnostic runs explain the season-to-season instability by joining
+the fixed shadow-mode channels with measurement coverage, source mix, and injury
+mix:
+
+```bash
+risk-engine \
+  --from-live-sources \
+  --paths-config config/paths.local.yaml \
+  --output-dir outputs \
+  --experiment-id season_drift_diagnostic_v1 \
+  --season-drift-diagnostic \
+  --model-variant l2
+```
+
+These runs write `season_drift_diagnostics.csv`,
+`season_drift_diagnostics.json`, and `season_drift_diagnostic_report.md`. The
+diagnostic flags low-coverage seasons, lists the highest-capture season per
+channel, and keeps policy performance tied to coverage and injury context.
+
 Latest live-source comparison (`intra_individual_deviation_v1`, 349 athletes,
 70 holdout): 7d AUROC 0.723, Brier skill 0.0020; 14d AUROC 0.731, Brier skill
 0.0057; 30d AUROC 0.736, Brier skill 0.0171. Compared with
@@ -472,7 +491,18 @@ event seasons. The 7d and 14d severity channels ranged from 0.0% to 25.5% and
 0.0% to 36.2%, respectively. The lower-extremity soft-tissue review channel
 ranged from 4.3% to 63.3%. The recommendation is
 `review_before_shadow_pilot`; the model should stay research-only until the
-season drift is explained. The current test suite has 153 passing tests.
+season drift is explained.
+
+The season drift diagnostic (`season_drift_diagnostic_v1`, L2) shows that
+2025-2026 is the highest-capture season for every fixed channel and also has a
+major coverage shift: 223 athletes, 186,363 measurement rows, 179 measurement
+dates, and 4 sources. Earlier event seasons had 1 source and 7,295-30,020
+measurement rows. Capture was much higher in 2025-2026: broad 30d 33.3%,
+severity 7d 25.5%, severity 14d 36.2%, and lower-extremity soft-tissue 30d
+63.3%. The current interpretation is that season drift is partly a data/coverage
+problem, not only a model-performance problem. The next sprint should test
+source-aware or coverage-normalized models before any shadow pilot. The current
+test suite has 157 passing tests.
 
 The reported risk values are baseline model estimates for research comparison,
 not calibrated clinical probabilities.

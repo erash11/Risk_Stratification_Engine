@@ -61,6 +61,7 @@ Future work may add a dashboard performance tab inspired by the Malum/SPEAR mate
 - Outcome-policy model comparison runs are available through `risk-engine --outcome-policy-model-comparison` and write `context_policy_model_comparison.csv`, `context_policy_model_comparison.json`, and `context_policy_model_comparison_report.md`. The runner relabels canonical athlete-seasons against selected detailed injury policies, retrains the same graph model for each target, and compares model metrics plus alert episode quality at top-5% and top-10%.
 - Policy decision sprint runs are available through `risk-engine --policy-decision-sprint --policy-window-sizes 2 4 7` and write `two_channel_alert_policy.json`, `two_channel_alert_policy_report.md`, `policy_window_sensitivity.csv`, `policy_window_sensitivity.json`, `policy_window_sensitivity_report.md`, `operational_policy_package.json`, and `operational_policy_package_report.md`. The sprint converts policy-comparison evidence into a two-channel research policy, window-sensitivity recommendations, and a shadow-mode operating package.
 - Shadow-mode stability runs are available through `risk-engine --shadow-mode-stability` and write `shadow_mode_stability.csv`, `shadow_mode_stability.json`, and `shadow_mode_stability_report.md`. The runner evaluates the fixed policy package by season using season-local percentile thresholds, then marks channel stability from capture-rate variability and alert burden.
+- Season drift diagnostic runs are available through `risk-engine --season-drift-diagnostic` and write `season_drift_diagnostics.csv`, `season_drift_diagnostics.json`, and `season_drift_diagnostic_report.md`. The runner reuses the fixed shadow-mode season-local channel rows and joins them to measurement coverage, source mix, detailed injury mix, and simple drift flags.
 - Main single-experiment runs accept `--model-variant baseline|l2|l1|elasticnet`, allowing a regularized candidate to be run through the normal artifact path without using the robustness sweep.
 - Enriched graph features (`enriched_graph_features_v1` run, 349 athletes, 70 holdout): 7d AUROC 0.730 (+0.008), 14d AUROC 0.735 (+0.007), 30d AUROC 0.735 (+0.007); Brier skill 30d improved from 0.0142 to 0.0168 (+18%).
 - Intra-individual deviation features (`intra_individual_deviation_v1` run, 349 athletes, 70 holdout): 7d AUROC 0.723, Brier skill 0.0020, top-decile lift 3.76; 14d AUROC 0.731, Brier skill 0.0057, top-decile lift 3.96; 30d AUROC 0.736, Brier skill 0.0171, top-decile lift 4.48. Versus `enriched_graph_features_v1`, the 30d AUROC, 7d/30d Brier skill, and all top-decile lifts improved, while 7d/14d AUROC declined slightly.
@@ -70,6 +71,24 @@ Future work may add a dashboard performance tab inspired by the Malum/SPEAR mate
 - Window/model robustness (`window_model_robustness_v1` run, windows 2/4/7, 5 rotating splits, 349 athletes): no single window/variant dominates all operating goals. Window 7 + L2 won calibration at 7d/14d, window 4 + L2 won 30d calibration, window 2 regularized variants won triage lift at all horizons, and ranking split by horizon: window 2 baseline at 7d AUROC 0.731, window 4 L2 at 14d AUROC 0.729, and window 7 L1 at 30d AUROC 0.729. This supports using L2 as the calibration-oriented production candidate while keeping window 2 as a high-alert triage setting and window 7 under review for 30d ranking.
 
 ## Latest Completed Step
+
+**Season drift diagnostic** — implemented and verified on 2026-04-29.
+
+**What changed:** Added `season_drift.py`, `run_season_drift_diagnostic_experiment(...)`, and the `--season-drift-diagnostic` CLI mode. The runner reuses the fixed shadow-mode policy package and season-local thresholds, then joins each season's channel capture/burden rows with measurement coverage, source mix, canonical injury counts, detailed injury target counts, time-loss buckets, and simple drift flags. It writes `season_drift_diagnostics.csv`, `season_drift_diagnostics.json`, and `season_drift_diagnostic_report.md`.
+
+**Verification:** New TDD tests first failed because `risk_stratification_engine.season_drift`, `run_season_drift_diagnostic_experiment`, and the `--season-drift-diagnostic` CLI dispatch did not exist. After implementation, `python -m pytest` collected and passed 157 tests. The live command `risk-engine --from-live-sources --paths-config config/paths.local.yaml --output-dir outputs --experiment-id season_drift_diagnostic_v1 --season-drift-diagnostic --model-variant l2` completed and wrote the drift artifacts.
+
+**Live results (`season_drift_diagnostic_v1`, L2):**
+- Evaluated 6 season slices; latest season is 2025-2026.
+- 2025-2026 was the highest-capture season for every fixed channel: broad 30d 33.3%, severity 7d 25.5%, severity 14d 36.2%, and lower-extremity soft-tissue 30d 63.3%.
+- 2025-2026 also had the strongest coverage: 223 athletes, 186,363 measurement rows, 179 measurement dates, and 4 sources.
+- Earlier event seasons had far less coverage: 2022-2023 had 7,484 measurement rows from 1 source, 2023-2024 had 7,295 from 1 source, and 2024-2025 had 30,020 from 2 sources.
+- Injury volumes were comparable enough that coverage/source mix is a plausible drift driver: observed event counts were 75 in 2022-2023, 88 in 2023-2024, 74 in 2024-2025, and 85 in 2025-2026.
+- 2020-2021 was flagged for low measurement coverage and had no observed/detailed injury events in the live prepared data.
+
+**Interpretation:** The shadow-mode instability is not safe to interpret as pure model failure. The strongest season has much richer and broader monitoring coverage, so the next performance sprint should test coverage/source-aware modeling or source-normalized evaluation before a shadow pilot. The model remains research-only.
+
+## Previous Completed Step
 
 **Shadow-mode policy stability audit** — implemented and verified on 2026-04-29.
 

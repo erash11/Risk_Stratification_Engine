@@ -49,6 +49,10 @@ from risk_stratification_engine.policy_sprints import (
     write_policy_window_sensitivity_report,
     write_two_channel_alert_policy_report,
 )
+from risk_stratification_engine.season_drift import (
+    build_season_drift_diagnostics,
+    write_season_drift_diagnostic_report,
+)
 from risk_stratification_engine.shadow_mode import (
     DEFAULT_SHADOW_MODE_CHANNELS,
     build_shadow_mode_stability_audit,
@@ -646,52 +650,12 @@ def run_shadow_mode_stability_experiment(
     measurements = load_measurements(measurements_path)
     canonical_injuries = load_injury_events(injuries_path)
     detailed_injuries = pd.read_csv(detailed_injuries_path)
-    matrix = build_measurement_matrix(measurements)
-
-    rows: list[dict[str, object]] = []
-    graph_cache: dict[int, pd.DataFrame] = {}
-    for channel in DEFAULT_SHADOW_MODE_CHANNELS:
-        window_size = int(channel["graph_window_size"])
-        horizon = int(channel["horizon_days"])
-        threshold_value = float(channel["threshold_value"])
-        if window_size not in graph_cache:
-            graph_cache[window_size] = build_graph_snapshots(
-                matrix,
-                window_size=window_size,
-            )
-        graph_features = graph_cache[window_size]
-        if graph_features.empty:
-            raise ValueError("no graph snapshots produced")
-        policy_injuries = build_policy_injury_events(
-            canonical_injuries,
-            detailed_injuries,
-            policy_name=str(channel["policy_name"]),
-        )
-        labeled = attach_time_to_event_labels(graph_features, policy_injuries)
-        if labeled.empty:
-            raise ValueError(
-                f"no labeled graph snapshots produced for {channel['policy_name']}"
-            )
-        model_result = train_discrete_time_risk_model(
-            labeled,
-            model_variant=model_variant,
-        )
-        explanation_summary = _explanation_summary(
-            model_result.timeline,
-            model_result.summary,
-        )
-        alert_timeline = _alert_episode_timeline(
-            model_result.timeline,
-            explanation_summary,
-        )
-        rows.extend(
-            _shadow_mode_stability_rows(
-                channel=channel,
-                timeline=alert_timeline,
-            )
-        )
-
-    stability_frame = pd.DataFrame(rows)
+    stability_frame = _shadow_mode_stability_frame(
+        measurements=measurements,
+        canonical_injuries=canonical_injuries,
+        detailed_injuries=detailed_injuries,
+        model_variant=model_variant,
+    )
     audit = build_shadow_mode_stability_audit(stability_frame)
     write_frame(stability_frame, experiment_dir / "shadow_mode_stability.csv")
     _write_json(
@@ -710,6 +674,56 @@ def run_shadow_mode_stability_experiment(
     write_shadow_mode_stability_report(
         experiment_dir / "shadow_mode_stability_report.md",
         audit,
+    )
+    return experiment_dir
+
+
+def run_season_drift_diagnostic_experiment(
+    measurements_path: str | Path,
+    injuries_path: str | Path,
+    detailed_injuries_path: str | Path,
+    output_dir: str | Path,
+    experiment_id: str,
+    model_variant: str = "l2",
+) -> Path:
+    experiment_dir = _experiment_path(output_dir, experiment_id)
+    measurements = load_measurements(measurements_path)
+    canonical_injuries = load_injury_events(injuries_path)
+    detailed_injuries = pd.read_csv(detailed_injuries_path)
+    stability_frame = _shadow_mode_stability_frame(
+        measurements=measurements,
+        canonical_injuries=canonical_injuries,
+        detailed_injuries=detailed_injuries,
+        model_variant=model_variant,
+    )
+    diagnostics = build_season_drift_diagnostics(
+        measurements=measurements,
+        canonical_injuries=canonical_injuries,
+        detailed_injuries=detailed_injuries,
+        shadow_mode_rows=stability_frame,
+    )
+    diagnostics["model_variant"] = model_variant
+
+    write_frame(
+        pd.DataFrame(diagnostics["season_rows"]),
+        experiment_dir / "season_drift_diagnostics.csv",
+    )
+    _write_json(
+        experiment_dir / "config.json",
+        {
+            "experiment_id": experiment_id,
+            "experiment_type": "season_drift_diagnostic",
+            "measurements_path": str(measurements_path),
+            "injuries_path": str(injuries_path),
+            "detailed_injuries_path": str(detailed_injuries_path),
+            "model_variant": model_variant,
+            "channels": list(DEFAULT_SHADOW_MODE_CHANNELS),
+        },
+    )
+    _write_json(experiment_dir / "season_drift_diagnostics.json", diagnostics)
+    write_season_drift_diagnostic_report(
+        experiment_dir / "season_drift_diagnostic_report.md",
+        diagnostics,
     )
     return experiment_dir
 
@@ -1402,6 +1416,56 @@ def _shadow_mode_stability_rows(
             }
         )
     return rows
+
+
+def _shadow_mode_stability_frame(
+    measurements: pd.DataFrame,
+    canonical_injuries: pd.DataFrame,
+    detailed_injuries: pd.DataFrame,
+    model_variant: str,
+) -> pd.DataFrame:
+    matrix = build_measurement_matrix(measurements)
+    rows: list[dict[str, object]] = []
+    graph_cache: dict[int, pd.DataFrame] = {}
+    for channel in DEFAULT_SHADOW_MODE_CHANNELS:
+        window_size = int(channel["graph_window_size"])
+        if window_size not in graph_cache:
+            graph_cache[window_size] = build_graph_snapshots(
+                matrix,
+                window_size=window_size,
+            )
+        graph_features = graph_cache[window_size]
+        if graph_features.empty:
+            raise ValueError("no graph snapshots produced")
+        policy_injuries = build_policy_injury_events(
+            canonical_injuries,
+            detailed_injuries,
+            policy_name=str(channel["policy_name"]),
+        )
+        labeled = attach_time_to_event_labels(graph_features, policy_injuries)
+        if labeled.empty:
+            raise ValueError(
+                f"no labeled graph snapshots produced for {channel['policy_name']}"
+            )
+        model_result = train_discrete_time_risk_model(
+            labeled,
+            model_variant=model_variant,
+        )
+        explanation_summary = _explanation_summary(
+            model_result.timeline,
+            model_result.summary,
+        )
+        alert_timeline = _alert_episode_timeline(
+            model_result.timeline,
+            explanation_summary,
+        )
+        rows.extend(
+            _shadow_mode_stability_rows(
+                channel=channel,
+                timeline=alert_timeline,
+            )
+        )
+    return pd.DataFrame(rows)
 
 
 def _empty_shadow_quality_row(timeline: pd.DataFrame) -> dict[str, object]:

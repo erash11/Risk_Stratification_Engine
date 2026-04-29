@@ -13,6 +13,7 @@ from risk_stratification_engine.experiments import (
     run_outcome_policy_model_comparison_experiment,
     run_policy_decision_sprint_experiment,
     run_shadow_mode_stability_experiment,
+    run_season_drift_diagnostic_experiment,
     run_model_robustness_experiment,
     run_research_experiment,
     run_window_model_robustness_experiment,
@@ -849,6 +850,40 @@ def test_run_shadow_mode_stability_writes_policy_audit(tmp_path):
 
     report = (result / "shadow_mode_stability_report.md").read_text()
     assert "Shadow-Mode Policy Stability" in report
+
+
+def test_run_season_drift_diagnostic_writes_drift_artifacts(tmp_path):
+    measurements_path, injuries_path, detailed_path = _write_policy_fixture_inputs(
+        tmp_path
+    )
+
+    result = run_season_drift_diagnostic_experiment(
+        measurements_path=measurements_path,
+        injuries_path=injuries_path,
+        detailed_injuries_path=detailed_path,
+        output_dir=tmp_path,
+        experiment_id="season_drift_diagnostic",
+        model_variant="l2",
+    )
+
+    assert (result / "season_drift_diagnostics.csv").exists()
+    assert (result / "season_drift_diagnostics.json").exists()
+    assert (result / "season_drift_diagnostic_report.md").exists()
+
+    table = pd.read_csv(result / "season_drift_diagnostics.csv")
+    assert "season_id" in table.columns
+    assert "measurement_row_count" in table.columns
+    assert "broad_30d_capture_rate" in table.columns
+    assert "primary_drift_flag" in table.columns
+
+    payload = json.loads((result / "season_drift_diagnostics.json").read_text())
+    assert payload["experiment_type"] == "season_drift_diagnostic"
+    assert payload["model_variant"] == "l2"
+    assert payload["season_count"] >= 1
+
+    report = (result / "season_drift_diagnostic_report.md").read_text()
+    assert "Season Drift Diagnostics" in report
+    assert "coverage and injury mix" in report
 
 
 # ---------------------------------------------------------------------------

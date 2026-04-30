@@ -76,11 +76,159 @@ def build_coverage_stratified_evaluation(
     timeline_with_tiers: pd.DataFrame,
     channel: dict,
 ) -> dict:
-    raise NotImplementedError
+    horizon = int(channel["horizon_days"])
+    threshold_value = float(channel["threshold_value"])
+    risk_col = f"risk_{horizon}d"
+    event_col = f"event_within_{horizon}d"
+
+    pop_threshold = (
+        float(timeline_with_tiers[risk_col].quantile(1.0 - threshold_value))
+        if not timeline_with_tiers.empty
+        else 0.0
+    )
+
+    rows = []
+    for tier in COVERAGE_TIER_LABELS:
+        tier_frame = timeline_with_tiers[
+            timeline_with_tiers["coverage_tier"] == tier
+        ]
+        rows.append(
+            _stratified_row(
+                frame=tier_frame,
+                risk_col=risk_col,
+                event_col=event_col,
+                pop_threshold=pop_threshold,
+                channel_name=str(channel["channel_name"]),
+                coverage_tier=tier,
+                season_id="all",
+            )
+        )
+        for season_id, season_group in tier_frame.groupby("season_id", sort=True):
+            rows.append(
+                _stratified_row(
+                    frame=season_group,
+                    risk_col=risk_col,
+                    event_col=event_col,
+                    pop_threshold=pop_threshold,
+                    channel_name=str(channel["channel_name"]),
+                    coverage_tier=tier,
+                    season_id=str(season_id),
+                )
+            )
+
+    tier_capture_rates = {
+        row["coverage_tier"]: row["capture_rate"]
+        for row in rows
+        if row["season_id"] == "all"
+    }
+
+    return {
+        "channel_name": str(channel["channel_name"]),
+        "population_threshold": _clean_value(pop_threshold),
+        "tier_capture_rates": tier_capture_rates,
+        "rows": rows,
+    }
 
 
 def build_coverage_flag(channel_results: list[dict]) -> str:
-    raise NotImplementedError
+    diffs = []
+    for ch in channel_results:
+        rates = ch["tier_capture_rates"]
+        high = rates.get("high")
+        low = rates.get("low")
+        if high is not None and low is not None:
+            diffs.append(high - low)
+    if not diffs:
+        return "mixed"
+    mean_diff = sum(diffs) / len(diffs)
+    if mean_diff >= 0.15:
+        return "coverage_confounded"
+    if mean_diff < 0.05:
+        return "coverage_independent"
+    return "mixed"
+
+
+def _stratified_row(
+    frame: pd.DataFrame,
+    risk_col: str,
+    event_col: str,
+    pop_threshold: float,
+    channel_name: str,
+    coverage_tier: str,
+    season_id: str,
+) -> dict:
+    athlete_seasons = (
+        frame[["athlete_id", "season_id"]].drop_duplicates()
+        if not frame.empty
+        else pd.DataFrame(columns=["athlete_id", "season_id"])
+    )
+    athlete_season_count = int(len(athlete_seasons))
+
+    if frame.empty:
+        return {
+            "channel_name": channel_name,
+            "coverage_tier": coverage_tier,
+            "season_id": season_id,
+            "athlete_season_count": 0,
+            "observed_event_count": 0,
+            "captured_event_count": 0,
+            "capture_rate": None,
+            "episodes_per_athlete_season": None,
+            "mean_measurement_days": None,
+        }
+
+    observed_frame = frame[frame["event_observed"].astype(bool)]
+    observed_athlete_seasons = observed_frame[
+        ["athlete_id", "season_id"]
+    ].drop_duplicates()
+    observed_event_count = int(len(observed_athlete_seasons))
+
+    # Captured: observed athlete-season had ≥1 snapshot where
+    # event_within_{horizon}d == 1 AND risk >= population threshold.
+    captured_count = 0
+    if observed_event_count > 0:
+        flagged = frame[
+            (frame[risk_col] >= pop_threshold)
+            & (frame[event_col].fillna(0).astype(int) == 1)
+        ]
+        flagged_pairs = flagged[["athlete_id", "season_id"]].drop_duplicates()
+        captured_count = int(
+            observed_athlete_seasons.merge(
+                flagged_pairs, on=["athlete_id", "season_id"], how="inner"
+            ).shape[0]
+        )
+
+    capture_rate = (
+        round(float(captured_count) / float(observed_event_count), 6)
+        if observed_event_count > 0
+        else None
+    )
+
+    above_threshold = int((frame[risk_col] >= pop_threshold).sum())
+    episodes_per_athlete_season = (
+        round(float(above_threshold) / float(athlete_season_count), 6)
+        if athlete_season_count > 0
+        else None
+    )
+
+    mean_measurement_days = (
+        round(float(frame["measurement_days"].mean()), 3)
+        if "measurement_days" in frame.columns
+        and not frame["measurement_days"].isna().all()
+        else None
+    )
+
+    return {
+        "channel_name": channel_name,
+        "coverage_tier": coverage_tier,
+        "season_id": season_id,
+        "athlete_season_count": athlete_season_count,
+        "observed_event_count": observed_event_count,
+        "captured_event_count": captured_count,
+        "capture_rate": capture_rate,
+        "episodes_per_athlete_season": episodes_per_athlete_season,
+        "mean_measurement_days": mean_measurement_days,
+    }
 
 
 def write_coverage_stratified_evaluation_report(

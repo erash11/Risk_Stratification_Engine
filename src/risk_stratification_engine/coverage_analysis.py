@@ -57,7 +57,7 @@ def _assign_tiers(measurement_days: pd.Series) -> pd.Series:
             labels=list(COVERAGE_TIER_LABELS),
             duplicates="drop",
         )
-        return result.astype(str).fillna("low")
+        return result.fillna("low").astype(str)
     except ValueError:
         return pd.Series(["low"] * n, index=measurement_days.index)
 
@@ -108,6 +108,6 @@ def _clean_value(value: object) -> object:
 
 
 def _fmt(value: object) -> str:
-    if value is None:
+    if value is None or pd.isna(value):
         return "n/a"
     return f"{float(value):.3f}"

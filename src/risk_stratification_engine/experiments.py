@@ -58,6 +58,12 @@ from risk_stratification_engine.shadow_mode import (
     build_shadow_mode_stability_audit,
     write_shadow_mode_stability_report,
 )
+from risk_stratification_engine.coverage_analysis import (
+    build_coverage_flag,
+    build_coverage_stratified_evaluation,
+    build_coverage_tiers,
+    write_coverage_stratified_evaluation_report,
+)
 from risk_stratification_engine.trajectories import build_measurement_matrix
 
 ORIGINAL_GRAPH_FEATURE_COLUMNS = (
@@ -724,6 +730,112 @@ def run_season_drift_diagnostic_experiment(
     write_season_drift_diagnostic_report(
         experiment_dir / "season_drift_diagnostic_report.md",
         diagnostics,
+    )
+    return experiment_dir
+
+
+def run_coverage_stratified_evaluation_experiment(
+    measurements_path: str | Path,
+    injuries_path: str | Path,
+    detailed_injuries_path: str | Path,
+    output_dir: str | Path,
+    experiment_id: str,
+    model_variant: str = "l2",
+) -> Path:
+    experiment_dir = _experiment_path(output_dir, experiment_id)
+    measurements = load_measurements(measurements_path)
+    canonical_injuries = load_injury_events(injuries_path)
+    detailed_injuries = pd.read_csv(detailed_injuries_path)
+
+    coverage_tiers = build_coverage_tiers(measurements)
+
+    matrix = build_measurement_matrix(measurements)
+    graph_cache: dict[int, pd.DataFrame] = {}
+    channel_results = []
+
+    for channel in DEFAULT_SHADOW_MODE_CHANNELS:
+        window_size = int(channel["graph_window_size"])
+        if window_size not in graph_cache:
+            graph_cache[window_size] = build_graph_snapshots(
+                matrix, window_size=window_size
+            )
+        graph_features = graph_cache[window_size]
+        if graph_features.empty:
+            raise ValueError("no graph snapshots produced")
+        policy_injuries = build_policy_injury_events(
+            canonical_injuries,
+            detailed_injuries,
+            policy_name=str(channel["policy_name"]),
+        )
+        labeled = attach_time_to_event_labels(graph_features, policy_injuries)
+        if labeled.empty:
+            raise ValueError(
+                f"no labeled graph snapshots produced for {channel['policy_name']}"
+            )
+        model_result = train_discrete_time_risk_model(
+            labeled, model_variant=model_variant
+        )
+        timeline = model_result.timeline
+
+        tier_cols = coverage_tiers[
+            ["athlete_id", "season_id", "coverage_tier", "measurement_days"]
+        ]
+        # Ensure season_id dtype matches before merge
+        timeline = timeline.copy()
+        timeline["season_id"] = timeline["season_id"].astype(str)
+        timeline_with_tiers = timeline.merge(
+            tier_cols, on=["athlete_id", "season_id"], how="left"
+        )
+        timeline_with_tiers["coverage_tier"] = (
+            timeline_with_tiers["coverage_tier"].fillna("low")
+        )
+
+        channel_result = build_coverage_stratified_evaluation(
+            timeline_with_tiers, channel
+        )
+        channel_results.append(channel_result)
+
+    coverage_flag = build_coverage_flag(channel_results)
+    tier_distribution = (
+        coverage_tiers["coverage_tier"]
+        .value_counts()
+        .reindex(["low", "medium", "high"], fill_value=0)
+        .astype(int)
+        .to_dict()
+    ) if not coverage_tiers.empty else {"low": 0, "medium": 0, "high": 0}
+
+    result = {
+        "experiment_type": "coverage_stratified_evaluation",
+        "tier_distribution": tier_distribution,
+        "coverage_flag": coverage_flag,
+        "channel_results": channel_results,
+    }
+
+    csv_rows = [row for ch in channel_results for row in ch["rows"]]
+
+    write_frame(coverage_tiers, experiment_dir / "coverage_tiers.csv")
+    write_frame(
+        pd.DataFrame(csv_rows),
+        experiment_dir / "coverage_stratified_evaluation.csv",
+    )
+    _write_json(
+        experiment_dir / "config.json",
+        {
+            "experiment_id": experiment_id,
+            "experiment_type": "coverage_stratified_evaluation",
+            "measurements_path": str(measurements_path),
+            "injuries_path": str(injuries_path),
+            "detailed_injuries_path": str(detailed_injuries_path),
+            "model_variant": model_variant,
+            "channels": list(DEFAULT_SHADOW_MODE_CHANNELS),
+        },
+    )
+    _write_json(
+        experiment_dir / "coverage_stratified_evaluation.json", result
+    )
+    write_coverage_stratified_evaluation_report(
+        experiment_dir / "coverage_stratified_evaluation_report.md",
+        result,
     )
     return experiment_dir
 

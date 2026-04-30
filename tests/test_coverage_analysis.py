@@ -3,6 +3,7 @@ from risk_stratification_engine.coverage_analysis import (
     build_coverage_tiers,
     build_coverage_stratified_evaluation,
     build_coverage_flag,
+    write_coverage_stratified_evaluation_report,
 )
 
 
@@ -181,3 +182,81 @@ def test_build_coverage_flag_mixed_when_channels_are_inconsistent_despite_low_me
     ]
     # mean_diff ≈ +0.01 but channels disagree in direction → must be "mixed"
     assert build_coverage_flag(channel_results) == "mixed"
+
+
+def _minimal_report_result():
+    return {
+        "coverage_flag": "mixed",
+        "tier_distribution": {"low": 10, "medium": 10, "high": 10},
+        "channel_results": [
+            {
+                "channel_name": "broad_30d",
+                "population_threshold": 0.123,
+                "tier_capture_rates": {"low": 0.08, "medium": 0.12, "high": 0.19},
+                "rows": [
+                    {
+                        "channel_name": "broad_30d",
+                        "coverage_tier": "low",
+                        "season_id": "all",
+                        "athlete_season_count": 10,
+                        "observed_event_count": 5,
+                        "captured_event_count": 0,
+                        "capture_rate": 0.08,
+                        "episodes_per_athlete_season": 0.5,
+                        "mean_measurement_days": 3.0,
+                    },
+                    {
+                        "channel_name": "broad_30d",
+                        "coverage_tier": "medium",
+                        "season_id": "all",
+                        "athlete_season_count": 10,
+                        "observed_event_count": 5,
+                        "captured_event_count": 1,
+                        "capture_rate": 0.12,
+                        "episodes_per_athlete_season": 0.8,
+                        "mean_measurement_days": 10.0,
+                    },
+                    {
+                        "channel_name": "broad_30d",
+                        "coverage_tier": "high",
+                        "season_id": "all",
+                        "athlete_season_count": 10,
+                        "observed_event_count": 5,
+                        "captured_event_count": 1,
+                        "capture_rate": 0.19,
+                        "episodes_per_athlete_season": 1.2,
+                        "mean_measurement_days": 30.0,
+                    },
+                ],
+            }
+        ],
+    }
+
+
+def test_write_coverage_stratified_evaluation_report_writes_expected_sections(tmp_path):
+    path = tmp_path / "report.md"
+    write_coverage_stratified_evaluation_report(path, _minimal_report_result())
+    text = path.read_text(encoding="utf-8")
+    assert "# Coverage-Stratified Evaluation" in text
+    assert "Coverage flag: mixed" in text
+    assert "Tier Distribution" in text
+    assert "broad_30d" in text
+    assert "0.123" in text  # population threshold formatted to 3 decimal places
+    assert "Interpretation" in text
+
+
+def test_fmt_returns_na_for_none():
+    from risk_stratification_engine.coverage_analysis import _fmt
+    assert _fmt(None) == "n/a"
+
+
+def test_fmt_returns_na_for_nan():
+    import numpy as np
+    from risk_stratification_engine.coverage_analysis import _fmt
+    assert _fmt(float("nan")) == "n/a"
+    assert _fmt(np.nan) == "n/a"
+
+
+def test_fmt_formats_float_to_three_decimals():
+    from risk_stratification_engine.coverage_analysis import _fmt
+    assert _fmt(0.123456) == "0.123"

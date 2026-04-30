@@ -235,7 +235,47 @@ def write_coverage_stratified_evaluation_report(
     path: Path,
     result: dict,
 ) -> None:
-    raise NotImplementedError
+    lines = [
+        "# Coverage-Stratified Evaluation",
+        "",
+        f"Coverage flag: {result['coverage_flag']}",
+        "",
+        "## Tier Distribution",
+        "",
+        "| Tier | Athlete-seasons |",
+        "|---|---:|",
+    ]
+    for tier in COVERAGE_TIER_LABELS:
+        count = result["tier_distribution"].get(tier, 0)
+        lines.append(f"| {tier} | {count} |")
+
+    lines.extend(["", "## Capture Rate by Coverage Tier", ""])
+
+    for ch in result["channel_results"]:
+        lines.extend(
+            [
+                f"### {ch['channel_name']}",
+                "",
+                f"Population threshold: {_fmt(ch['population_threshold'])}",
+                "",
+                "| Tier | Capture rate | Burden | Athlete-seasons | Observed events |",
+                "|---|---:|---:|---:|---:|",
+            ]
+        )
+        for row in ch["rows"]:
+            if row["season_id"] == "all":
+                lines.append(
+                    f"| {row['coverage_tier']} | "
+                    f"{_fmt(row['capture_rate'])} | "
+                    f"{_fmt(row['episodes_per_athlete_season'])} | "
+                    f"{row['athlete_season_count']} | "
+                    f"{row['observed_event_count']} |"
+                )
+        lines.append("")
+
+    lines.extend(["## Interpretation", "", _interpretation(result["coverage_flag"])])
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
 
 
 def _clean_value(value: object) -> object:
@@ -259,3 +299,24 @@ def _fmt(value: object) -> str:
     if value is None or pd.isna(value):
         return "n/a"
     return f"{float(value):.3f}"
+
+
+def _interpretation(flag: str) -> str:
+    if flag == "coverage_confounded":
+        return (
+            "High-coverage athletes were captured at substantially higher rates than "
+            "low-coverage athletes. Coverage tier appears to be a major driver of "
+            "shadow-mode channel performance. The next sprint should test whether "
+            "model signal survives after controlling for measurement density."
+        )
+    if flag == "coverage_independent":
+        return (
+            "Coverage tier was not a major driver of channel capture rates. "
+            "The shadow-mode policy signal appears to hold across coverage levels, "
+            "which supports proceeding toward shadow-pilot planning."
+        )
+    return (
+        "The relationship between coverage tier and capture rate is inconsistent "
+        "across channels or falls between the confounded and independent thresholds. "
+        "Review per-channel tier tables before drawing conclusions."
+    )

@@ -143,7 +143,7 @@ def build_coverage_flag(channel_results: list[dict]) -> str:
     mean_diff = sum(diffs) / len(diffs)
     if mean_diff >= 0.15:
         return "coverage_confounded"
-    if mean_diff < 0.05:
+    if mean_diff < 0.05 and all(d < 0.05 for d in diffs):
         return "coverage_independent"
     return "mixed"
 

@@ -172,3 +172,12 @@ def test_build_coverage_flag_mixed_when_difference_is_moderate():
         {"tier_capture_rates": {"low": 0.10, "medium": 0.12, "high": 0.18}},
     ]
     assert build_coverage_flag(channel_results) == "mixed"
+
+
+def test_build_coverage_flag_mixed_when_channels_are_inconsistent_despite_low_mean():
+    channel_results = [
+        {"tier_capture_rates": {"low": 0.01, "medium": 0.10, "high": 0.21}},  # diff = +0.20
+        {"tier_capture_rates": {"low": 0.22, "medium": 0.10, "high": 0.04}},  # diff = -0.18
+    ]
+    # mean_diff ≈ +0.01 but channels disagree in direction → must be "mixed"
+    assert build_coverage_flag(channel_results) == "mixed"

@@ -908,3 +908,86 @@ def test_cli_runs_season_drift_diagnostic_from_live_sources(
         "experiment_id": "season_drift_diagnostic_run",
         "model_variant": "l2",
     }
+
+
+def test_cli_runs_coverage_stratified_evaluation_from_live_sources(
+    tmp_path,
+    monkeypatch,
+):
+    import risk_stratification_engine.cli as cli
+    from risk_stratification_engine.cli import main
+
+    calls = {}
+
+    def fake_prepare_live_source_inputs(data_paths, output_dir):
+        from risk_stratification_engine.live_sources import LiveSourcePreparationResult
+        return LiveSourcePreparationResult(
+            measurements_path=output_dir / "canonical_measurements.csv",
+            injuries_path=output_dir / "canonical_injuries.csv",
+            detailed_injuries_path=output_dir / "injury_events_detailed.csv",
+            metadata_path=output_dir / "prep_metadata.json",
+            audit_path=output_dir / "data_quality_audit.json",
+            metadata={"canonical_rows": {"measurements": 1, "injury_events": 1}},
+            audit={"coverage": {"athlete_season_count": 1}},
+        )
+
+    def fake_run_coverage_stratified_evaluation_experiment(
+        measurements_path,
+        injuries_path,
+        detailed_injuries_path,
+        output_dir,
+        experiment_id,
+        model_variant,
+    ):
+        calls["coverage"] = {
+            "measurements_path": measurements_path,
+            "injuries_path": injuries_path,
+            "detailed_injuries_path": detailed_injuries_path,
+            "output_dir": output_dir,
+            "experiment_id": experiment_id,
+            "model_variant": model_variant,
+        }
+        return output_dir / "experiments" / experiment_id
+
+    monkeypatch.setattr(
+        cli, "prepare_live_source_inputs", fake_prepare_live_source_inputs
+    )
+    monkeypatch.setattr(
+        cli,
+        "run_coverage_stratified_evaluation_experiment",
+        fake_run_coverage_stratified_evaluation_experiment,
+    )
+
+    exit_code = main(
+        [
+            "--from-live-sources",
+            "--paths-config",
+            "config/paths.local.yaml",
+            "--output-dir",
+            str(tmp_path),
+            "--experiment-id",
+            "coverage_eval_run",
+            "--coverage-stratified-evaluation",
+            "--model-variant",
+            "l2",
+        ]
+    )
+
+    assert exit_code == 0
+    assert calls["coverage"] == {
+        "measurements_path": tmp_path
+        / "live_inputs"
+        / "coverage_eval_run"
+        / "canonical_measurements.csv",
+        "injuries_path": tmp_path
+        / "live_inputs"
+        / "coverage_eval_run"
+        / "canonical_injuries.csv",
+        "detailed_injuries_path": tmp_path
+        / "live_inputs"
+        / "coverage_eval_run"
+        / "injury_events_detailed.csv",
+        "output_dir": tmp_path,
+        "experiment_id": "coverage_eval_run",
+        "model_variant": "l2",
+    }

@@ -9,6 +9,7 @@ from risk_stratification_engine.experiments import (
     _compute_snapshot_contributions,
     run_alert_episode_experiment,
     run_calibration_threshold_experiment,
+    run_coverage_stratified_evaluation_experiment,
     run_injury_outcome_policy_experiment,
     run_outcome_policy_model_comparison_experiment,
     run_policy_decision_sprint_experiment,
@@ -884,6 +885,55 @@ def test_run_season_drift_diagnostic_writes_drift_artifacts(tmp_path):
     report = (result / "season_drift_diagnostic_report.md").read_text()
     assert "Season Drift Diagnostics" in report
     assert "coverage and injury mix" in report
+
+
+def test_run_coverage_stratified_evaluation_writes_artifacts(tmp_path):
+    measurements_path, injuries_path, detailed_path = _write_policy_fixture_inputs(
+        tmp_path
+    )
+
+    result = run_coverage_stratified_evaluation_experiment(
+        measurements_path=measurements_path,
+        injuries_path=injuries_path,
+        detailed_injuries_path=detailed_path,
+        output_dir=tmp_path,
+        experiment_id="coverage_stratified_eval",
+        model_variant="l2",
+    )
+
+    assert (result / "coverage_tiers.csv").exists()
+    assert (result / "coverage_stratified_evaluation.csv").exists()
+    assert (result / "coverage_stratified_evaluation.json").exists()
+    assert (result / "coverage_stratified_evaluation_report.md").exists()
+    assert (result / "config.json").exists()
+
+    tiers = pd.read_csv(result / "coverage_tiers.csv")
+    assert set(tiers.columns) >= {
+        "athlete_id", "season_id", "measurement_days",
+        "measurement_row_count", "source_count", "coverage_tier",
+    }
+    assert set(tiers["coverage_tier"]).issubset({"low", "medium", "high"})
+
+    eval_csv = pd.read_csv(result / "coverage_stratified_evaluation.csv")
+    assert "channel_name" in eval_csv.columns
+    assert "coverage_tier" in eval_csv.columns
+    assert "capture_rate" in eval_csv.columns
+
+    import json
+    payload = json.loads(
+        (result / "coverage_stratified_evaluation.json").read_text()
+    )
+    assert payload["experiment_type"] == "coverage_stratified_evaluation"
+    assert "tier_distribution" in payload
+    assert "coverage_flag" in payload
+    assert payload["coverage_flag"] in {
+        "coverage_confounded", "coverage_independent", "mixed"
+    }
+    assert len(payload["channel_results"]) >= 1
+
+    report = (result / "coverage_stratified_evaluation_report.md").read_text()
+    assert "Coverage-Stratified Evaluation" in report
+    assert "Coverage flag:" in report
 
 
 # ---------------------------------------------------------------------------

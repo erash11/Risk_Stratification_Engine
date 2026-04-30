@@ -929,7 +929,9 @@ def test_run_coverage_stratified_evaluation_writes_artifacts(tmp_path):
     assert payload["coverage_flag"] in {
         "coverage_confounded", "coverage_independent", "mixed"
     }
-    assert len(payload["channel_results"]) >= 1
+    assert len(payload["channel_results"]) == 4
+    assert "channel_name" in payload["channel_results"][0]
+    assert "tier_capture_rates" in payload["channel_results"][0]
 
     report = (result / "coverage_stratified_evaluation_report.md").read_text()
     assert "Coverage-Stratified Evaluation" in report

@@ -245,6 +245,24 @@ def test_write_coverage_stratified_evaluation_report_writes_expected_sections(tm
     assert "Interpretation" in text
 
 
+def test_write_coverage_stratified_evaluation_report_confounded_interpretation(tmp_path):
+    result = _minimal_report_result()
+    result["coverage_flag"] = "coverage_confounded"
+    path = tmp_path / "report.md"
+    write_coverage_stratified_evaluation_report(path, result)
+    text = path.read_text(encoding="utf-8")
+    assert "controlling for measurement density" in text
+
+
+def test_write_coverage_stratified_evaluation_report_independent_interpretation(tmp_path):
+    result = _minimal_report_result()
+    result["coverage_flag"] = "coverage_independent"
+    path = tmp_path / "report.md"
+    write_coverage_stratified_evaluation_report(path, result)
+    text = path.read_text(encoding="utf-8")
+    assert "shadow-pilot planning" in text
+
+
 def test_fmt_returns_na_for_none():
     from risk_stratification_engine.coverage_analysis import _fmt
     assert _fmt(None) == "n/a"

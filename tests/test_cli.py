@@ -914,17 +914,24 @@ def test_cli_runs_coverage_stratified_evaluation_from_live_sources(
     tmp_path,
     monkeypatch,
 ):
-    import risk_stratification_engine.cli as cli
-    from risk_stratification_engine.cli import main
-
     calls = {}
 
+    def fake_load_data_source_paths(config_path):
+        calls["config_path"] = config_path
+        return object()
+
     def fake_prepare_live_source_inputs(data_paths, output_dir):
-        from risk_stratification_engine.live_sources import LiveSourcePreparationResult
-        return LiveSourcePreparationResult(
-            measurements_path=output_dir / "canonical_measurements.csv",
-            injuries_path=output_dir / "canonical_injuries.csv",
-            detailed_injuries_path=output_dir / "injury_events_detailed.csv",
+        output_dir.mkdir(parents=True, exist_ok=True)
+        measurements = output_dir / "canonical_measurements.csv"
+        injuries = output_dir / "canonical_injuries.csv"
+        detailed_injuries = output_dir / "injury_events_detailed.csv"
+        measurements.write_text("measurements", encoding="utf-8")
+        injuries.write_text("injuries", encoding="utf-8")
+        detailed_injuries.write_text("detailed injuries", encoding="utf-8")
+        return cli.LiveSourcePreparationResult(
+            measurements_path=measurements,
+            injuries_path=injuries,
+            detailed_injuries_path=detailed_injuries,
             metadata_path=output_dir / "prep_metadata.json",
             audit_path=output_dir / "data_quality_audit.json",
             metadata={"canonical_rows": {"measurements": 1, "injury_events": 1}},
@@ -949,6 +956,7 @@ def test_cli_runs_coverage_stratified_evaluation_from_live_sources(
         }
         return output_dir / "experiments" / experiment_id
 
+    monkeypatch.setattr(cli, "load_data_source_paths", fake_load_data_source_paths)
     monkeypatch.setattr(
         cli, "prepare_live_source_inputs", fake_prepare_live_source_inputs
     )
@@ -974,6 +982,7 @@ def test_cli_runs_coverage_stratified_evaluation_from_live_sources(
     )
 
     assert exit_code == 0
+    assert calls["config_path"] == Path("config/paths.local.yaml")
     assert calls["coverage"] == {
         "measurements_path": tmp_path
         / "live_inputs"

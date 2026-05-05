@@ -19,7 +19,16 @@
       "Bash(risk-engine --from-live-sources --paths-config config/paths.local.yaml --output-dir outputs --experiment-id calibration_threshold_v1 --calibration-thresholds --model-variant l2 --graph-window-size 4 --stability-splits 5)",
       "Bash(python *)",
       "Bash(risk-engine --from-live-sources --paths-config config/paths.local.yaml --output-dir outputs --experiment-id calibration_threshold_w7_v1 --calibration-thresholds --model-variant l2 --graph-window-size 7 --stability-splits 5)",
-      "Bash(risk-engine --from-live-sources --paths-config config/paths.local.yaml --output-dir outputs --experiment-id athlete_explanations_v1 --model-variant l2 --graph-window-size 4)"
+      "Bash(risk-engine --from-live-sources --paths-config config/paths.local.yaml --output-dir outputs --experiment-id athlete_explanations_v1 --model-variant l2 --graph-window-size 4)",
+      "Bash(pytest *)",
+      "Bash(git commit *)",
+      "PowerShell(python -m pytest tests/test_coverage_analysis.py -v --tb=short 2>&1 | Select-Object -Last 15)",
+      "PowerShell(python -m pytest tests/test_cli.py::test_cli_runs_coverage_stratified_evaluation_from_live_sources -v --tb=short 2>&1 | Select-Object -Last 10)",
+      "PowerShell(python -m pytest tests/test_experiments.py::test_run_coverage_stratified_evaluation_writes_artifacts -v --tb=short 2>&1 | Select-Object -Last 5)",
+      "PowerShell(risk-engine *)",
+      "PowerShell(python -m pytest --tb=short -q 2>&1 | Select-Object -Last 3)",
+      "PowerShell(git push *)",
+      "PowerShell(taskkill *)"
     ]
   }
 }

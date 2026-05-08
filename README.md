@@ -435,6 +435,26 @@ later complete athlete-season trajectories, compares `graph_trajectory` against
 `graph_plus_coverage_source`, and checks fixed alert channels under season-local
 and burden-capped thresholds.
 
+Forward case review sprints inspect the channels and seasons that still show
+forward-season signal:
+
+```bash
+risk-engine \
+  --from-live-sources \
+  --paths-config config/paths.local.yaml \
+  --output-dir outputs \
+  --experiment-id forward_case_review_v1 \
+  --forward-case-review-sprint \
+  --model-variant l2
+```
+
+These runs write `forward_case_review_cases.csv`,
+`forward_case_review.json`, and `forward_case_review_report.md`. The sprint
+scores complete athlete-season trajectories, targets forward-surviving
+seasons/channels, rebuilds alert episodes, and classifies true positives, false
+positives, missed injuries, and high intra-individual deviation episodes into
+case-review diagnostics.
+
 Latest live-source comparison (`intra_individual_deviation_v1`, 349 athletes,
 70 holdout): 7d AUROC 0.723, Brier skill 0.0020; 14d AUROC 0.731, Brier skill
 0.0057; 30d AUROC 0.736, Brier skill 0.0171. Compared with
@@ -612,9 +632,19 @@ weak or unevaluable: 2021-2022 had no discrimination metrics and 2022-2023 was
 prevalence-like at AUROC 0.500. Alert-policy checks remained modest: recommended
 mean capture/burden was 11.6% / 0.41 for `broad_30d`, 15.0% / 0.86 for
 `severity_14d`, 6.4% / 0.47 for `severity_7d`, and 19.5% / 0.85 for subtype
-review. The fixed policy package remains research-only; the next sprint should
-case-review the forward-surviving windows/channels before any shadow pilot. The
-current test suite has 196 passing tests.
+review. The fixed policy package remains research-only.
+
+The forward case review sprint (`forward_case_review_v1`, L2) reviewed 44
+deterministic cases from 2023-2024 and 2025-2026 across `broad_30d`,
+`severity_14d`, and `subtype_lower_extremity_soft_tissue_30d`. Diagnostics split
+into 14 `model_signal_supported`, 12 `model_miss`, 12
+`missing_context_or_managed_risk`, and 6 `explanation_gap`. `broad_30d` had the
+strongest supported-case balance, `severity_14d` was dominated by explanation
+gaps, and subtype review was dominated by missing-context or managed-risk
+labels. This supports continued research, not production. The next sprint should
+turn case labels into data requirements and feature plans around exposure,
+intervention, baseline/frailty, and injury-mechanism context. The current test
+suite has 200 passing tests.
 
 The reported risk values are baseline model estimates for research comparison,
 not calibrated clinical probabilities.

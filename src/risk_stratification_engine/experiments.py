@@ -22,6 +22,10 @@ from risk_stratification_engine.case_review import build_qualitative_case_review
 from risk_stratification_engine.evaluation import evaluate_risk_model
 from risk_stratification_engine.events import DEFAULT_HORIZONS, attach_time_to_event_labels
 from risk_stratification_engine.episode_quality import build_alert_episode_quality
+from risk_stratification_engine.forward_case_review import (
+    build_forward_case_review_summary,
+    write_forward_case_review_report,
+)
 from risk_stratification_engine.graphs import build_graph_snapshots
 from risk_stratification_engine.injury_context import build_injury_context_outcomes
 from risk_stratification_engine.injury_outcomes import (
@@ -123,6 +127,12 @@ COVERAGE_SOURCE_MODEL_FEATURE_SETS = {
         *COVERAGE_SOURCE_FEATURE_COLUMNS,
     ),
 }
+FORWARD_CASE_REVIEW_TARGET_CHANNELS = (
+    "broad_30d",
+    "severity_14d",
+    "subtype_lower_extremity_soft_tissue_30d",
+)
+FORWARD_CASE_REVIEW_PREFERRED_SEASONS = ("2023-2024", "2025-2026")
 
 
 def run_research_experiment(
@@ -1146,6 +1156,58 @@ def run_season_forward_validation_sprint_experiment(
     return experiment_dir
 
 
+def run_forward_case_review_sprint_experiment(
+    measurements_path: str | Path,
+    injuries_path: str | Path,
+    detailed_injuries_path: str | Path,
+    output_dir: str | Path,
+    experiment_id: str,
+    model_variant: str = "l2",
+) -> Path:
+    experiment_dir = _experiment_path(output_dir, experiment_id)
+    measurements = load_measurements(measurements_path)
+    canonical_injuries = load_injury_events(injuries_path)
+    detailed_injuries = pd.read_csv(detailed_injuries_path)
+    cases = _forward_case_review_cases(
+        measurements=measurements,
+        canonical_injuries=canonical_injuries,
+        detailed_injuries=detailed_injuries,
+        model_variant=model_variant,
+    )
+    case_records = _json_records(cases)
+    summary = build_forward_case_review_summary(case_records)
+    summary.update(
+        {
+            "model_type": MODEL_TYPE,
+            "model_variant": model_variant,
+            "feature_set": "graph_plus_coverage_source",
+            "target_channels": list(FORWARD_CASE_REVIEW_TARGET_CHANNELS),
+        }
+    )
+
+    write_frame(cases, experiment_dir / "forward_case_review_cases.csv")
+    _write_json(
+        experiment_dir / "config.json",
+        {
+            "experiment_id": experiment_id,
+            "experiment_type": "forward_case_review_sprint",
+            "measurements_path": str(measurements_path),
+            "injuries_path": str(injuries_path),
+            "detailed_injuries_path": str(detailed_injuries_path),
+            "model_variant": model_variant,
+            "feature_set": "graph_plus_coverage_source",
+            "target_channels": list(FORWARD_CASE_REVIEW_TARGET_CHANNELS),
+            "preferred_test_seasons": list(FORWARD_CASE_REVIEW_PREFERRED_SEASONS),
+        },
+    )
+    _write_json(experiment_dir / "forward_case_review.json", summary)
+    write_forward_case_review_report(
+        experiment_dir / "forward_case_review_report.md",
+        summary,
+    )
+    return experiment_dir
+
+
 def run_window_sensitivity_experiment(
     measurements_path: str | Path,
     injuries_path: str | Path,
@@ -2019,6 +2081,168 @@ def _season_forward_validation_rows(
         )
     )
     return pd.DataFrame(rows)
+
+
+def _forward_case_review_cases(
+    *,
+    measurements: pd.DataFrame,
+    canonical_injuries: pd.DataFrame,
+    detailed_injuries: pd.DataFrame,
+    model_variant: str,
+) -> pd.DataFrame:
+    matrix = build_measurement_matrix(measurements)
+    season_ids = sorted(str(value) for value in matrix["season_id"].dropna().unique())
+    target_test_seasons = _forward_case_review_target_seasons(season_ids)
+    target_channels = {
+        channel["channel_name"]: channel
+        for channel in DEFAULT_SHADOW_MODE_CHANNELS
+        if channel["channel_name"] in FORWARD_CASE_REVIEW_TARGET_CHANNELS
+    }
+    rows: list[dict[str, object]] = []
+    feature_columns = COVERAGE_SOURCE_MODEL_FEATURE_SETS["graph_plus_coverage_source"]
+
+    for channel_name in FORWARD_CASE_REVIEW_TARGET_CHANNELS:
+        channel = target_channels[channel_name]
+        window_size = int(channel["graph_window_size"])
+        graph_features = attach_coverage_source_features(
+            build_graph_snapshots(matrix, window_size=window_size),
+            measurements,
+        )
+        policy_injuries = build_policy_injury_events(
+            canonical_injuries,
+            detailed_injuries,
+            policy_name=str(channel["policy_name"]),
+        )
+        labeled = attach_time_to_event_labels(graph_features, policy_injuries)
+        if labeled.empty:
+            continue
+        for test_season in target_test_seasons:
+            train_seasons = [season for season in season_ids if season < test_season]
+            if not train_seasons:
+                continue
+            train_mask = labeled["season_id"].astype(str).isin(train_seasons)
+            timeline = _fit_forward_risk_timeline(
+                labeled=labeled,
+                train_mask=train_mask,
+                feature_columns=feature_columns,
+                model_variant=model_variant,
+            )
+            explanation_summary = _explanation_summary(
+                timeline,
+                _forward_case_review_model_summary(feature_columns),
+            )
+            alert_timeline = _alert_episode_timeline(timeline, explanation_summary)
+            test_timeline = alert_timeline[
+                alert_timeline["season_id"].astype(str).eq(test_season)
+            ].copy()
+            rows.extend(
+                _forward_case_review_rows_for_target(
+                    channel=channel,
+                    test_timeline=test_timeline,
+                    train_seasons=train_seasons,
+                    test_season=test_season,
+                )
+            )
+    return pd.DataFrame(rows)
+
+
+def _forward_case_review_rows_for_target(
+    *,
+    channel: dict[str, object],
+    test_timeline: pd.DataFrame,
+    train_seasons: list[str],
+    test_season: str,
+) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    if test_timeline.empty:
+        return rows
+    policy_rows = build_coverage_adjusted_threshold_policy_rows(
+        test_timeline,
+        channel,
+        burden_cap_episodes_per_athlete_season=(
+            DEFAULT_BURDEN_CAP_EPISODES_PER_ATHLETE_SEASON
+        ),
+    )
+    horizon = int(channel["horizon_days"])
+    for policy_row in policy_rows:
+        threshold_policy = str(policy_row["threshold_policy"])
+        if threshold_policy not in {
+            "season_local_percentile",
+            "burden_capped_percentile",
+        }:
+            continue
+        threshold_value = float(policy_row["selected_threshold_value"])
+        episodes = build_alert_episodes(
+            test_timeline,
+            horizons=(horizon,),
+            percentile_thresholds=(threshold_value,),
+        )
+        quality = build_alert_episode_quality(episodes, test_timeline)
+        review = build_qualitative_case_review(episodes, test_timeline, quality)
+        for case in review["cases"]:
+            case.update(
+                {
+                    "target_reason": _forward_case_review_target_reason(
+                        str(channel["channel_name"]),
+                        test_season,
+                    ),
+                    "channel_name": str(channel["channel_name"]),
+                    "role": str(channel["role"]),
+                    "policy_name": str(channel["policy_name"]),
+                    "threshold_policy": threshold_policy,
+                    "selected_threshold_value": threshold_value,
+                    "graph_window_size": int(channel["graph_window_size"]),
+                    "train_season_ids": ",".join(train_seasons),
+                    "test_season_id": test_season,
+                }
+            )
+            rows.append(case)
+    return rows
+
+
+def _forward_case_review_model_summary(
+    feature_columns: tuple[str, ...],
+) -> dict[str, object]:
+    return {
+        "feature_columns": list(feature_columns),
+        "horizon_models": {
+            str(horizon): {
+                "feature_attribution": [
+                    {
+                        "feature": feature,
+                        "coefficient": 0.0,
+                        "train_mean": 0.0,
+                        "train_std": 1.0,
+                        "standardized_coefficient": 0.0,
+                        "abs_standardized_coefficient": 0.0,
+                    }
+                    for feature in feature_columns
+                ]
+            }
+            for horizon in DEFAULT_HORIZONS
+        },
+    }
+
+
+def _forward_case_review_target_seasons(season_ids: list[str]) -> list[str]:
+    preferred = [
+        season
+        for season in FORWARD_CASE_REVIEW_PREFERRED_SEASONS
+        if season in season_ids
+    ]
+    if len(preferred) == len(FORWARD_CASE_REVIEW_PREFERRED_SEASONS):
+        return preferred
+    return season_ids[1:][-2:]
+
+
+def _forward_case_review_target_reason(channel_name: str, test_season: str) -> str:
+    if test_season == "2023-2024":
+        return "forward_ranking_survivor"
+    if test_season == "2025-2026":
+        return "forward_calibration_survivor"
+    if channel_name == "broad_30d":
+        return "low_burden_reference"
+    return "forward_survivor"
 
 
 def _season_forward_model_metric_rows(

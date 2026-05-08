@@ -14,6 +14,7 @@ from risk_stratification_engine.experiments import (
     run_coverage_normalized_policy_sprint_experiment,
     run_coverage_source_aware_model_sprint_experiment,
     run_coverage_stratified_evaluation_experiment,
+    run_forward_case_review_sprint_experiment,
     run_injury_outcome_policy_experiment,
     run_model_robustness_experiment,
     run_outcome_policy_model_comparison_experiment,
@@ -63,6 +64,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--coverage-source-aware-model-sprint", action="store_true")
     parser.add_argument("--coverage-adjusted-threshold-sprint", action="store_true")
     parser.add_argument("--season-forward-validation", action="store_true")
+    parser.add_argument("--forward-case-review-sprint", action="store_true")
     parser.add_argument("--stability-splits", type=int, default=5)
     return parser
 
@@ -197,6 +199,25 @@ def main(argv: list[str] | None = None) -> int:
             model_variant=args.model_variant,
         )
         print(f"Season-forward validation artifacts written to {experiment_dir}")
+        return 0
+    if args.forward_case_review_sprint:
+        if detailed_injuries_path is None:
+            sibling = injuries_path.parent / "injury_events_detailed.csv"
+            if not sibling.exists():
+                parser.error(
+                    "--forward-case-review-sprint requires live-source detailed "
+                    "injury events or a sibling injury_events_detailed.csv"
+                )
+            detailed_injuries_path = sibling
+        experiment_dir = run_forward_case_review_sprint_experiment(
+            measurements_path=measurements_path,
+            injuries_path=injuries_path,
+            detailed_injuries_path=detailed_injuries_path,
+            output_dir=args.output_dir,
+            experiment_id=args.experiment_id,
+            model_variant=args.model_variant,
+        )
+        print(f"Forward case review artifacts written to {experiment_dir}")
         return 0
     elif args.shadow_mode_stability:
         if detailed_injuries_path is None:

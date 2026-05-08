@@ -13,6 +13,7 @@ from risk_stratification_engine.experiments import (
     run_coverage_normalized_policy_sprint_experiment,
     run_coverage_source_aware_model_sprint_experiment,
     run_coverage_stratified_evaluation_experiment,
+    run_forward_case_review_sprint_experiment,
     run_injury_outcome_policy_experiment,
     run_outcome_policy_model_comparison_experiment,
     run_policy_decision_sprint_experiment,
@@ -1110,6 +1111,43 @@ def test_run_season_forward_validation_sprint_writes_forward_artifacts(tmp_path)
     assert "Season-Forward Validation Sprint" in report
     assert "train on earlier seasons" in report
     assert "complete athlete-season trajectories" in report
+
+
+def test_run_forward_case_review_sprint_writes_review_artifacts(tmp_path):
+    measurements_path, injuries_path, detailed_path = _write_season_forward_fixture_inputs(
+        tmp_path
+    )
+
+    result = run_forward_case_review_sprint_experiment(
+        measurements_path=measurements_path,
+        injuries_path=injuries_path,
+        detailed_injuries_path=detailed_path,
+        output_dir=tmp_path,
+        experiment_id="forward_case_review",
+        model_variant="l2",
+    )
+
+    assert (result / "forward_case_review_cases.csv").exists()
+    assert (result / "forward_case_review.json").exists()
+    assert (result / "forward_case_review_report.md").exists()
+    assert (result / "config.json").exists()
+
+    cases = pd.read_csv(result / "forward_case_review_cases.csv")
+    assert {"severity_14d", "subtype_lower_extremity_soft_tissue_30d"}.issubset(
+        set(cases["channel_name"])
+    )
+    assert set(cases["test_season_id"]) == {"2025-2026", "2026-2027"}
+    assert "diagnostic_label" in cases.columns
+    assert "target_reason" in cases.columns
+
+    payload = json.loads((result / "forward_case_review.json").read_text())
+    assert payload["experiment_type"] == "forward_case_review_sprint"
+    assert payload["case_count"] == len(cases)
+    assert "diagnostic_summary" in payload
+
+    report = (result / "forward_case_review_report.md").read_text()
+    assert "Forward Case Review Sprint" in report
+    assert "forward-surviving windows and channels" in report
 
 
 # ---------------------------------------------------------------------------

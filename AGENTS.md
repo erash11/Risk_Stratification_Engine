@@ -67,6 +67,7 @@ Future work may add a dashboard performance tab inspired by the Malum/SPEAR mate
 - Coverage/source-aware model sprints are available through `risk-engine --coverage-source-aware-model-sprint` and write `coverage_source_features.csv`, `coverage_source_model_comparison.csv`, `coverage_source_model_comparison.json`, and `coverage_source_model_comparison_report.md`. The sprint compares `graph_trajectory` against `graph_plus_coverage_source`, adding only time-safe coverage/source covariates available on or before each graph snapshot while keeping the 13 dynamic graph trajectory features as the core signal.
 - Coverage-adjusted threshold sprints are available through `risk-engine --coverage-adjusted-threshold-sprint` and write `coverage_adjusted_threshold_policy.csv`, `coverage_adjusted_threshold_policy.json`, and `coverage_adjusted_threshold_report.md`. The sprint compares season-local thresholds, coverage-tier-local thresholds, and burden-capped thresholds after complete athlete-season trajectories have been scored.
 - Season-forward validation sprints are available through `risk-engine --season-forward-validation` and write `season_forward_validation.csv`, `season_forward_validation.json`, and `season_forward_validation_report.md`. The sprint trains on earlier seasons, evaluates later seasons, compares `graph_trajectory` against `graph_plus_coverage_source`, and checks fixed alert channels under season-local and burden-capped threshold policies.
+- Forward case review sprints are available through `risk-engine --forward-case-review-sprint` and write `forward_case_review_cases.csv`, `forward_case_review.json`, and `forward_case_review_report.md`. The sprint targets forward-surviving seasons and channels, then classifies true positives, false positives, missed injuries, and high intra-individual deviation episodes into review diagnostics.
 - Main single-experiment runs accept `--model-variant baseline|l2|l1|elasticnet`, allowing a regularized candidate to be run through the normal artifact path without using the robustness sweep.
 - Enriched graph features (`enriched_graph_features_v1` run, 349 athletes, 70 holdout): 7d AUROC 0.730 (+0.008), 14d AUROC 0.735 (+0.007), 30d AUROC 0.735 (+0.007); Brier skill 30d improved from 0.0142 to 0.0168 (+18%).
 - Intra-individual deviation features (`intra_individual_deviation_v1` run, 349 athletes, 70 holdout): 7d AUROC 0.723, Brier skill 0.0020, top-decile lift 3.76; 14d AUROC 0.731, Brier skill 0.0057, top-decile lift 3.96; 30d AUROC 0.736, Brier skill 0.0171, top-decile lift 4.48. Versus `enriched_graph_features_v1`, the 30d AUROC, 7d/30d Brier skill, and all top-decile lifts improved, while 7d/14d AUROC declined slightly.
@@ -76,6 +77,25 @@ Future work may add a dashboard performance tab inspired by the Malum/SPEAR mate
 - Window/model robustness (`window_model_robustness_v1` run, windows 2/4/7, 5 rotating splits, 349 athletes): no single window/variant dominates all operating goals. Window 7 + L2 won calibration at 7d/14d, window 4 + L2 won 30d calibration, window 2 regularized variants won triage lift at all horizons, and ranking split by horizon: window 2 baseline at 7d AUROC 0.731, window 4 L2 at 14d AUROC 0.729, and window 7 L1 at 30d AUROC 0.729. This supports using L2 as the calibration-oriented production candidate while keeping window 2 as a high-alert triage setting and window 7 under review for 30d ranking.
 
 ## Latest Completed Step
+
+**Forward case review sprint** - implemented and verified on 2026-05-08.
+
+**What changed:** Added `forward_case_review.py` with summary/report helpers, plus `run_forward_case_review_sprint_experiment(...)` and the `--forward-case-review-sprint` CLI mode. The runner targets the forward-surviving channel set, scores complete athlete-season trajectories with coverage/source-aware graph features, rebuilds alert episodes, and writes deterministic case-review artifacts.
+
+**Peterson guardrail:** The sprint reviews cases only after complete athlete-season trajectories are scored. It targets season/channel behavior that survived season-forward validation instead of converting daily measurement rows into independent classification examples.
+
+**Verification:** New TDD tests first failed because `risk_stratification_engine.forward_case_review`, `run_forward_case_review_sprint_experiment`, and the `--forward-case-review-sprint` CLI dispatch did not exist. After implementation, focused tests passed and `python -m pytest` collected and passed 200 tests. The live command `risk-engine --from-live-sources --paths-config config/paths.local.yaml --output-dir outputs --experiment-id forward_case_review_v1 --forward-case-review-sprint --model-variant l2` completed and wrote the review artifacts.
+
+**Live results (`forward_case_review_v1`, L2):**
+- Reviewed 44 deterministic cases across the targeted forward seasons 2023-2024 and 2025-2026.
+- Diagnostic labels split into 14 `model_signal_supported`, 12 `model_miss`, 12 `missing_context_or_managed_risk`, and 6 `explanation_gap`.
+- Case types split into 12 true-positive episodes, 12 false-positive episodes, 12 missed injuries, and 8 high intra-individual deviation episodes.
+- `broad_30d` produced the strongest supported-case balance with 6 of 16 cases labeled `model_signal_supported`.
+- `severity_14d` was dominated by explanation gaps, and `subtype_lower_extremity_soft_tissue_30d` was dominated by missing-context or managed-risk labels.
+
+**Interpretation:** The forward case evidence is mixed and still research-only. The model has supported examples in the broad 30d channel, but severity and subtype channels expose explanation gaps, misses, and missing exposure/intervention/baseline/mechanism context. The next sprint should translate those case diagnostics into explicit data requirements and targeted model improvements rather than moving toward a dashboard.
+
+## Previous Completed Step
 
 **Season-forward validation sprint** — implemented and verified on 2026-05-08.
 

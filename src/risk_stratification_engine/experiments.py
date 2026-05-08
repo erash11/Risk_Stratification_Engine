@@ -19,6 +19,11 @@ from risk_stratification_engine.calibration import (
     build_threshold_table,
 )
 from risk_stratification_engine.case_review import build_qualitative_case_review
+from risk_stratification_engine.case_diagnostic_requirements import (
+    build_case_diagnostic_requirements,
+    build_case_diagnostic_requirements_summary,
+    write_case_diagnostic_requirements_report,
+)
 from risk_stratification_engine.evaluation import evaluate_risk_model
 from risk_stratification_engine.events import DEFAULT_HORIZONS, attach_time_to_event_labels
 from risk_stratification_engine.episode_quality import build_alert_episode_quality
@@ -1203,6 +1208,62 @@ def run_forward_case_review_sprint_experiment(
     _write_json(experiment_dir / "forward_case_review.json", summary)
     write_forward_case_review_report(
         experiment_dir / "forward_case_review_report.md",
+        summary,
+    )
+    return experiment_dir
+
+
+def run_case_diagnostic_requirements_sprint_experiment(
+    measurements_path: str | Path,
+    injuries_path: str | Path,
+    detailed_injuries_path: str | Path,
+    output_dir: str | Path,
+    experiment_id: str,
+    model_variant: str = "l2",
+) -> Path:
+    experiment_dir = _experiment_path(output_dir, experiment_id)
+    measurements = load_measurements(measurements_path)
+    canonical_injuries = load_injury_events(injuries_path)
+    detailed_injuries = pd.read_csv(detailed_injuries_path)
+    cases = _forward_case_review_cases(
+        measurements=measurements,
+        canonical_injuries=canonical_injuries,
+        detailed_injuries=detailed_injuries,
+        model_variant=model_variant,
+    )
+    case_records = _json_records(cases)
+    requirements = build_case_diagnostic_requirements(case_records)
+    summary = build_case_diagnostic_requirements_summary(requirements, case_records)
+    summary.update(
+        {
+            "model_type": MODEL_TYPE,
+            "model_variant": model_variant,
+            "feature_set": "graph_plus_coverage_source",
+            "source_case_artifact": "forward_case_review_cases.csv",
+        }
+    )
+
+    write_frame(cases, experiment_dir / "forward_case_review_cases.csv")
+    write_frame(
+        pd.DataFrame(requirements),
+        experiment_dir / "case_diagnostic_requirements.csv",
+    )
+    _write_json(
+        experiment_dir / "config.json",
+        {
+            "experiment_id": experiment_id,
+            "experiment_type": "case_diagnostic_requirements_sprint",
+            "measurements_path": str(measurements_path),
+            "injuries_path": str(injuries_path),
+            "detailed_injuries_path": str(detailed_injuries_path),
+            "model_variant": model_variant,
+            "feature_set": "graph_plus_coverage_source",
+            "source_case_artifact": "forward_case_review_cases.csv",
+        },
+    )
+    _write_json(experiment_dir / "case_diagnostic_requirements.json", summary)
+    write_case_diagnostic_requirements_report(
+        experiment_dir / "case_diagnostic_requirements_report.md",
         summary,
     )
     return experiment_dir

@@ -455,6 +455,25 @@ seasons/channels, rebuilds alert episodes, and classifies true positives, false
 positives, missed injuries, and high intra-individual deviation episodes into
 case-review diagnostics.
 
+Case diagnostic requirements sprints convert those reviewed cases into
+production-readiness data requirements and modeling actions:
+
+```bash
+risk-engine \
+  --from-live-sources \
+  --paths-config config/paths.local.yaml \
+  --output-dir outputs \
+  --experiment-id case_diagnostic_requirements_v1 \
+  --case-diagnostic-requirements-sprint \
+  --model-variant l2
+```
+
+These runs write `forward_case_review_cases.csv`,
+`case_diagnostic_requirements.csv`, `case_diagnostic_requirements.json`, and
+`case_diagnostic_requirements_report.md`. The sprint does not resample daily
+rows; it turns case diagnostics from complete athlete-season trajectories into
+prioritized missing-data domains and model-improvement actions.
+
 Latest live-source comparison (`intra_individual_deviation_v1`, 349 athletes,
 70 holdout): 7d AUROC 0.723, Brier skill 0.0020; 14d AUROC 0.731, Brier skill
 0.0057; 30d AUROC 0.736, Brier skill 0.0171. Compared with
@@ -643,8 +662,21 @@ strongest supported-case balance, `severity_14d` was dominated by explanation
 gaps, and subtype review was dominated by missing-context or managed-risk
 labels. This supports continued research, not production. The next sprint should
 turn case labels into data requirements and feature plans around exposure,
-intervention, baseline/frailty, and injury-mechanism context. The current test
-suite has 200 passing tests.
+intervention, baseline/frailty, and injury-mechanism context.
+
+The case diagnostic requirements sprint (`case_diagnostic_requirements_v1`, L2)
+made that production-readiness gap explicit. It reviewed the same 44 forward
+case-review cases and generated five requirement domains. Four are critical:
+`exposure_load` (24 cases, 54.5%), `baseline_frailty` (20, 45.5%),
+`injury_mechanism` (20, 45.5%), and `intervention_availability` (12, 27.3%).
+`explanation_fidelity` is high priority (8, 18.2%). The key missing fields are
+session participation, minutes exposed, practice intensity, acute/chronic load,
+game exposure, availability status, modified training, treatment/rehab status,
+prior injury count, chronic condition flags, athlete baseline state, injury
+mechanism, contact/non-contact context, activity context, body-area detail, and
+graph node/edge change traces. The recommendation is
+`prioritize_data_acquisition_before_production`; the model remains
+`not_ready_missing_context`. The current test suite has 204 passing tests.
 
 The reported risk values are baseline model estimates for research comparison,
 not calibrated clinical probabilities.

@@ -10,6 +10,7 @@ from risk_stratification_engine.experiments import (
     run_alert_episode_experiment,
     run_calibration_threshold_experiment,
     run_coverage_adjusted_threshold_sprint_experiment,
+    run_case_diagnostic_requirements_sprint_experiment,
     run_coverage_normalized_policy_sprint_experiment,
     run_coverage_source_aware_model_sprint_experiment,
     run_coverage_stratified_evaluation_experiment,
@@ -1148,6 +1149,50 @@ def test_run_forward_case_review_sprint_writes_review_artifacts(tmp_path):
     report = (result / "forward_case_review_report.md").read_text()
     assert "Forward Case Review Sprint" in report
     assert "forward-surviving windows and channels" in report
+
+
+def test_run_case_diagnostic_requirements_sprint_writes_requirement_artifacts(
+    tmp_path,
+):
+    measurements_path, injuries_path, detailed_path = _write_season_forward_fixture_inputs(
+        tmp_path
+    )
+
+    result = run_case_diagnostic_requirements_sprint_experiment(
+        measurements_path=measurements_path,
+        injuries_path=injuries_path,
+        detailed_injuries_path=detailed_path,
+        output_dir=tmp_path,
+        experiment_id="case_diagnostic_requirements",
+        model_variant="l2",
+    )
+
+    assert (result / "forward_case_review_cases.csv").exists()
+    assert (result / "case_diagnostic_requirements.csv").exists()
+    assert (result / "case_diagnostic_requirements.json").exists()
+    assert (result / "case_diagnostic_requirements_report.md").exists()
+    assert (result / "config.json").exists()
+
+    requirements = pd.read_csv(result / "case_diagnostic_requirements.csv")
+    assert {
+        "exposure_load",
+        "intervention_availability",
+        "baseline_frailty",
+        "injury_mechanism",
+        "explanation_fidelity",
+    }.issubset(set(requirements["requirement_domain"]))
+    assert "priority_tier" in requirements.columns
+    assert "modeling_action" in requirements.columns
+
+    payload = json.loads((result / "case_diagnostic_requirements.json").read_text())
+    assert payload["experiment_type"] == "case_diagnostic_requirements_sprint"
+    assert payload["production_readiness"] == "not_ready_missing_context"
+    assert payload["case_count"] > 0
+    assert payload["requirement_count"] == len(requirements)
+
+    report = (result / "case_diagnostic_requirements_report.md").read_text()
+    assert "Case Diagnostic Requirements Sprint" in report
+    assert "production blockers" in report
 
 
 # ---------------------------------------------------------------------------

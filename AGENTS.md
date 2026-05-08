@@ -68,6 +68,7 @@ Future work may add a dashboard performance tab inspired by the Malum/SPEAR mate
 - Coverage-adjusted threshold sprints are available through `risk-engine --coverage-adjusted-threshold-sprint` and write `coverage_adjusted_threshold_policy.csv`, `coverage_adjusted_threshold_policy.json`, and `coverage_adjusted_threshold_report.md`. The sprint compares season-local thresholds, coverage-tier-local thresholds, and burden-capped thresholds after complete athlete-season trajectories have been scored.
 - Season-forward validation sprints are available through `risk-engine --season-forward-validation` and write `season_forward_validation.csv`, `season_forward_validation.json`, and `season_forward_validation_report.md`. The sprint trains on earlier seasons, evaluates later seasons, compares `graph_trajectory` against `graph_plus_coverage_source`, and checks fixed alert channels under season-local and burden-capped threshold policies.
 - Forward case review sprints are available through `risk-engine --forward-case-review-sprint` and write `forward_case_review_cases.csv`, `forward_case_review.json`, and `forward_case_review_report.md`. The sprint targets forward-surviving seasons and channels, then classifies true positives, false positives, missed injuries, and high intra-individual deviation episodes into review diagnostics.
+- Case diagnostic requirements sprints are available through `risk-engine --case-diagnostic-requirements-sprint` and write `forward_case_review_cases.csv`, `case_diagnostic_requirements.csv`, `case_diagnostic_requirements.json`, and `case_diagnostic_requirements_report.md`. The sprint translates forward case-review diagnostics into prioritized production-readiness data domains and modeling actions before any pilot escalation.
 - Main single-experiment runs accept `--model-variant baseline|l2|l1|elasticnet`, allowing a regularized candidate to be run through the normal artifact path without using the robustness sweep.
 - Enriched graph features (`enriched_graph_features_v1` run, 349 athletes, 70 holdout): 7d AUROC 0.730 (+0.008), 14d AUROC 0.735 (+0.007), 30d AUROC 0.735 (+0.007); Brier skill 30d improved from 0.0142 to 0.0168 (+18%).
 - Intra-individual deviation features (`intra_individual_deviation_v1` run, 349 athletes, 70 holdout): 7d AUROC 0.723, Brier skill 0.0020, top-decile lift 3.76; 14d AUROC 0.731, Brier skill 0.0057, top-decile lift 3.96; 30d AUROC 0.736, Brier skill 0.0171, top-decile lift 4.48. Versus `enriched_graph_features_v1`, the 30d AUROC, 7d/30d Brier skill, and all top-decile lifts improved, while 7d/14d AUROC declined slightly.
@@ -77,6 +78,26 @@ Future work may add a dashboard performance tab inspired by the Malum/SPEAR mate
 - Window/model robustness (`window_model_robustness_v1` run, windows 2/4/7, 5 rotating splits, 349 athletes): no single window/variant dominates all operating goals. Window 7 + L2 won calibration at 7d/14d, window 4 + L2 won 30d calibration, window 2 regularized variants won triage lift at all horizons, and ranking split by horizon: window 2 baseline at 7d AUROC 0.731, window 4 L2 at 14d AUROC 0.729, and window 7 L1 at 30d AUROC 0.729. This supports using L2 as the calibration-oriented production candidate while keeping window 2 as a high-alert triage setting and window 7 under review for 30d ranking.
 
 ## Latest Completed Step
+
+**Case diagnostic requirements sprint** - implemented and verified on 2026-05-08.
+
+**What changed:** Added `case_diagnostic_requirements.py` with requirement-domain mapping, summary helpers, and a Markdown report writer. Added `run_case_diagnostic_requirements_sprint_experiment(...)` and the `--case-diagnostic-requirements-sprint` CLI mode. The runner reuses the forward case-review cases and writes `forward_case_review_cases.csv`, `case_diagnostic_requirements.csv`, `case_diagnostic_requirements.json`, `case_diagnostic_requirements_report.md`, and `config.json`.
+
+**Peterson guardrail:** The sprint does not introduce daily-row classification. It converts reviewed cases from scored complete athlete-season trajectories into data/model requirements, preserving the longitudinal athlete-season unit.
+
+**Verification:** New TDD tests first failed because `risk_stratification_engine.case_diagnostic_requirements`, `run_case_diagnostic_requirements_sprint_experiment`, and the `--case-diagnostic-requirements-sprint` CLI dispatch did not exist. After implementation, focused tests passed and `python -m pytest` collected and passed 204 tests. The live command `risk-engine --from-live-sources --paths-config config/paths.local.yaml --output-dir outputs --experiment-id case_diagnostic_requirements_v1 --case-diagnostic-requirements-sprint --model-variant l2` completed and wrote the requirements artifacts.
+
+**Live results (`case_diagnostic_requirements_v1`, L2):**
+- Overall recommendation: `prioritize_data_acquisition_before_production`.
+- Production readiness: `not_ready_missing_context`.
+- Reviewed 44 forward case-review cases and generated 5 requirement domains.
+- Critical domains: `exposure_load` (24 cases, 54.5%), `baseline_frailty` (20 cases, 45.5%), `injury_mechanism` (20 cases, 45.5%), and `intervention_availability` (12 cases, 27.3%).
+- High-priority domain: `explanation_fidelity` (8 cases, 18.2%).
+- Key missing fields include session participation, minutes exposed, practice intensity, acute/chronic load, game exposure, availability status, modified training status, treatment/rehab flags, prior injury count, chronic condition flags, athlete baseline state, injury mechanism, contact/non-contact context, activity context, body-area detail, and graph node/edge change traces.
+
+**Interpretation:** The model is not blocked by only threshold tuning. The strongest current production blockers are missing exposure/load, athlete baseline/frailty, injury mechanism, and intervention/availability context. The next major sprint should acquire or derive those fields, add time-safe feature builders for them, and rerun season-forward validation before any dashboard or pilot work.
+
+## Previous Completed Step
 
 **Forward case review sprint** - implemented and verified on 2026-05-08.
 

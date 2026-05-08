@@ -10,6 +10,7 @@ from risk_stratification_engine.experiments import (
     run_alert_episode_experiment,
     run_calibration_threshold_experiment,
     run_coverage_normalized_policy_sprint_experiment,
+    run_coverage_source_aware_model_sprint_experiment,
     run_coverage_stratified_evaluation_experiment,
     run_injury_outcome_policy_experiment,
     run_outcome_policy_model_comparison_experiment,
@@ -978,6 +979,45 @@ def test_run_coverage_normalized_policy_sprint_writes_scope_artifacts(tmp_path):
     report = (result / "coverage_normalized_policy_report.md").read_text()
     assert "Coverage-Normalized Policy Sprint" in report
     assert "athlete-season trajectories" in report
+
+
+def test_run_coverage_source_aware_model_sprint_writes_comparison_artifacts(tmp_path):
+    result = run_coverage_source_aware_model_sprint_experiment(
+        measurements_path=FIXTURES / "measurements.csv",
+        injuries_path=FIXTURES / "injuries.csv",
+        output_dir=tmp_path,
+        experiment_id="coverage_source_model",
+        graph_window_size=2,
+        model_variant="l2",
+    )
+
+    assert (result / "coverage_source_features.csv").exists()
+    assert (result / "coverage_source_model_comparison.csv").exists()
+    assert (result / "coverage_source_model_comparison.json").exists()
+    assert (result / "coverage_source_model_comparison_report.md").exists()
+    assert (result / "config.json").exists()
+
+    comparison = pd.read_csv(result / "coverage_source_model_comparison.csv")
+    assert set(comparison["feature_set"]) == {
+        "graph_trajectory",
+        "graph_plus_coverage_source",
+    }
+    payload = json.loads(
+        (result / "coverage_source_model_comparison.json").read_text()
+    )
+    assert payload["experiment_type"] == "coverage_source_aware_model_sprint"
+    assert payload["feature_sets"] == [
+        "graph_trajectory",
+        "graph_plus_coverage_source",
+    ]
+    assert "coverage_measurement_days_to_date" in payload[
+        "coverage_source_feature_columns"
+    ]
+    assert "best_by_horizon" in payload
+
+    report = (result / "coverage_source_model_comparison_report.md").read_text()
+    assert "Coverage/Source-Aware Model Sprint" in report
+    assert "dynamic graph trajectory features remain the core signal" in report
 
 
 # ---------------------------------------------------------------------------

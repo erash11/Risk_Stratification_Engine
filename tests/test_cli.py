@@ -1092,3 +1092,59 @@ def test_cli_runs_coverage_normalized_policy_sprint_from_live_sources(
         "experiment_id": "coverage_normalized_run",
         "model_variant": "l2",
     }
+
+
+def test_cli_runs_coverage_source_aware_model_sprint(tmp_path, monkeypatch):
+    calls = {}
+
+    def fake_run_coverage_source_aware_model_sprint_experiment(
+        measurements_path,
+        injuries_path,
+        output_dir,
+        experiment_id,
+        graph_window_size,
+        model_variant,
+    ):
+        calls["coverage_source_model"] = {
+            "measurements_path": measurements_path,
+            "injuries_path": injuries_path,
+            "output_dir": output_dir,
+            "experiment_id": experiment_id,
+            "graph_window_size": graph_window_size,
+            "model_variant": model_variant,
+        }
+        return output_dir / "experiments" / experiment_id
+
+    monkeypatch.setattr(
+        cli,
+        "run_coverage_source_aware_model_sprint_experiment",
+        fake_run_coverage_source_aware_model_sprint_experiment,
+    )
+
+    exit_code = main(
+        [
+            "--measurements",
+            str(FIXTURES / "measurements.csv"),
+            "--injuries",
+            str(FIXTURES / "injuries.csv"),
+            "--output-dir",
+            str(tmp_path),
+            "--experiment-id",
+            "coverage_source_model",
+            "--coverage-source-aware-model-sprint",
+            "--graph-window-size",
+            "2",
+            "--model-variant",
+            "l2",
+        ]
+    )
+
+    assert exit_code == 0
+    assert calls["coverage_source_model"] == {
+        "measurements_path": FIXTURES / "measurements.csv",
+        "injuries_path": FIXTURES / "injuries.csv",
+        "output_dir": tmp_path,
+        "experiment_id": "coverage_source_model",
+        "graph_window_size": 2,
+        "model_variant": "l2",
+    }

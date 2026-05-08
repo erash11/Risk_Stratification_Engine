@@ -11,6 +11,7 @@ from risk_stratification_engine.experiments import (
     run_alert_episode_experiment,
     run_calibration_threshold_experiment,
     run_coverage_normalized_policy_sprint_experiment,
+    run_coverage_source_aware_model_sprint_experiment,
     run_coverage_stratified_evaluation_experiment,
     run_injury_outcome_policy_experiment,
     run_model_robustness_experiment,
@@ -57,6 +58,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--season-drift-diagnostic", action="store_true")
     parser.add_argument("--coverage-stratified-evaluation", action="store_true")
     parser.add_argument("--coverage-normalized-policy-sprint", action="store_true")
+    parser.add_argument("--coverage-source-aware-model-sprint", action="store_true")
     parser.add_argument("--stability-splits", type=int, default=5)
     return parser
 
@@ -141,6 +143,17 @@ def main(argv: list[str] | None = None) -> int:
             model_variant=args.model_variant,
         )
         print(f"Coverage-normalized policy artifacts written to {experiment_dir}")
+        return 0
+    if args.coverage_source_aware_model_sprint:
+        experiment_dir = run_coverage_source_aware_model_sprint_experiment(
+            measurements_path=measurements_path,
+            injuries_path=injuries_path,
+            output_dir=args.output_dir,
+            experiment_id=args.experiment_id,
+            graph_window_size=args.graph_window_size,
+            model_variant=args.model_variant,
+        )
+        print(f"Coverage/source-aware model artifacts written to {experiment_dir}")
         return 0
     elif args.shadow_mode_stability:
         if detailed_injuries_path is None:

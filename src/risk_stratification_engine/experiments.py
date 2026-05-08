@@ -70,6 +70,14 @@ from risk_stratification_engine.coverage_policy import (
     build_coverage_normalized_policy_summary,
     write_coverage_normalized_policy_report,
 )
+from risk_stratification_engine.coverage_source_features import (
+    COVERAGE_SOURCE_FEATURE_COLUMNS,
+    attach_coverage_source_features,
+)
+from risk_stratification_engine.coverage_source_modeling import (
+    build_coverage_source_model_comparison_summary,
+    write_coverage_source_model_comparison_report,
+)
 from risk_stratification_engine.trajectories import build_measurement_matrix
 
 ORIGINAL_GRAPH_FEATURE_COLUMNS = (
@@ -94,6 +102,14 @@ FEATURE_ABLATION_SETS = {
     "full_13": GRAPH_SNAPSHOT_FEATURE_COLUMNS,
     "original_9": ORIGINAL_GRAPH_FEATURE_COLUMNS,
     "z_score_only": Z_SCORE_GRAPH_FEATURE_COLUMNS,
+}
+
+COVERAGE_SOURCE_MODEL_FEATURE_SETS = {
+    "graph_trajectory": GRAPH_SNAPSHOT_FEATURE_COLUMNS,
+    "graph_plus_coverage_source": (
+        *GRAPH_SNAPSHOT_FEATURE_COLUMNS,
+        *COVERAGE_SOURCE_FEATURE_COLUMNS,
+    ),
 }
 
 
@@ -907,6 +923,93 @@ def run_coverage_normalized_policy_sprint_experiment(
     return experiment_dir
 
 
+def run_coverage_source_aware_model_sprint_experiment(
+    measurements_path: str | Path,
+    injuries_path: str | Path,
+    output_dir: str | Path,
+    experiment_id: str,
+    graph_window_size: int = 4,
+    model_variant: str = "l2",
+) -> Path:
+    experiment_dir = _experiment_path(output_dir, experiment_id)
+    measurements = load_measurements(measurements_path)
+    injuries = load_injury_events(injuries_path)
+    matrix = build_measurement_matrix(measurements)
+    graph_features = build_graph_snapshots(matrix, window_size=graph_window_size)
+    if graph_features.empty:
+        raise ValueError("no graph snapshots produced")
+    coverage_features = attach_coverage_source_features(graph_features, measurements)
+    labeled = attach_time_to_event_labels(coverage_features, injuries)
+    if labeled.empty:
+        raise ValueError("no labeled graph snapshots produced")
+
+    comparison_rows: list[dict[str, object]] = []
+    feature_summaries: dict[str, object] = {}
+    for feature_set_name, feature_columns in COVERAGE_SOURCE_MODEL_FEATURE_SETS.items():
+        model_result = train_discrete_time_risk_model(
+            labeled,
+            feature_columns=feature_columns,
+            model_variant=model_variant,
+        )
+        evaluation = evaluate_risk_model(model_result.timeline, model_result.summary)
+        feature_summaries[feature_set_name] = {
+            "feature_columns": list(feature_columns),
+            "model_summary": model_result.summary,
+            "evaluation": evaluation,
+        }
+        comparison_rows.extend(
+            _coverage_source_comparison_rows(
+                feature_set_name=feature_set_name,
+                evaluation=evaluation,
+                model_summary=model_result.summary,
+            )
+        )
+
+    summary = build_coverage_source_model_comparison_summary(comparison_rows)
+    summary.update(
+        {
+            "model_type": MODEL_TYPE,
+            "model_variant": model_variant,
+            "graph_window_size": graph_window_size,
+            "graph_feature_columns": list(GRAPH_SNAPSHOT_FEATURE_COLUMNS),
+            "coverage_source_feature_columns": list(
+                COVERAGE_SOURCE_FEATURE_COLUMNS
+            ),
+            "feature_set_summaries": feature_summaries,
+        }
+    )
+
+    write_frame(coverage_features, experiment_dir / "coverage_source_features.csv")
+    write_frame(
+        pd.DataFrame(comparison_rows),
+        experiment_dir / "coverage_source_model_comparison.csv",
+    )
+    _write_json(
+        experiment_dir / "config.json",
+        {
+            "experiment_id": experiment_id,
+            "experiment_type": "coverage_source_aware_model_sprint",
+            "measurements_path": str(measurements_path),
+            "injuries_path": str(injuries_path),
+            "graph_window_size": graph_window_size,
+            "model_variant": model_variant,
+            "feature_sets": list(COVERAGE_SOURCE_MODEL_FEATURE_SETS),
+            "coverage_source_feature_columns": list(
+                COVERAGE_SOURCE_FEATURE_COLUMNS
+            ),
+        },
+    )
+    _write_json(
+        experiment_dir / "coverage_source_model_comparison.json",
+        summary,
+    )
+    write_coverage_source_model_comparison_report(
+        experiment_dir / "coverage_source_model_comparison_report.md",
+        summary,
+    )
+    return experiment_dir
+
+
 def run_window_sensitivity_experiment(
     measurements_path: str | Path,
     injuries_path: str | Path,
@@ -1640,6 +1743,33 @@ def _coverage_normalized_stability_columns() -> list[str]:
         "episodes_per_athlete_season",
         "median_start_lead_days",
     ]
+
+
+def _coverage_source_comparison_rows(
+    feature_set_name: str,
+    evaluation: dict[str, object],
+    model_summary: dict[str, object],
+) -> list[dict[str, object]]:
+    rows = []
+    for horizon in model_summary["horizons"]:
+        metrics = evaluation["horizons"][str(horizon)]
+        rows.append(
+            {
+                "feature_set": feature_set_name,
+                "horizon_days": int(horizon),
+                "test_snapshot_count": metrics["test_snapshot_count"],
+                "test_positive_count": metrics["test_positive_count"],
+                "test_positive_rate": metrics["test_positive_rate"],
+                "mean_predicted_risk": metrics["mean_predicted_risk"],
+                "model_brier_score": metrics["model_brier_score"],
+                "prevalence_brier_score": metrics["prevalence_brier_score"],
+                "brier_skill_score": metrics["brier_skill_score"],
+                "roc_auc": metrics["roc_auc"],
+                "average_precision": metrics["average_precision"],
+                "top_decile_lift": metrics["top_decile_lift"],
+            }
+        )
+    return rows
 
 
 def _shadow_mode_stability_rows(

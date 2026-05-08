@@ -64,6 +64,7 @@ Future work may add a dashboard performance tab inspired by the Malum/SPEAR mate
 - Season drift diagnostic runs are available through `risk-engine --season-drift-diagnostic` and write `season_drift_diagnostics.csv`, `season_drift_diagnostics.json`, and `season_drift_diagnostic_report.md`. The runner reuses the fixed shadow-mode season-local channel rows and joins them to measurement coverage, source mix, detailed injury mix, and simple drift flags.
 - Coverage-stratified evaluation runs are available through `risk-engine --coverage-stratified-evaluation` and write `coverage_tiers.csv`, `coverage_stratified_evaluation.csv`, `coverage_stratified_evaluation.json`, and `coverage_stratified_evaluation_report.md`. The runner assigns population-wide coverage tiers (low/medium/high tertile of measurement days per athlete-season), evaluates each fixed shadow-mode channel's capture rate and burden by tier using a population-wide risk threshold, and reports a `coverage_flag` (`coverage_confounded` / `coverage_independent` / `mixed`) indicating whether coverage tier is a major driver of policy performance.
 - Coverage-normalized policy sprints are available through `risk-engine --coverage-normalized-policy-sprint` and write `coverage_normalized_policy.csv`, `coverage_normalized_policy.json`, and `coverage_normalized_policy_report.md`. The sprint keeps the fixed shadow-mode channel package, applies coverage eligibility scopes to complete athlete-season trajectories (`all`, `medium_high`, `high_only`), rebuilds season-local alert episodes within each eligible cohort, and reports whether any channel remains stable after coverage control. This is the current Peterson-aligned guardrail before dashboard work because it preserves longitudinal athlete-season trajectories rather than treating daily rows as independent examples.
+- Coverage/source-aware model sprints are available through `risk-engine --coverage-source-aware-model-sprint` and write `coverage_source_features.csv`, `coverage_source_model_comparison.csv`, `coverage_source_model_comparison.json`, and `coverage_source_model_comparison_report.md`. The sprint compares `graph_trajectory` against `graph_plus_coverage_source`, adding only time-safe coverage/source covariates available on or before each graph snapshot while keeping the 13 dynamic graph trajectory features as the core signal.
 - Main single-experiment runs accept `--model-variant baseline|l2|l1|elasticnet`, allowing a regularized candidate to be run through the normal artifact path without using the robustness sweep.
 - Enriched graph features (`enriched_graph_features_v1` run, 349 athletes, 70 holdout): 7d AUROC 0.730 (+0.008), 14d AUROC 0.735 (+0.007), 30d AUROC 0.735 (+0.007); Brier skill 30d improved from 0.0142 to 0.0168 (+18%).
 - Intra-individual deviation features (`intra_individual_deviation_v1` run, 349 athletes, 70 holdout): 7d AUROC 0.723, Brier skill 0.0020, top-decile lift 3.76; 14d AUROC 0.731, Brier skill 0.0057, top-decile lift 3.96; 30d AUROC 0.736, Brier skill 0.0171, top-decile lift 4.48. Versus `enriched_graph_features_v1`, the 30d AUROC, 7d/30d Brier skill, and all top-decile lifts improved, while 7d/14d AUROC declined slightly.
@@ -73,6 +74,24 @@ Future work may add a dashboard performance tab inspired by the Malum/SPEAR mate
 - Window/model robustness (`window_model_robustness_v1` run, windows 2/4/7, 5 rotating splits, 349 athletes): no single window/variant dominates all operating goals. Window 7 + L2 won calibration at 7d/14d, window 4 + L2 won 30d calibration, window 2 regularized variants won triage lift at all horizons, and ranking split by horizon: window 2 baseline at 7d AUROC 0.731, window 4 L2 at 14d AUROC 0.729, and window 7 L1 at 30d AUROC 0.729. This supports using L2 as the calibration-oriented production candidate while keeping window 2 as a high-alert triage setting and window 7 under review for 30d ranking.
 
 ## Latest Completed Step
+
+**Coverage/source-aware model sprint** — implemented and verified on 2026-05-08.
+
+**What changed:** Added `coverage_source_features.py` with `COVERAGE_SOURCE_FEATURE_COLUMNS` and `attach_coverage_source_features(...)`, plus `coverage_source_modeling.py` with comparison summary/report helpers. Added `run_coverage_source_aware_model_sprint_experiment(...)` and the `--coverage-source-aware-model-sprint` CLI mode. The runner builds graph snapshots, attaches time-safe coverage/source features, labels the same athlete-season trajectories, and compares `graph_trajectory` against `graph_plus_coverage_source`.
+
+**Peterson guardrail:** Coverage/source context is added as explicit covariates available at each snapshot date, but the dynamic graph trajectory features remain the core signal. The sprint still models athlete-season trajectories and does not treat daily rows as independent examples.
+
+**Verification:** New TDD tests first failed because `risk_stratification_engine.coverage_source_features`, `risk_stratification_engine.coverage_source_modeling`, `run_coverage_source_aware_model_sprint_experiment`, and the `--coverage-source-aware-model-sprint` CLI dispatch did not exist. After implementation, the focused coverage/source tests passed and `python -m pytest` collected and passed 186 tests. The live command `risk-engine --from-live-sources --paths-config config/paths.local.yaml --output-dir outputs --experiment-id coverage_source_aware_model_v1 --coverage-source-aware-model-sprint --model-variant l2 --graph-window-size 4` completed and wrote the comparison artifacts.
+
+**Live results (`coverage_source_aware_model_v1`, L2, window 4):**
+- Overall recommendation: `continue_coverage_source_research`.
+- `graph_plus_coverage_source` improved AUROC at all horizons: 7d 0.686 to 0.723, 14d 0.676 to 0.723, and 30d 0.689 to 0.734.
+- Brier skill improved at all horizons: 7d -0.000 to 0.014, 14d -0.001 to 0.024, and 30d 0.007 to 0.048.
+- Top-decile lift was mixed: unchanged at 7d (1.906), lower at 14d (1.652 to 1.555), and higher at 30d (1.686 to 1.869).
+
+**Interpretation:** Coverage/source covariates improve ranking and calibration-oriented metrics enough to continue controlled validation, but they do not clear the model for dashboard or pilot escalation. The next practical sprint should test coverage-adjusted thresholds and burden-capped alert policies, then season-forward validation.
+
+## Previous Completed Step
 
 **Coverage-normalized policy sprint** — implemented and verified on 2026-05-08.
 

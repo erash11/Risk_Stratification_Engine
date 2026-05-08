@@ -370,6 +370,30 @@ The sprint evaluates the fixed channels under `all`, `medium_high`, and
 filtering whole athlete-seasons. This preserves the Peterson-style longitudinal
 unit of analysis and avoids treating daily rows as independent examples.
 
+Coverage/source-aware model sprints test whether explicit measurement-density
+and source-mix covariates improve the current graph trajectory model without
+replacing the graph features as the core signal:
+
+```bash
+risk-engine \
+  --from-live-sources \
+  --paths-config config/paths.local.yaml \
+  --output-dir outputs \
+  --experiment-id coverage_source_aware_model_v1 \
+  --coverage-source-aware-model-sprint \
+  --model-variant l2 \
+  --graph-window-size 4
+```
+
+These runs write `coverage_source_features.csv`,
+`coverage_source_model_comparison.csv`,
+`coverage_source_model_comparison.json`, and
+`coverage_source_model_comparison_report.md`. The added features are computed
+only from measurements available on or before each graph snapshot date:
+measurement days to date, measurement rows to date, source count to date, days
+since the previous measurement, and source-seen flags for bodyweight,
+forceplate, GPS, and Perch.
+
 Latest live-source comparison (`intra_individual_deviation_v1`, 349 athletes,
 70 holdout): 7d AUROC 0.723, Brier skill 0.0020; 14d AUROC 0.731, Brier skill
 0.0057; 30d AUROC 0.736, Brier skill 0.0171. Compared with
@@ -518,11 +542,18 @@ The coverage-normalized policy sprint (`coverage_normalized_policy_v1`, L2)
 shows that no fixed channel remained stable across `all`, `medium_high`, and
 `high_only` coverage eligibility scopes. `severity_14d` was stable only in the
 full-population scope, then became unstable after low-coverage athlete-seasons
-were removed. Alert burden also rose materially in higher-coverage cohorts. The
-current interpretation is that the fixed policy package should remain
-research-only; the next sprint should test source/coverage-aware modeling or
-coverage-adjusted thresholds before any shadow pilot. The current test suite has
-180 passing tests.
+were removed. Alert burden also rose materially in higher-coverage cohorts.
+
+The coverage/source-aware model sprint (`coverage_source_aware_model_v1`, L2,
+window 4) compared `graph_trajectory` against `graph_plus_coverage_source`.
+Coverage/source covariates improved AUROC at all horizons: 7d 0.686 to 0.723,
+14d 0.676 to 0.723, and 30d 0.689 to 0.734. Brier skill also improved from
+-0.000 to 0.014 at 7d, -0.001 to 0.024 at 14d, and 0.007 to 0.048 at 30d.
+Top-decile lift was mixed: unchanged at 7d, lower at 14d, and better at 30d.
+The current interpretation is that coverage/source features are worth continued
+research validation, but this is not dashboard or pilot clearance. The next
+sprint should test coverage-adjusted thresholds and burden-capped alert policies
+before any shadow pilot. The current test suite has 186 passing tests.
 
 The reported risk values are baseline model estimates for research comparison,
 not calibrated clinical probabilities.

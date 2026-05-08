@@ -64,6 +64,12 @@ from risk_stratification_engine.coverage_analysis import (
     build_coverage_tiers,
     write_coverage_stratified_evaluation_report,
 )
+from risk_stratification_engine.coverage_adjusted_thresholds import (
+    DEFAULT_BURDEN_CAP_EPISODES_PER_ATHLETE_SEASON,
+    build_coverage_adjusted_threshold_policy_rows,
+    build_coverage_adjusted_threshold_summary,
+    write_coverage_adjusted_threshold_report,
+)
 from risk_stratification_engine.coverage_policy import (
     COVERAGE_ELIGIBILITY_SCOPES,
     COVERAGE_SCOPE_TIERS,
@@ -1010,6 +1016,75 @@ def run_coverage_source_aware_model_sprint_experiment(
     return experiment_dir
 
 
+def run_coverage_adjusted_threshold_sprint_experiment(
+    measurements_path: str | Path,
+    injuries_path: str | Path,
+    detailed_injuries_path: str | Path,
+    output_dir: str | Path,
+    experiment_id: str,
+    model_variant: str = "l2",
+    burden_cap_episodes_per_athlete_season: float = (
+        DEFAULT_BURDEN_CAP_EPISODES_PER_ATHLETE_SEASON
+    ),
+) -> Path:
+    experiment_dir = _experiment_path(output_dir, experiment_id)
+    measurements = load_measurements(measurements_path)
+    canonical_injuries = load_injury_events(injuries_path)
+    detailed_injuries = pd.read_csv(detailed_injuries_path)
+    coverage_tiers = build_coverage_tiers(measurements)
+    rows = _coverage_adjusted_threshold_frame(
+        measurements=measurements,
+        canonical_injuries=canonical_injuries,
+        detailed_injuries=detailed_injuries,
+        coverage_tiers=coverage_tiers,
+        model_variant=model_variant,
+        burden_cap_episodes_per_athlete_season=(
+            burden_cap_episodes_per_athlete_season
+        ),
+    )
+    row_records = _json_records(rows)
+    summary = build_coverage_adjusted_threshold_summary(
+        row_records,
+        burden_cap_episodes_per_athlete_season=(
+            burden_cap_episodes_per_athlete_season
+        ),
+    )
+    result = {
+        "experiment_type": "coverage_adjusted_threshold_sprint",
+        "model_variant": model_variant,
+        "burden_cap_episodes_per_athlete_season": (
+            burden_cap_episodes_per_athlete_season
+        ),
+        **summary,
+    }
+
+    write_frame(rows, experiment_dir / "coverage_adjusted_threshold_policy.csv")
+    _write_json(
+        experiment_dir / "config.json",
+        {
+            "experiment_id": experiment_id,
+            "experiment_type": "coverage_adjusted_threshold_sprint",
+            "measurements_path": str(measurements_path),
+            "injuries_path": str(injuries_path),
+            "detailed_injuries_path": str(detailed_injuries_path),
+            "model_variant": model_variant,
+            "channels": list(DEFAULT_SHADOW_MODE_CHANNELS),
+            "burden_cap_episodes_per_athlete_season": (
+                burden_cap_episodes_per_athlete_season
+            ),
+        },
+    )
+    _write_json(
+        experiment_dir / "coverage_adjusted_threshold_policy.json",
+        result,
+    )
+    write_coverage_adjusted_threshold_report(
+        experiment_dir / "coverage_adjusted_threshold_report.md",
+        result,
+    )
+    return experiment_dir
+
+
 def run_window_sensitivity_experiment(
     measurements_path: str | Path,
     injuries_path: str | Path,
@@ -1770,6 +1845,78 @@ def _coverage_source_comparison_rows(
             }
         )
     return rows
+
+
+def _coverage_adjusted_threshold_frame(
+    *,
+    measurements: pd.DataFrame,
+    canonical_injuries: pd.DataFrame,
+    detailed_injuries: pd.DataFrame,
+    coverage_tiers: pd.DataFrame,
+    model_variant: str,
+    burden_cap_episodes_per_athlete_season: float,
+) -> pd.DataFrame:
+    matrix = build_measurement_matrix(measurements)
+    rows: list[dict[str, object]] = []
+    graph_cache: dict[int, pd.DataFrame] = {}
+    tier_cols = coverage_tiers[
+        ["athlete_id", "season_id", "coverage_tier", "measurement_days"]
+    ].copy()
+    tier_cols["season_id"] = tier_cols["season_id"].astype(str)
+
+    for channel in DEFAULT_SHADOW_MODE_CHANNELS:
+        window_size = int(channel["graph_window_size"])
+        if window_size not in graph_cache:
+            graph_cache[window_size] = build_graph_snapshots(
+                matrix,
+                window_size=window_size,
+            )
+        graph_features = graph_cache[window_size]
+        if graph_features.empty:
+            raise ValueError("no graph snapshots produced")
+        policy_injuries = build_policy_injury_events(
+            canonical_injuries,
+            detailed_injuries,
+            policy_name=str(channel["policy_name"]),
+        )
+        labeled = attach_time_to_event_labels(graph_features, policy_injuries)
+        if labeled.empty:
+            raise ValueError(
+                f"no labeled graph snapshots produced for {channel['policy_name']}"
+            )
+        model_result = train_discrete_time_risk_model(
+            labeled,
+            model_variant=model_variant,
+        )
+        explanation_summary = _explanation_summary(
+            model_result.timeline,
+            model_result.summary,
+        )
+        alert_timeline = _alert_episode_timeline(
+            model_result.timeline,
+            explanation_summary,
+        )
+        alert_timeline = alert_timeline.copy()
+        alert_timeline["season_id"] = alert_timeline["season_id"].astype(str)
+        alert_timeline = alert_timeline.merge(
+            tier_cols,
+            on=["athlete_id", "season_id"],
+            how="left",
+        )
+        alert_timeline["coverage_tier"] = alert_timeline[
+            "coverage_tier"
+        ].fillna("low")
+
+        rows.extend(
+            build_coverage_adjusted_threshold_policy_rows(
+                alert_timeline,
+                channel,
+                burden_cap_episodes_per_athlete_season=(
+                    burden_cap_episodes_per_athlete_season
+                ),
+            )
+        )
+    return pd.DataFrame(rows)
 
 
 def _shadow_mode_stability_rows(

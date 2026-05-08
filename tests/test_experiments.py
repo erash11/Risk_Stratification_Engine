@@ -9,6 +9,7 @@ from risk_stratification_engine.experiments import (
     _compute_snapshot_contributions,
     run_alert_episode_experiment,
     run_calibration_threshold_experiment,
+    run_coverage_adjusted_threshold_sprint_experiment,
     run_coverage_normalized_policy_sprint_experiment,
     run_coverage_source_aware_model_sprint_experiment,
     run_coverage_stratified_evaluation_experiment,
@@ -1018,6 +1019,44 @@ def test_run_coverage_source_aware_model_sprint_writes_comparison_artifacts(tmp_
     report = (result / "coverage_source_model_comparison_report.md").read_text()
     assert "Coverage/Source-Aware Model Sprint" in report
     assert "dynamic graph trajectory features remain the core signal" in report
+
+
+def test_run_coverage_adjusted_threshold_sprint_writes_policy_artifacts(tmp_path):
+    measurements_path, injuries_path, detailed_path = _write_policy_fixture_inputs(
+        tmp_path
+    )
+
+    result = run_coverage_adjusted_threshold_sprint_experiment(
+        measurements_path=measurements_path,
+        injuries_path=injuries_path,
+        detailed_injuries_path=detailed_path,
+        output_dir=tmp_path,
+        experiment_id="coverage_adjusted_threshold",
+        model_variant="l2",
+    )
+
+    assert (result / "coverage_adjusted_threshold_policy.csv").exists()
+    assert (result / "coverage_adjusted_threshold_policy.json").exists()
+    assert (result / "coverage_adjusted_threshold_report.md").exists()
+    assert (result / "config.json").exists()
+
+    rows = pd.read_csv(result / "coverage_adjusted_threshold_policy.csv")
+    assert set(rows["threshold_policy"]) == {
+        "season_local_percentile",
+        "coverage_tier_local_percentile",
+        "burden_capped_percentile",
+    }
+    assert "episodes_per_athlete_season" in rows.columns
+
+    payload = json.loads(
+        (result / "coverage_adjusted_threshold_policy.json").read_text()
+    )
+    assert payload["experiment_type"] == "coverage_adjusted_threshold_sprint"
+    assert "channel_recommendations" in payload
+
+    report = (result / "coverage_adjusted_threshold_report.md").read_text()
+    assert "Coverage-Adjusted Threshold Sprint" in report
+    assert "complete athlete-season trajectories" in report
 
 
 # ---------------------------------------------------------------------------

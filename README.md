@@ -394,6 +394,26 @@ measurement days to date, measurement rows to date, source count to date, days
 since the previous measurement, and source-seen flags for bodyweight,
 forceplate, GPS, and Perch.
 
+Coverage-adjusted threshold sprints test whether coverage-tier-local or
+burden-capped alert policies can control shadow-mode alert load without
+collapsing event capture:
+
+```bash
+risk-engine \
+  --from-live-sources \
+  --paths-config config/paths.local.yaml \
+  --output-dir outputs \
+  --experiment-id coverage_adjusted_threshold_v1 \
+  --coverage-adjusted-threshold-sprint \
+  --model-variant l2
+```
+
+These runs write `coverage_adjusted_threshold_policy.csv`,
+`coverage_adjusted_threshold_policy.json`, and
+`coverage_adjusted_threshold_report.md`. Threshold policies are applied only
+after complete athlete-season trajectories are scored; the sprint does not
+turn daily measurement rows into independent examples.
+
 Latest live-source comparison (`intra_individual_deviation_v1`, 349 athletes,
 70 holdout): 7d AUROC 0.723, Brier skill 0.0020; 14d AUROC 0.731, Brier skill
 0.0057; 30d AUROC 0.736, Brier skill 0.0171. Compared with
@@ -551,9 +571,18 @@ Coverage/source covariates improved AUROC at all horizons: 7d 0.686 to 0.723,
 -0.000 to 0.014 at 7d, -0.001 to 0.024 at 14d, and 0.007 to 0.048 at 30d.
 Top-decile lift was mixed: unchanged at 7d, lower at 14d, and better at 30d.
 The current interpretation is that coverage/source features are worth continued
-research validation, but this is not dashboard or pilot clearance. The next
-sprint should test coverage-adjusted thresholds and burden-capped alert policies
-before any shadow pilot. The current test suite has 186 passing tests.
+research validation, but this is not dashboard or pilot clearance.
+
+The coverage-adjusted threshold sprint (`coverage_adjusted_threshold_v1`, L2)
+selected burden-capped thresholds for all fixed channels under a 1.0 episode per
+athlete-season cap, but the cost was lower mean capture: `broad_30d` 10.4%,
+`severity_14d` 8.8%, `severity_7d` 5.5%, and
+`subtype_lower_extremity_soft_tissue_30d` 9.7%. Coverage-tier-local thresholds
+kept more capture but still produced high mean burden, including 2.48 episodes
+per athlete-season for `severity_14d`, 2.69 for `severity_7d`, and 2.58 for the
+subtype review channel. The fixed policy package remains research-only; the
+next sprint should be season-forward validation before any shadow pilot. The
+current test suite has 192 passing tests.
 
 The reported risk values are baseline model estimates for research comparison,
 not calibrated clinical probabilities.

@@ -414,6 +414,27 @@ These runs write `coverage_adjusted_threshold_policy.csv`,
 after complete athlete-season trajectories are scored; the sprint does not
 turn daily measurement rows into independent examples.
 
+Season-forward validation sprints test whether the current signal generalizes
+from earlier seasons into later seasons:
+
+```bash
+risk-engine \
+  --from-live-sources \
+  --paths-config config/paths.local.yaml \
+  --output-dir outputs \
+  --experiment-id season_forward_validation_v1 \
+  --season-forward-validation \
+  --model-variant l2 \
+  --graph-window-size 4
+```
+
+These runs write `season_forward_validation.csv`,
+`season_forward_validation.json`, and `season_forward_validation_report.md`.
+The sprint trains on earlier complete athlete-season trajectories, evaluates
+later complete athlete-season trajectories, compares `graph_trajectory` against
+`graph_plus_coverage_source`, and checks fixed alert channels under season-local
+and burden-capped thresholds.
+
 Latest live-source comparison (`intra_individual_deviation_v1`, 349 athletes,
 70 holdout): 7d AUROC 0.723, Brier skill 0.0020; 14d AUROC 0.731, Brier skill
 0.0057; 30d AUROC 0.736, Brier skill 0.0171. Compared with
@@ -580,9 +601,20 @@ athlete-season cap, but the cost was lower mean capture: `broad_30d` 10.4%,
 `subtype_lower_extremity_soft_tissue_30d` 9.7%. Coverage-tier-local thresholds
 kept more capture but still produced high mean burden, including 2.48 episodes
 per athlete-season for `severity_14d`, 2.69 for `severity_7d`, and 2.58 for the
-subtype review channel. The fixed policy package remains research-only; the
-next sprint should be season-forward validation before any shadow pilot. The
-current test suite has 192 passing tests.
+subtype review channel.
+
+The season-forward validation sprint (`season_forward_validation_v1`, L2, window
+4) found that `graph_plus_coverage_source` had the best observed forward ranking
+slots in 2023-2024, with AUROC 0.667 at 7d, 0.673 at 14d, and 0.703 at 30d. It
+also had the best observed forward calibration slots in 2025-2026, with Brier
+skill 0.014 at 7d, 0.026 at 14d, and 0.048 at 30d. Earlier forward seasons were
+weak or unevaluable: 2021-2022 had no discrimination metrics and 2022-2023 was
+prevalence-like at AUROC 0.500. Alert-policy checks remained modest: recommended
+mean capture/burden was 11.6% / 0.41 for `broad_30d`, 15.0% / 0.86 for
+`severity_14d`, 6.4% / 0.47 for `severity_7d`, and 19.5% / 0.85 for subtype
+review. The fixed policy package remains research-only; the next sprint should
+case-review the forward-surviving windows/channels before any shadow pilot. The
+current test suite has 196 passing tests.
 
 The reported risk values are baseline model estimates for research comparison,
 not calibrated clinical probabilities.

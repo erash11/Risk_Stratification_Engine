@@ -66,6 +66,7 @@ Future work may add a dashboard performance tab inspired by the Malum/SPEAR mate
 - Coverage-normalized policy sprints are available through `risk-engine --coverage-normalized-policy-sprint` and write `coverage_normalized_policy.csv`, `coverage_normalized_policy.json`, and `coverage_normalized_policy_report.md`. The sprint keeps the fixed shadow-mode channel package, applies coverage eligibility scopes to complete athlete-season trajectories (`all`, `medium_high`, `high_only`), rebuilds season-local alert episodes within each eligible cohort, and reports whether any channel remains stable after coverage control. This is the current Peterson-aligned guardrail before dashboard work because it preserves longitudinal athlete-season trajectories rather than treating daily rows as independent examples.
 - Coverage/source-aware model sprints are available through `risk-engine --coverage-source-aware-model-sprint` and write `coverage_source_features.csv`, `coverage_source_model_comparison.csv`, `coverage_source_model_comparison.json`, and `coverage_source_model_comparison_report.md`. The sprint compares `graph_trajectory` against `graph_plus_coverage_source`, adding only time-safe coverage/source covariates available on or before each graph snapshot while keeping the 13 dynamic graph trajectory features as the core signal.
 - Coverage-adjusted threshold sprints are available through `risk-engine --coverage-adjusted-threshold-sprint` and write `coverage_adjusted_threshold_policy.csv`, `coverage_adjusted_threshold_policy.json`, and `coverage_adjusted_threshold_report.md`. The sprint compares season-local thresholds, coverage-tier-local thresholds, and burden-capped thresholds after complete athlete-season trajectories have been scored.
+- Season-forward validation sprints are available through `risk-engine --season-forward-validation` and write `season_forward_validation.csv`, `season_forward_validation.json`, and `season_forward_validation_report.md`. The sprint trains on earlier seasons, evaluates later seasons, compares `graph_trajectory` against `graph_plus_coverage_source`, and checks fixed alert channels under season-local and burden-capped threshold policies.
 - Main single-experiment runs accept `--model-variant baseline|l2|l1|elasticnet`, allowing a regularized candidate to be run through the normal artifact path without using the robustness sweep.
 - Enriched graph features (`enriched_graph_features_v1` run, 349 athletes, 70 holdout): 7d AUROC 0.730 (+0.008), 14d AUROC 0.735 (+0.007), 30d AUROC 0.735 (+0.007); Brier skill 30d improved from 0.0142 to 0.0168 (+18%).
 - Intra-individual deviation features (`intra_individual_deviation_v1` run, 349 athletes, 70 holdout): 7d AUROC 0.723, Brier skill 0.0020, top-decile lift 3.76; 14d AUROC 0.731, Brier skill 0.0057, top-decile lift 3.96; 30d AUROC 0.736, Brier skill 0.0171, top-decile lift 4.48. Versus `enriched_graph_features_v1`, the 30d AUROC, 7d/30d Brier skill, and all top-decile lifts improved, while 7d/14d AUROC declined slightly.
@@ -75,6 +76,25 @@ Future work may add a dashboard performance tab inspired by the Malum/SPEAR mate
 - Window/model robustness (`window_model_robustness_v1` run, windows 2/4/7, 5 rotating splits, 349 athletes): no single window/variant dominates all operating goals. Window 7 + L2 won calibration at 7d/14d, window 4 + L2 won 30d calibration, window 2 regularized variants won triage lift at all horizons, and ranking split by horizon: window 2 baseline at 7d AUROC 0.731, window 4 L2 at 14d AUROC 0.729, and window 7 L1 at 30d AUROC 0.729. This supports using L2 as the calibration-oriented production candidate while keeping window 2 as a high-alert triage setting and window 7 under review for 30d ranking.
 
 ## Latest Completed Step
+
+**Season-forward validation sprint** — implemented and verified on 2026-05-08.
+
+**What changed:** Added `season_forward_validation.py` with summary/report helpers, plus `run_season_forward_validation_sprint_experiment(...)` and the `--season-forward-validation` CLI mode. The runner builds graph and coverage/source features, trains row-based temporal logistic models on prior seasons, evaluates later seasons, and checks fixed shadow-mode channels under season-local and burden-capped thresholds.
+
+**Peterson guardrail:** The sprint trains on earlier complete athlete-season trajectories and evaluates later complete athlete-season trajectories. It does not randomize daily rows or treat measurements as independent injury-classification examples.
+
+**Verification:** New TDD tests first failed because `risk_stratification_engine.season_forward_validation`, `run_season_forward_validation_sprint_experiment`, and the `--season-forward-validation` CLI dispatch did not exist. After implementation, focused season-forward tests passed and `python -m pytest` collected and passed 196 tests. A direct run against the latest completed prepared live-input snapshot (`coverage_source_aware_model_v1`) wrote `season_forward_validation_v1`; the raw `--from-live-sources` refresh path remained blocked by an active ForcePlate DuckDB writer, so the upstream-source refresh itself was not rerun for this sprint.
+
+**Live snapshot results (`season_forward_validation_v1`, L2, window 4):**
+- Evaluated forward seasons 2021-2022 through 2025-2026.
+- `graph_plus_coverage_source` won the best observed ranking slots at all horizons in 2023-2024: AUROC 0.667 at 7d, 0.673 at 14d, and 0.703 at 30d.
+- `graph_plus_coverage_source` also won the best calibration slots in 2025-2026: Brier skill 0.014 at 7d, 0.026 at 14d, and 0.048 at 30d.
+- Early forward seasons remain weak: 2021-2022 had no evaluable discrimination metrics, and 2022-2023 was effectively prevalence-like at AUROC 0.500.
+- Alert-policy forward checks stayed research-only. Recommended mean capture/burden pairs were: `broad_30d` burden-capped 11.6% / 0.41, `severity_14d` season-local 15.0% / 0.86, `severity_7d` burden-capped 6.4% / 0.47, and subtype review season-local 19.5% / 0.85 episodes per athlete-season.
+
+**Interpretation:** Coverage/source-aware graph models show real forward-season signal in later, richer seasons, but the evidence is not stable enough for dashboard or pilot escalation. The most likely limitation is still missing context around exposure, training intent, interventions, athlete frailty/baseline, and injury mechanism. The next sprint should be an episode quality/case review focused only on the forward-surviving windows and channels, especially 2023-2024 ranking and 2025-2026 calibration behavior.
+
+## Previous Completed Step
 
 **Coverage-adjusted threshold sprint** — implemented and verified on 2026-05-08.
 

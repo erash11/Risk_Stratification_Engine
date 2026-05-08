@@ -5,6 +5,8 @@ from math import ceil
 from pathlib import Path
 
 import pandas as pd
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import average_precision_score, roc_auc_score
 from sklearn.metrics import brier_score_loss
 
 from risk_stratification_engine.alert_episodes import (
@@ -52,6 +54,10 @@ from risk_stratification_engine.policy_sprints import (
 from risk_stratification_engine.season_drift import (
     build_season_drift_diagnostics,
     write_season_drift_diagnostic_report,
+)
+from risk_stratification_engine.season_forward_validation import (
+    build_season_forward_validation_summary,
+    write_season_forward_validation_report,
 )
 from risk_stratification_engine.shadow_mode import (
     DEFAULT_SHADOW_MODE_CHANNELS,
@@ -1085,6 +1091,61 @@ def run_coverage_adjusted_threshold_sprint_experiment(
     return experiment_dir
 
 
+def run_season_forward_validation_sprint_experiment(
+    measurements_path: str | Path,
+    injuries_path: str | Path,
+    detailed_injuries_path: str | Path,
+    output_dir: str | Path,
+    experiment_id: str,
+    graph_window_size: int = 4,
+    model_variant: str = "l2",
+) -> Path:
+    experiment_dir = _experiment_path(output_dir, experiment_id)
+    measurements = load_measurements(measurements_path)
+    canonical_injuries = load_injury_events(injuries_path)
+    detailed_injuries = pd.read_csv(detailed_injuries_path)
+    rows = _season_forward_validation_rows(
+        measurements=measurements,
+        canonical_injuries=canonical_injuries,
+        detailed_injuries=detailed_injuries,
+        graph_window_size=graph_window_size,
+        model_variant=model_variant,
+    )
+    row_records = _json_records(rows)
+    summary = build_season_forward_validation_summary(row_records)
+    summary.update(
+        {
+            "model_type": MODEL_TYPE,
+            "model_variant": model_variant,
+            "graph_window_size": graph_window_size,
+            "feature_sets": list(COVERAGE_SOURCE_MODEL_FEATURE_SETS),
+            "channels": list(DEFAULT_SHADOW_MODE_CHANNELS),
+        }
+    )
+
+    write_frame(rows, experiment_dir / "season_forward_validation.csv")
+    _write_json(
+        experiment_dir / "config.json",
+        {
+            "experiment_id": experiment_id,
+            "experiment_type": "season_forward_validation_sprint",
+            "measurements_path": str(measurements_path),
+            "injuries_path": str(injuries_path),
+            "detailed_injuries_path": str(detailed_injuries_path),
+            "graph_window_size": graph_window_size,
+            "model_variant": model_variant,
+            "feature_sets": list(COVERAGE_SOURCE_MODEL_FEATURE_SETS),
+            "channels": list(DEFAULT_SHADOW_MODE_CHANNELS),
+        },
+    )
+    _write_json(experiment_dir / "season_forward_validation.json", summary)
+    write_season_forward_validation_report(
+        experiment_dir / "season_forward_validation_report.md",
+        summary,
+    )
+    return experiment_dir
+
+
 def run_window_sensitivity_experiment(
     measurements_path: str | Path,
     injuries_path: str | Path,
@@ -1917,6 +1978,345 @@ def _coverage_adjusted_threshold_frame(
             )
         )
     return pd.DataFrame(rows)
+
+
+def _season_forward_validation_rows(
+    *,
+    measurements: pd.DataFrame,
+    canonical_injuries: pd.DataFrame,
+    detailed_injuries: pd.DataFrame,
+    graph_window_size: int,
+    model_variant: str,
+) -> pd.DataFrame:
+    matrix = build_measurement_matrix(measurements)
+    graph_features = build_graph_snapshots(matrix, window_size=graph_window_size)
+    if graph_features.empty:
+        raise ValueError("no graph snapshots produced")
+    coverage_features = attach_coverage_source_features(graph_features, measurements)
+    labeled = attach_time_to_event_labels(coverage_features, canonical_injuries)
+    if labeled.empty:
+        raise ValueError("no labeled graph snapshots produced")
+    season_ids = _forward_season_ids(labeled)
+    rows: list[dict[str, object]] = []
+    for feature_set_name, feature_columns in COVERAGE_SOURCE_MODEL_FEATURE_SETS.items():
+        rows.extend(
+            _season_forward_model_metric_rows(
+                labeled=labeled,
+                feature_set_name=feature_set_name,
+                feature_columns=feature_columns,
+                season_ids=season_ids,
+                model_variant=model_variant,
+            )
+        )
+    rows.extend(
+        _season_forward_alert_policy_rows(
+            measurements=measurements,
+            matrix=matrix,
+            canonical_injuries=canonical_injuries,
+            detailed_injuries=detailed_injuries,
+            season_ids=season_ids,
+            model_variant=model_variant,
+        )
+    )
+    return pd.DataFrame(rows)
+
+
+def _season_forward_model_metric_rows(
+    *,
+    labeled: pd.DataFrame,
+    feature_set_name: str,
+    feature_columns: tuple[str, ...],
+    season_ids: list[str],
+    model_variant: str,
+) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for test_index in range(1, len(season_ids)):
+        train_seasons = season_ids[:test_index]
+        test_season = season_ids[test_index]
+        train_mask = labeled["season_id"].astype(str).isin(train_seasons)
+        test_mask = labeled["season_id"].astype(str).eq(test_season)
+        timeline = _fit_forward_risk_timeline(
+            labeled=labeled,
+            train_mask=train_mask,
+            feature_columns=feature_columns,
+            model_variant=model_variant,
+        )
+        for horizon in DEFAULT_HORIZONS:
+            metrics = _forward_horizon_metrics(
+                timeline=timeline,
+                train_mask=train_mask,
+                test_mask=test_mask,
+                horizon=horizon,
+            )
+            rows.append(
+                {
+                    "row_type": "model_metric",
+                    "train_season_ids": ",".join(train_seasons),
+                    "train_season_count": len(train_seasons),
+                    "test_season_id": test_season,
+                    "feature_set": feature_set_name,
+                    "threshold_policy": None,
+                    "channel_name": None,
+                    "policy_name": "canonical_any_injury",
+                    "graph_window_size": None,
+                    "horizon_days": horizon,
+                    **metrics,
+                }
+            )
+    return rows
+
+
+def _season_forward_alert_policy_rows(
+    *,
+    measurements: pd.DataFrame,
+    matrix: pd.DataFrame,
+    canonical_injuries: pd.DataFrame,
+    detailed_injuries: pd.DataFrame,
+    season_ids: list[str],
+    model_variant: str,
+) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    graph_cache: dict[int, pd.DataFrame] = {}
+    feature_columns = COVERAGE_SOURCE_MODEL_FEATURE_SETS["graph_plus_coverage_source"]
+    for channel in DEFAULT_SHADOW_MODE_CHANNELS:
+        window_size = int(channel["graph_window_size"])
+        if window_size not in graph_cache:
+            graph_cache[window_size] = attach_coverage_source_features(
+                build_graph_snapshots(matrix, window_size=window_size),
+                measurements,
+            )
+        graph_features = graph_cache[window_size]
+        policy_injuries = build_policy_injury_events(
+            canonical_injuries,
+            detailed_injuries,
+            policy_name=str(channel["policy_name"]),
+        )
+        labeled = attach_time_to_event_labels(graph_features, policy_injuries)
+        for test_index in range(1, len(season_ids)):
+            train_seasons = season_ids[:test_index]
+            test_season = season_ids[test_index]
+            train_mask = labeled["season_id"].astype(str).isin(train_seasons)
+            timeline = _fit_forward_risk_timeline(
+                labeled=labeled,
+                train_mask=train_mask,
+                feature_columns=feature_columns,
+                model_variant=model_variant,
+            )
+            test_timeline = timeline[
+                timeline["season_id"].astype(str).eq(test_season)
+            ].copy()
+            policy_rows = build_coverage_adjusted_threshold_policy_rows(
+                test_timeline,
+                channel,
+                burden_cap_episodes_per_athlete_season=(
+                    DEFAULT_BURDEN_CAP_EPISODES_PER_ATHLETE_SEASON
+                ),
+            )
+            for row in policy_rows:
+                if row["threshold_policy"] not in {
+                    "season_local_percentile",
+                    "burden_capped_percentile",
+                }:
+                    continue
+                row.update(
+                    {
+                        "row_type": "alert_policy",
+                        "train_season_ids": ",".join(train_seasons),
+                        "train_season_count": len(train_seasons),
+                        "test_season_id": test_season,
+                        "feature_set": "graph_plus_coverage_source",
+                    }
+                )
+                rows.append(row)
+    return rows
+
+
+def _fit_forward_risk_timeline(
+    *,
+    labeled: pd.DataFrame,
+    train_mask: pd.Series,
+    feature_columns: tuple[str, ...],
+    model_variant: str,
+) -> pd.DataFrame:
+    if model_variant not in MODEL_VARIANTS:
+        raise ValueError(
+            f"model_variant must be one of: {', '.join(MODEL_VARIANTS)}"
+        )
+    timeline = labeled.copy()
+    features = _forward_feature_frame(timeline, feature_columns)
+    train_features = features.loc[train_mask]
+    fit_features, fit_train_features = _forward_fit_feature_frames(
+        features,
+        train_features,
+        standardize=model_variant != "baseline",
+    )
+    for horizon in DEFAULT_HORIZONS:
+        label_column = f"event_within_{horizon}d"
+        labels = _forward_training_labels(timeline, label_column)
+        train_labels = labels.loc[train_mask]
+        if train_labels.nunique(dropna=False) < 2:
+            probability = float(train_labels.mean()) if len(train_labels) else 0.0
+            predictions = pd.Series(probability, index=timeline.index)
+        else:
+            model = _forward_logistic_model(model_variant)
+            model.fit(fit_train_features, train_labels)
+            predictions = pd.Series(
+                model.predict_proba(fit_features)[:, 1],
+                index=timeline.index,
+            )
+        timeline[f"risk_{horizon}d"] = predictions.clip(
+            lower=0.0,
+            upper=1.0,
+        ).round(6)
+    return timeline
+
+
+def _forward_horizon_metrics(
+    *,
+    timeline: pd.DataFrame,
+    train_mask: pd.Series,
+    test_mask: pd.Series,
+    horizon: int,
+) -> dict[str, object]:
+    labels = _forward_training_labels(timeline, f"event_within_{horizon}d")
+    train_labels = labels.loc[train_mask]
+    test_labels = labels.loc[test_mask]
+    predictions = timeline.loc[test_mask, f"risk_{horizon}d"].astype(float)
+    train_positive_rate = float(train_labels.mean()) if len(train_labels) else 0.0
+    baseline_predictions = pd.Series(train_positive_rate, index=test_labels.index)
+    model_brier = _metric_brier_score(test_labels, predictions)
+    prevalence_brier = _metric_brier_score(test_labels, baseline_predictions)
+    return {
+        "train_snapshot_count": int(train_mask.sum()),
+        "test_snapshot_count": int(test_mask.sum()),
+        "train_positive_count": int(train_labels.sum()),
+        "test_positive_count": int(test_labels.sum()),
+        "test_positive_rate": float(test_labels.mean()) if len(test_labels) else None,
+        "mean_predicted_risk": float(predictions.mean()) if len(predictions) else None,
+        "prevalence_baseline_risk": train_positive_rate,
+        "model_brier_score": model_brier,
+        "prevalence_brier_score": prevalence_brier,
+        "brier_skill_score": _metric_brier_skill(model_brier, prevalence_brier),
+        "roc_auc": _metric_roc_auc(test_labels, predictions),
+        "average_precision": _metric_average_precision(test_labels, predictions),
+        "top_decile_lift": _metric_top_decile_lift(test_labels, predictions),
+    }
+
+
+def _forward_feature_frame(
+    frame: pd.DataFrame,
+    feature_columns: tuple[str, ...],
+) -> pd.DataFrame:
+    missing = [column for column in feature_columns if column not in frame]
+    if missing:
+        raise ValueError(f"model input missing required columns: {', '.join(missing)}")
+    return (
+        frame.loc[:, feature_columns]
+        .apply(pd.to_numeric, errors="coerce")
+        .fillna(0.0)
+    )
+
+
+def _forward_fit_feature_frames(
+    features: pd.DataFrame,
+    train_features: pd.DataFrame,
+    *,
+    standardize: bool,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    if not standardize:
+        return features, train_features
+    means = train_features.mean()
+    stds = train_features.std(ddof=0).replace(0.0, 1.0)
+    return (features - means) / stds, (train_features - means) / stds
+
+
+def _forward_training_labels(frame: pd.DataFrame, label_column: str) -> pd.Series:
+    labels = frame[label_column].astype(bool)
+    if "primary_model_event" in frame:
+        labels = labels & frame["primary_model_event"].astype(bool)
+    return labels
+
+
+def _forward_logistic_model(model_variant: str) -> LogisticRegression:
+    if model_variant == "baseline":
+        return LogisticRegression(max_iter=1000, random_state=0)
+    if model_variant == "l2":
+        return LogisticRegression(
+            C=0.2,
+            solver="liblinear",
+            max_iter=5000,
+            random_state=0,
+        )
+    if model_variant == "l1":
+        return LogisticRegression(
+            C=0.2,
+            l1_ratio=1,
+            solver="saga",
+            max_iter=5000,
+            random_state=0,
+        )
+    if model_variant == "elasticnet":
+        return LogisticRegression(
+            C=0.2,
+            l1_ratio=0.5,
+            solver="saga",
+            max_iter=5000,
+            random_state=0,
+        )
+    raise ValueError(f"unsupported model_variant: {model_variant}")
+
+
+def _forward_season_ids(labeled: pd.DataFrame) -> list[str]:
+    season_ids = sorted(str(value) for value in labeled["season_id"].dropna().unique())
+    if len(season_ids) < 2:
+        raise ValueError("season-forward validation requires at least two seasons")
+    return season_ids
+
+
+def _metric_brier_score(
+    labels: pd.Series,
+    predictions: pd.Series,
+) -> float | None:
+    if labels.empty:
+        return None
+    return float(brier_score_loss(labels.astype(int), predictions))
+
+
+def _metric_brier_skill(
+    model_brier: float | None,
+    prevalence_brier: float | None,
+) -> float | None:
+    if model_brier is None or prevalence_brier in {None, 0.0}:
+        return None
+    return float(1.0 - (model_brier / prevalence_brier))
+
+
+def _metric_roc_auc(labels: pd.Series, predictions: pd.Series) -> float | None:
+    if labels.nunique(dropna=False) < 2:
+        return None
+    return float(roc_auc_score(labels.astype(int), predictions))
+
+
+def _metric_average_precision(
+    labels: pd.Series,
+    predictions: pd.Series,
+) -> float | None:
+    if labels.nunique(dropna=False) < 2:
+        return None
+    return float(average_precision_score(labels.astype(int), predictions))
+
+
+def _metric_top_decile_lift(
+    labels: pd.Series,
+    predictions: pd.Series,
+) -> float | None:
+    positive_rate = float(labels.mean()) if len(labels) else 0.0
+    if positive_rate <= 0.0:
+        return None
+    top_count = max(1, int(len(labels) * 0.1))
+    top_indices = predictions.sort_values(ascending=False).head(top_count).index
+    top_positive_rate = float(labels.loc[top_indices].mean())
+    return float(top_positive_rate / positive_rate)
 
 
 def _shadow_mode_stability_rows(

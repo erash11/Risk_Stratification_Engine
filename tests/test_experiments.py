@@ -16,6 +16,7 @@ from risk_stratification_engine.experiments import (
     run_injury_outcome_policy_experiment,
     run_outcome_policy_model_comparison_experiment,
     run_policy_decision_sprint_experiment,
+    run_season_forward_validation_sprint_experiment,
     run_shadow_mode_stability_experiment,
     run_season_drift_diagnostic_experiment,
     run_model_robustness_experiment,
@@ -1059,6 +1060,58 @@ def test_run_coverage_adjusted_threshold_sprint_writes_policy_artifacts(tmp_path
     assert "complete athlete-season trajectories" in report
 
 
+def test_run_season_forward_validation_sprint_writes_forward_artifacts(tmp_path):
+    measurements_path, injuries_path, detailed_path = _write_season_forward_fixture_inputs(
+        tmp_path
+    )
+
+    result = run_season_forward_validation_sprint_experiment(
+        measurements_path=measurements_path,
+        injuries_path=injuries_path,
+        detailed_injuries_path=detailed_path,
+        output_dir=tmp_path,
+        experiment_id="season_forward_validation",
+        graph_window_size=2,
+        model_variant="l2",
+    )
+
+    assert (result / "season_forward_validation.csv").exists()
+    assert (result / "season_forward_validation.json").exists()
+    assert (result / "season_forward_validation_report.md").exists()
+    assert (result / "config.json").exists()
+
+    rows = pd.read_csv(result / "season_forward_validation.csv")
+    assert {"model_metric", "alert_policy"}.issubset(set(rows["row_type"]))
+    model_rows = rows[rows["row_type"].eq("model_metric")]
+    assert set(model_rows["feature_set"]) == {
+        "graph_trajectory",
+        "graph_plus_coverage_source",
+    }
+    assert model_rows["train_season_ids"].str.contains("2024").any()
+    assert set(model_rows["test_season_id"]) == {"2025-2026", "2026-2027"}
+    assert "roc_auc" in model_rows.columns
+    assert "brier_skill_score" in model_rows.columns
+
+    alert_rows = rows[rows["row_type"].eq("alert_policy")]
+    assert {
+        "season_local_percentile",
+        "burden_capped_percentile",
+    }.issubset(set(alert_rows["threshold_policy"]))
+    assert "episodes_per_athlete_season" in alert_rows.columns
+
+    payload = json.loads((result / "season_forward_validation.json").read_text())
+    assert payload["experiment_type"] == "season_forward_validation_sprint"
+    assert payload["split_policy"] == "season_forward_train_prior_evaluate_next"
+    assert payload["evaluated_test_seasons"] == ["2025-2026", "2026-2027"]
+    assert "best_by_horizon" in payload
+    assert "alert_policy_summary" in payload
+
+    report = (result / "season_forward_validation_report.md").read_text()
+    assert "Season-Forward Validation Sprint" in report
+    assert "train on earlier seasons" in report
+    assert "complete athlete-season trajectories" in report
+
+
 # ---------------------------------------------------------------------------
 # Per-snapshot feature contributions
 # ---------------------------------------------------------------------------
@@ -1163,6 +1216,103 @@ def _write_policy_fixture_inputs(tmp_path):
             }
         ]
     ).to_csv(detailed_path, index=False)
+    return measurements_path, injuries_path, detailed_path
+
+
+def _write_season_forward_fixture_inputs(tmp_path):
+    measurements_path = tmp_path / "measurements.csv"
+    injuries_path = tmp_path / "canonical_injuries.csv"
+    detailed_path = tmp_path / "injury_events_detailed.csv"
+    measurement_rows = []
+    injury_rows = []
+    detailed_rows = []
+    season_start_years = {
+        "2024-2025": 2024,
+        "2025-2026": 2025,
+        "2026-2027": 2026,
+    }
+    for season_id, year in season_start_years.items():
+        for athlete_index, athlete_id in enumerate(("a1", "a2", "a3", "a4")):
+            for day_index, day in enumerate((1, 8, 15, 22)):
+                date = f"{year}-01-{day:02d}"
+                jump_height = 42.0 - athlete_index + day_index
+                asymmetry = 4.0 + athlete_index + day_index
+                if athlete_id in {"a1", "a2"}:
+                    jump_height -= day_index * 2.0
+                    asymmetry += day_index * 3.0
+                measurement_rows.extend(
+                    [
+                        (
+                            athlete_id,
+                            date,
+                            season_id,
+                            "force_plate",
+                            "jump_height",
+                            jump_height,
+                        ),
+                        (
+                            athlete_id,
+                            date,
+                            season_id,
+                            "force_plate",
+                            "asymmetry",
+                            asymmetry,
+                        ),
+                        (
+                            athlete_id,
+                            date,
+                            season_id,
+                            "gps",
+                            "total_distance",
+                            1000 + athlete_index * 100 + day_index * 10,
+                        ),
+                    ]
+                )
+
+            observed = athlete_id in {"a1", "a2"}
+            injury_date = f"{year}-01-29" if observed else ""
+            injury_rows.append(
+                {
+                    "athlete_id": athlete_id,
+                    "season_id": season_id,
+                    "injury_date": injury_date,
+                    "injury_type": "Hamstring strain" if observed else "censored",
+                    "event_observed": observed,
+                    "censor_date": f"{year}-02-05",
+                    "event_window_quality": "modelable" if observed else "censored",
+                    "primary_model_event": observed,
+                }
+            )
+            if observed:
+                detailed_rows.append(
+                    {
+                        "injury_event_id": f"{season_id}_{athlete_id}",
+                        "athlete_id": athlete_id,
+                        "season_id": season_id,
+                        "injury_date": injury_date,
+                        "injury_type": "Hamstring strain",
+                        "classification": "Soft tissue",
+                        "pathology": "Hamstring strain/tear",
+                        "body_area": "Thigh",
+                        "time_loss_days": 12,
+                        "caused_unavailability": "Yes",
+                        "recurrent": "No",
+                    }
+                )
+
+    pd.DataFrame(
+        measurement_rows,
+        columns=[
+            "athlete_id",
+            "date",
+            "season_id",
+            "source",
+            "metric_name",
+            "metric_value",
+        ],
+    ).to_csv(measurements_path, index=False)
+    pd.DataFrame(injury_rows).to_csv(injuries_path, index=False)
+    pd.DataFrame(detailed_rows).to_csv(detailed_path, index=False)
     return measurements_path, injuries_path, detailed_path
 
 

@@ -474,6 +474,30 @@ These runs write `forward_case_review_cases.csv`,
 rows; it turns case diagnostics from complete athlete-season trajectories into
 prioritized missing-data domains and model-improvement actions.
 
+Injury-history feature sprints derive time-safe prior-injury context from the
+uploaded detailed injury data and compare it against the coverage/source
+reference model:
+
+```bash
+risk-engine \
+  --from-live-sources \
+  --paths-config config/paths.local.yaml \
+  --output-dir outputs \
+  --experiment-id injury_history_feature_v1 \
+  --injury-history-feature-sprint \
+  --model-variant l2 \
+  --graph-window-size 4
+```
+
+These runs write `injury_history_features.csv`,
+`injury_history_model_comparison.csv`,
+`injury_history_model_comparison.json`, and
+`injury_history_model_comparison_report.md`. The sprint uses only detailed
+injury events before each graph snapshot date to derive prior-injury count,
+same-season prior injury count, days since last injury, prior time-loss load,
+lower-extremity and soft-tissue history, activity-context history, and prior
+unavailability history.
+
 Latest live-source comparison (`intra_individual_deviation_v1`, 349 athletes,
 70 holdout): 7d AUROC 0.723, Brier skill 0.0020; 14d AUROC 0.731, Brier skill
 0.0057; 30d AUROC 0.736, Brier skill 0.0171. Compared with
@@ -676,7 +700,20 @@ prior injury count, chronic condition flags, athlete baseline state, injury
 mechanism, contact/non-contact context, activity context, body-area detail, and
 graph node/edge change traces. The recommendation is
 `prioritize_data_acquisition_before_production`; the model remains
-`not_ready_missing_context`. The current test suite has 204 passing tests.
+`not_ready_missing_context`.
+
+The injury-history feature sprint (`injury_history_feature_v1`, L2, window 4)
+shows that the uploaded injury data does contain real model signal when used as
+time-safe prior context. `graph_plus_coverage_injury_history` beat
+`graph_plus_coverage_source` at every horizon and decision mode in the standard
+holdout comparison. AUROC improved from 0.721 to 0.755 at 7d, 0.726 to 0.759 at
+14d, and 0.743 to 0.774 at 30d. Brier skill improved from 0.015 to 0.028 at 7d,
+0.026 to 0.052 at 14d, and 0.054 to 0.111 at 30d. Top-decile lift improved from
+1.85 to 3.73 at 7d, 1.84 to 3.51 at 14d, and 2.13 to 3.46 at 30d. Prior-injury
+context was nonzero in 30,482 of 74,860 graph snapshots, and prior
+lower-extremity soft-tissue context was nonzero in 13,637 snapshots. This is
+not pilot clearance yet because it still needs season-forward validation with
+the injury-history feature set. The current test suite has 210 passing tests.
 
 The reported risk values are baseline model estimates for research comparison,
 not calibrated clinical probabilities.

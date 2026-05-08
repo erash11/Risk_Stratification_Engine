@@ -15,6 +15,7 @@ from risk_stratification_engine.experiments import (
     run_coverage_source_aware_model_sprint_experiment,
     run_coverage_stratified_evaluation_experiment,
     run_forward_case_review_sprint_experiment,
+    run_injury_history_feature_sprint_experiment,
     run_injury_outcome_policy_experiment,
     run_outcome_policy_model_comparison_experiment,
     run_policy_decision_sprint_experiment,
@@ -1193,6 +1194,49 @@ def test_run_case_diagnostic_requirements_sprint_writes_requirement_artifacts(
     report = (result / "case_diagnostic_requirements_report.md").read_text()
     assert "Case Diagnostic Requirements Sprint" in report
     assert "production blockers" in report
+
+
+def test_run_injury_history_feature_sprint_writes_model_artifacts(tmp_path):
+    measurements_path, injuries_path, detailed_path = _write_season_forward_fixture_inputs(
+        tmp_path
+    )
+
+    result = run_injury_history_feature_sprint_experiment(
+        measurements_path=measurements_path,
+        injuries_path=injuries_path,
+        detailed_injuries_path=detailed_path,
+        output_dir=tmp_path,
+        experiment_id="injury_history_feature",
+        graph_window_size=2,
+        model_variant="l2",
+    )
+
+    assert (result / "injury_history_features.csv").exists()
+    assert (result / "injury_history_model_comparison.csv").exists()
+    assert (result / "injury_history_model_comparison.json").exists()
+    assert (result / "injury_history_model_comparison_report.md").exists()
+    assert (result / "config.json").exists()
+
+    features = pd.read_csv(result / "injury_history_features.csv")
+    assert "injury_history_prior_injury_count" in features.columns
+    assert "injury_history_prior_lower_extremity_soft_tissue_count" in features.columns
+
+    rows = pd.read_csv(result / "injury_history_model_comparison.csv")
+    assert {
+        "graph_plus_coverage_source",
+        "graph_plus_coverage_injury_history",
+    }.issubset(set(rows["feature_set"]))
+    assert "roc_auc" in rows.columns
+    assert "brier_skill_score" in rows.columns
+
+    payload = json.loads((result / "injury_history_model_comparison.json").read_text())
+    assert payload["experiment_type"] == "injury_history_feature_sprint"
+    assert "injury_history_feature_columns" in payload
+    assert "best_by_horizon" in payload
+
+    report = (result / "injury_history_model_comparison_report.md").read_text()
+    assert "Injury History Feature Sprint" in report
+    assert "time-safe prior injury context" in report
 
 
 # ---------------------------------------------------------------------------

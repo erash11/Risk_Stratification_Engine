@@ -33,6 +33,14 @@ from risk_stratification_engine.forward_case_review import (
 )
 from risk_stratification_engine.graphs import build_graph_snapshots
 from risk_stratification_engine.injury_context import build_injury_context_outcomes
+from risk_stratification_engine.injury_history_features import (
+    INJURY_HISTORY_FEATURE_COLUMNS,
+    attach_injury_history_features,
+)
+from risk_stratification_engine.injury_history_modeling import (
+    build_injury_history_model_comparison_summary,
+    write_injury_history_model_comparison_report,
+)
 from risk_stratification_engine.injury_outcomes import (
     DEFAULT_MODEL_COMPARISON_POLICIES,
     build_injury_severity_audit,
@@ -130,6 +138,15 @@ COVERAGE_SOURCE_MODEL_FEATURE_SETS = {
     "graph_plus_coverage_source": (
         *GRAPH_SNAPSHOT_FEATURE_COLUMNS,
         *COVERAGE_SOURCE_FEATURE_COLUMNS,
+    ),
+}
+INJURY_HISTORY_MODEL_FEATURE_SETS = {
+    "graph_plus_coverage_source": COVERAGE_SOURCE_MODEL_FEATURE_SETS[
+        "graph_plus_coverage_source"
+    ],
+    "graph_plus_coverage_injury_history": (
+        *COVERAGE_SOURCE_MODEL_FEATURE_SETS["graph_plus_coverage_source"],
+        *INJURY_HISTORY_FEATURE_COLUMNS,
     ),
 }
 FORWARD_CASE_REVIEW_TARGET_CHANNELS = (
@@ -1102,6 +1119,97 @@ def run_coverage_adjusted_threshold_sprint_experiment(
     write_coverage_adjusted_threshold_report(
         experiment_dir / "coverage_adjusted_threshold_report.md",
         result,
+    )
+    return experiment_dir
+
+
+def run_injury_history_feature_sprint_experiment(
+    measurements_path: str | Path,
+    injuries_path: str | Path,
+    detailed_injuries_path: str | Path,
+    output_dir: str | Path,
+    experiment_id: str,
+    graph_window_size: int = 4,
+    model_variant: str = "l2",
+) -> Path:
+    experiment_dir = _experiment_path(output_dir, experiment_id)
+    measurements = load_measurements(measurements_path)
+    injuries = load_injury_events(injuries_path)
+    detailed_injuries = pd.read_csv(detailed_injuries_path)
+    matrix = build_measurement_matrix(measurements)
+    graph_features = build_graph_snapshots(matrix, window_size=graph_window_size)
+    if graph_features.empty:
+        raise ValueError("no graph snapshots produced")
+    coverage_features = attach_coverage_source_features(graph_features, measurements)
+    injury_history_features = attach_injury_history_features(
+        coverage_features,
+        detailed_injuries,
+    )
+    labeled = attach_time_to_event_labels(injury_history_features, injuries)
+    if labeled.empty:
+        raise ValueError("no labeled graph snapshots produced")
+
+    comparison_rows: list[dict[str, object]] = []
+    feature_summaries: dict[str, object] = {}
+    for feature_set_name, feature_columns in INJURY_HISTORY_MODEL_FEATURE_SETS.items():
+        model_result = train_discrete_time_risk_model(
+            labeled,
+            feature_columns=feature_columns,
+            model_variant=model_variant,
+        )
+        evaluation = evaluate_risk_model(model_result.timeline, model_result.summary)
+        feature_summaries[feature_set_name] = {
+            "feature_columns": list(feature_columns),
+            "model_summary": model_result.summary,
+            "evaluation": evaluation,
+        }
+        comparison_rows.extend(
+            _coverage_source_comparison_rows(
+                feature_set_name=feature_set_name,
+                evaluation=evaluation,
+                model_summary=model_result.summary,
+            )
+        )
+
+    summary = build_injury_history_model_comparison_summary(comparison_rows)
+    summary.update(
+        {
+            "model_type": MODEL_TYPE,
+            "model_variant": model_variant,
+            "graph_window_size": graph_window_size,
+            "graph_feature_columns": list(GRAPH_SNAPSHOT_FEATURE_COLUMNS),
+            "coverage_source_feature_columns": list(COVERAGE_SOURCE_FEATURE_COLUMNS),
+            "injury_history_feature_columns": list(INJURY_HISTORY_FEATURE_COLUMNS),
+            "feature_set_summaries": feature_summaries,
+        }
+    )
+
+    write_frame(injury_history_features, experiment_dir / "injury_history_features.csv")
+    write_frame(
+        pd.DataFrame(comparison_rows),
+        experiment_dir / "injury_history_model_comparison.csv",
+    )
+    _write_json(
+        experiment_dir / "config.json",
+        {
+            "experiment_id": experiment_id,
+            "experiment_type": "injury_history_feature_sprint",
+            "measurements_path": str(measurements_path),
+            "injuries_path": str(injuries_path),
+            "detailed_injuries_path": str(detailed_injuries_path),
+            "graph_window_size": graph_window_size,
+            "model_variant": model_variant,
+            "feature_sets": list(INJURY_HISTORY_MODEL_FEATURE_SETS),
+            "injury_history_feature_columns": list(INJURY_HISTORY_FEATURE_COLUMNS),
+        },
+    )
+    _write_json(
+        experiment_dir / "injury_history_model_comparison.json",
+        summary,
+    )
+    write_injury_history_model_comparison_report(
+        experiment_dir / "injury_history_model_comparison_report.md",
+        summary,
     )
     return experiment_dir
 

@@ -349,6 +349,27 @@ These runs write `season_drift_diagnostics.csv`,
 diagnostic flags low-coverage seasons, lists the highest-capture season per
 channel, and keeps policy performance tied to coverage and injury context.
 
+Coverage-normalized policy sprints test whether the fixed shadow-mode channels
+remain stable after coverage eligibility controls are applied to complete
+athlete-season trajectories:
+
+```bash
+risk-engine \
+  --from-live-sources \
+  --paths-config config/paths.local.yaml \
+  --output-dir outputs \
+  --experiment-id coverage_normalized_policy_v1 \
+  --coverage-normalized-policy-sprint \
+  --model-variant l2
+```
+
+These runs write `coverage_normalized_policy.csv`,
+`coverage_normalized_policy.json`, and `coverage_normalized_policy_report.md`.
+The sprint evaluates the fixed channels under `all`, `medium_high`, and
+`high_only` coverage scopes, rebuilding season-local alert episodes after
+filtering whole athlete-seasons. This preserves the Peterson-style longitudinal
+unit of analysis and avoids treating daily rows as independent examples.
+
 Latest live-source comparison (`intra_individual_deviation_v1`, 349 athletes,
 70 holdout): 7d AUROC 0.723, Brier skill 0.0020; 14d AUROC 0.731, Brier skill
 0.0057; 30d AUROC 0.736, Brier skill 0.0171. Compared with
@@ -493,16 +514,15 @@ ranged from 4.3% to 63.3%. The recommendation is
 `review_before_shadow_pilot`; the model should stay research-only until the
 season drift is explained.
 
-The season drift diagnostic (`season_drift_diagnostic_v1`, L2) shows that
-2025-2026 is the highest-capture season for every fixed channel and also has a
-major coverage shift: 223 athletes, 186,363 measurement rows, 179 measurement
-dates, and 4 sources. Earlier event seasons had 1 source and 7,295-30,020
-measurement rows. Capture was much higher in 2025-2026: broad 30d 33.3%,
-severity 7d 25.5%, severity 14d 36.2%, and lower-extremity soft-tissue 30d
-63.3%. The current interpretation is that season drift is partly a data/coverage
-problem, not only a model-performance problem. The next sprint should test
-source-aware or coverage-normalized models before any shadow pilot. The current
-test suite has 157 passing tests.
+The coverage-normalized policy sprint (`coverage_normalized_policy_v1`, L2)
+shows that no fixed channel remained stable across `all`, `medium_high`, and
+`high_only` coverage eligibility scopes. `severity_14d` was stable only in the
+full-population scope, then became unstable after low-coverage athlete-seasons
+were removed. Alert burden also rose materially in higher-coverage cohorts. The
+current interpretation is that the fixed policy package should remain
+research-only; the next sprint should test source/coverage-aware modeling or
+coverage-adjusted thresholds before any shadow pilot. The current test suite has
+180 passing tests.
 
 The reported risk values are baseline model estimates for research comparison,
 not calibrated clinical probabilities.

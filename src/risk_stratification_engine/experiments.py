@@ -64,6 +64,12 @@ from risk_stratification_engine.coverage_analysis import (
     build_coverage_tiers,
     write_coverage_stratified_evaluation_report,
 )
+from risk_stratification_engine.coverage_policy import (
+    COVERAGE_ELIGIBILITY_SCOPES,
+    COVERAGE_SCOPE_TIERS,
+    build_coverage_normalized_policy_summary,
+    write_coverage_normalized_policy_report,
+)
 from risk_stratification_engine.trajectories import build_measurement_matrix
 
 ORIGINAL_GRAPH_FEATURE_COLUMNS = (
@@ -840,6 +846,67 @@ def run_coverage_stratified_evaluation_experiment(
     return experiment_dir
 
 
+def run_coverage_normalized_policy_sprint_experiment(
+    measurements_path: str | Path,
+    injuries_path: str | Path,
+    detailed_injuries_path: str | Path,
+    output_dir: str | Path,
+    experiment_id: str,
+    model_variant: str = "l2",
+) -> Path:
+    experiment_dir = _experiment_path(output_dir, experiment_id)
+    measurements = load_measurements(measurements_path)
+    canonical_injuries = load_injury_events(injuries_path)
+    detailed_injuries = pd.read_csv(detailed_injuries_path)
+    coverage_tiers = build_coverage_tiers(measurements)
+    stability_rows = _coverage_normalized_stability_frame(
+        measurements=measurements,
+        canonical_injuries=canonical_injuries,
+        detailed_injuries=detailed_injuries,
+        coverage_tiers=coverage_tiers,
+        model_variant=model_variant,
+    )
+
+    scope_audits = {}
+    for scope in COVERAGE_ELIGIBILITY_SCOPES:
+        scope_rows = stability_rows[
+            stability_rows["coverage_eligibility_scope"].eq(scope)
+        ]
+        scope_audits[scope] = build_shadow_mode_stability_audit(scope_rows)
+        scope_audits[scope]["coverage_eligibility_scope"] = scope
+        scope_audits[scope]["eligible_coverage_tiers"] = list(COVERAGE_SCOPE_TIERS[scope])
+
+    summary = build_coverage_normalized_policy_summary(scope_audits)
+    result = {
+        "experiment_type": "coverage_normalized_policy_sprint",
+        "model_variant": model_variant,
+        "coverage_eligibility_scopes": list(COVERAGE_ELIGIBILITY_SCOPES),
+        "scope_audits": scope_audits,
+        **summary,
+    }
+
+    write_frame(stability_rows, experiment_dir / "coverage_normalized_policy.csv")
+    _write_json(
+        experiment_dir / "config.json",
+        {
+            "experiment_id": experiment_id,
+            "experiment_type": "coverage_normalized_policy_sprint",
+            "measurements_path": str(measurements_path),
+            "injuries_path": str(injuries_path),
+            "detailed_injuries_path": str(detailed_injuries_path),
+            "model_variant": model_variant,
+            "channels": list(DEFAULT_SHADOW_MODE_CHANNELS),
+            "coverage_eligibility_scopes": list(COVERAGE_ELIGIBILITY_SCOPES),
+        },
+    )
+    _write_json(experiment_dir / "coverage_normalized_policy.json", result)
+    write_coverage_normalized_policy_report(
+        experiment_dir / "coverage_normalized_policy_report.md",
+        result,
+    )
+    return experiment_dir
+
+
 def run_window_sensitivity_experiment(
     measurements_path: str | Path,
     injuries_path: str | Path,
@@ -1467,6 +1534,112 @@ def _policy_comparison_rows(
                 }
             )
     return rows
+
+
+def _coverage_normalized_stability_frame(
+    measurements: pd.DataFrame,
+    canonical_injuries: pd.DataFrame,
+    detailed_injuries: pd.DataFrame,
+    coverage_tiers: pd.DataFrame,
+    model_variant: str,
+) -> pd.DataFrame:
+    matrix = build_measurement_matrix(measurements)
+    rows: list[dict[str, object]] = []
+    graph_cache: dict[int, pd.DataFrame] = {}
+    tier_cols = coverage_tiers[
+        ["athlete_id", "season_id", "coverage_tier", "measurement_days"]
+    ].copy()
+    tier_cols["season_id"] = tier_cols["season_id"].astype(str)
+
+    for channel in DEFAULT_SHADOW_MODE_CHANNELS:
+        window_size = int(channel["graph_window_size"])
+        if window_size not in graph_cache:
+            graph_cache[window_size] = build_graph_snapshots(
+                matrix,
+                window_size=window_size,
+            )
+        graph_features = graph_cache[window_size]
+        if graph_features.empty:
+            raise ValueError("no graph snapshots produced")
+        policy_injuries = build_policy_injury_events(
+            canonical_injuries,
+            detailed_injuries,
+            policy_name=str(channel["policy_name"]),
+        )
+        labeled = attach_time_to_event_labels(graph_features, policy_injuries)
+        if labeled.empty:
+            raise ValueError(
+                f"no labeled graph snapshots produced for {channel['policy_name']}"
+            )
+        model_result = train_discrete_time_risk_model(
+            labeled,
+            model_variant=model_variant,
+        )
+        explanation_summary = _explanation_summary(
+            model_result.timeline,
+            model_result.summary,
+        )
+        alert_timeline = _alert_episode_timeline(
+            model_result.timeline,
+            explanation_summary,
+        )
+        alert_timeline = alert_timeline.copy()
+        alert_timeline["season_id"] = alert_timeline["season_id"].astype(str)
+        alert_timeline = alert_timeline.merge(
+            tier_cols,
+            on=["athlete_id", "season_id"],
+            how="left",
+        )
+        alert_timeline["coverage_tier"] = alert_timeline[
+            "coverage_tier"
+        ].fillna("low")
+
+        for scope in COVERAGE_ELIGIBILITY_SCOPES:
+            eligible_tiers = COVERAGE_SCOPE_TIERS[scope]
+            scoped_timeline = alert_timeline[
+                alert_timeline["coverage_tier"].isin(eligible_tiers)
+            ].copy()
+            scoped_rows = _shadow_mode_stability_rows(
+                channel=channel,
+                timeline=scoped_timeline,
+            )
+            eligible_athlete_season_count = int(
+                scoped_timeline[["athlete_id", "season_id"]]
+                .drop_duplicates()
+                .shape[0]
+            )
+            for row in scoped_rows:
+                row["coverage_eligibility_scope"] = scope
+                row["eligible_coverage_tiers"] = ",".join(eligible_tiers)
+                row["eligible_athlete_season_count"] = eligible_athlete_season_count
+            rows.extend(scoped_rows)
+    return pd.DataFrame(rows, columns=_coverage_normalized_stability_columns())
+
+
+def _coverage_normalized_stability_columns() -> list[str]:
+    return [
+        "coverage_eligibility_scope",
+        "eligible_coverage_tiers",
+        "eligible_athlete_season_count",
+        "channel_name",
+        "role",
+        "slice_type",
+        "slice_id",
+        "policy_name",
+        "graph_window_size",
+        "horizon_days",
+        "threshold_scope",
+        "threshold",
+        "episode_count",
+        "true_positive_episode_count",
+        "false_positive_episode_count",
+        "unique_observed_event_count",
+        "unique_captured_event_count",
+        "unique_event_capture_rate",
+        "missed_event_count",
+        "episodes_per_athlete_season",
+        "median_start_lead_days",
+    ]
 
 
 def _shadow_mode_stability_rows(

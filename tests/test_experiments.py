@@ -9,6 +9,7 @@ from risk_stratification_engine.experiments import (
     _compute_snapshot_contributions,
     run_alert_episode_experiment,
     run_calibration_threshold_experiment,
+    run_coverage_normalized_policy_sprint_experiment,
     run_coverage_stratified_evaluation_experiment,
     run_injury_outcome_policy_experiment,
     run_outcome_policy_model_comparison_experiment,
@@ -936,6 +937,47 @@ def test_run_coverage_stratified_evaluation_writes_artifacts(tmp_path):
     report = (result / "coverage_stratified_evaluation_report.md").read_text()
     assert "Coverage-Stratified Evaluation" in report
     assert "Coverage flag:" in report
+
+
+def test_run_coverage_normalized_policy_sprint_writes_scope_artifacts(tmp_path):
+    measurements_path, injuries_path, detailed_path = _write_policy_fixture_inputs(
+        tmp_path
+    )
+
+    result = run_coverage_normalized_policy_sprint_experiment(
+        measurements_path=measurements_path,
+        injuries_path=injuries_path,
+        detailed_injuries_path=detailed_path,
+        output_dir=tmp_path,
+        experiment_id="coverage_normalized_policy",
+        model_variant="l2",
+    )
+
+    assert (result / "coverage_normalized_policy.csv").exists()
+    assert (result / "coverage_normalized_policy.json").exists()
+    assert (result / "coverage_normalized_policy_report.md").exists()
+    assert (result / "config.json").exists()
+
+    rows = pd.read_csv(result / "coverage_normalized_policy.csv")
+    assert set(rows["coverage_eligibility_scope"]).issubset(
+        {"all", "medium_high", "high_only"}
+    )
+    assert "channel_name" in rows.columns
+    assert "unique_event_capture_rate" in rows.columns
+
+    payload = json.loads((result / "coverage_normalized_policy.json").read_text())
+    assert payload["experiment_type"] == "coverage_normalized_policy_sprint"
+    assert payload["coverage_eligibility_scopes"] == [
+        "all",
+        "medium_high",
+        "high_only",
+    ]
+    assert "scope_audits" in payload
+    assert "channel_recommendations" in payload
+
+    report = (result / "coverage_normalized_policy_report.md").read_text()
+    assert "Coverage-Normalized Policy Sprint" in report
+    assert "athlete-season trajectories" in report
 
 
 # ---------------------------------------------------------------------------

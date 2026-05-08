@@ -63,6 +63,7 @@ Future work may add a dashboard performance tab inspired by the Malum/SPEAR mate
 - Shadow-mode stability runs are available through `risk-engine --shadow-mode-stability` and write `shadow_mode_stability.csv`, `shadow_mode_stability.json`, and `shadow_mode_stability_report.md`. The runner evaluates the fixed policy package by season using season-local percentile thresholds, then marks channel stability from capture-rate variability and alert burden.
 - Season drift diagnostic runs are available through `risk-engine --season-drift-diagnostic` and write `season_drift_diagnostics.csv`, `season_drift_diagnostics.json`, and `season_drift_diagnostic_report.md`. The runner reuses the fixed shadow-mode season-local channel rows and joins them to measurement coverage, source mix, detailed injury mix, and simple drift flags.
 - Coverage-stratified evaluation runs are available through `risk-engine --coverage-stratified-evaluation` and write `coverage_tiers.csv`, `coverage_stratified_evaluation.csv`, `coverage_stratified_evaluation.json`, and `coverage_stratified_evaluation_report.md`. The runner assigns population-wide coverage tiers (low/medium/high tertile of measurement days per athlete-season), evaluates each fixed shadow-mode channel's capture rate and burden by tier using a population-wide risk threshold, and reports a `coverage_flag` (`coverage_confounded` / `coverage_independent` / `mixed`) indicating whether coverage tier is a major driver of policy performance.
+- Coverage-normalized policy sprints are available through `risk-engine --coverage-normalized-policy-sprint` and write `coverage_normalized_policy.csv`, `coverage_normalized_policy.json`, and `coverage_normalized_policy_report.md`. The sprint keeps the fixed shadow-mode channel package, applies coverage eligibility scopes to complete athlete-season trajectories (`all`, `medium_high`, `high_only`), rebuilds season-local alert episodes within each eligible cohort, and reports whether any channel remains stable after coverage control. This is the current Peterson-aligned guardrail before dashboard work because it preserves longitudinal athlete-season trajectories rather than treating daily rows as independent examples.
 - Main single-experiment runs accept `--model-variant baseline|l2|l1|elasticnet`, allowing a regularized candidate to be run through the normal artifact path without using the robustness sweep.
 - Enriched graph features (`enriched_graph_features_v1` run, 349 athletes, 70 holdout): 7d AUROC 0.730 (+0.008), 14d AUROC 0.735 (+0.007), 30d AUROC 0.735 (+0.007); Brier skill 30d improved from 0.0142 to 0.0168 (+18%).
 - Intra-individual deviation features (`intra_individual_deviation_v1` run, 349 athletes, 70 holdout): 7d AUROC 0.723, Brier skill 0.0020, top-decile lift 3.76; 14d AUROC 0.731, Brier skill 0.0057, top-decile lift 3.96; 30d AUROC 0.736, Brier skill 0.0171, top-decile lift 4.48. Versus `enriched_graph_features_v1`, the 30d AUROC, 7d/30d Brier skill, and all top-decile lifts improved, while 7d/14d AUROC declined slightly.
@@ -72,6 +73,25 @@ Future work may add a dashboard performance tab inspired by the Malum/SPEAR mate
 - Window/model robustness (`window_model_robustness_v1` run, windows 2/4/7, 5 rotating splits, 349 athletes): no single window/variant dominates all operating goals. Window 7 + L2 won calibration at 7d/14d, window 4 + L2 won 30d calibration, window 2 regularized variants won triage lift at all horizons, and ranking split by horizon: window 2 baseline at 7d AUROC 0.731, window 4 L2 at 14d AUROC 0.729, and window 7 L1 at 30d AUROC 0.729. This supports using L2 as the calibration-oriented production candidate while keeping window 2 as a high-alert triage setting and window 7 under review for 30d ranking.
 
 ## Latest Completed Step
+
+**Coverage-normalized policy sprint** — implemented and verified on 2026-05-08.
+
+**What changed:** Added `coverage_policy.py` with `COVERAGE_ELIGIBILITY_SCOPES`, `COVERAGE_SCOPE_TIERS`, `build_coverage_normalized_policy_summary`, and `write_coverage_normalized_policy_report`. Added `run_coverage_normalized_policy_sprint_experiment(...)` and the `--coverage-normalized-policy-sprint` CLI mode. The runner computes athlete-season coverage tiers, retrains the fixed shadow-mode channel models, merges coverage tier onto each alert timeline, filters complete athlete-season trajectories by `all`, `medium_high`, and `high_only` scopes, rebuilds season-local alert episodes, and writes `coverage_normalized_policy.csv`, `coverage_normalized_policy.json`, and `coverage_normalized_policy_report.md`.
+
+**Peterson guardrail:** Coverage controls are applied to complete athlete-season trajectories before season-local alert episodes are rebuilt. The sprint explicitly avoids treating daily measurement rows as independent injury-classification examples.
+
+**Verification:** New TDD tests first failed because `risk_stratification_engine.coverage_policy`, `run_coverage_normalized_policy_sprint_experiment`, and the `--coverage-normalized-policy-sprint` CLI dispatch did not exist. After implementation, `python -m pytest` collected and passed 180 tests. The live command `risk-engine --from-live-sources --paths-config config/paths.local.yaml --output-dir outputs --experiment-id coverage_normalized_policy_v1 --coverage-normalized-policy-sprint --model-variant l2` completed and wrote the policy artifacts.
+
+**Live results (`coverage_normalized_policy_v1`, L2):**
+- Overall recommendation: `continue_research_shadow_mode`.
+- No fixed channel remained stable across all three coverage eligibility scopes.
+- `severity_14d` was stable only in the full-population scope (`all`: mean capture 33.8%, range 9.1%, mean burden 2.58 episodes per athlete-season), but became unstable under `medium_high` (range 14.0%, burden 3.56) and `high_only` (range 13.0%, burden 4.40).
+- `broad_30d`, `severity_7d`, and `subtype_lower_extremity_soft_tissue_30d` were unstable under `all`, `medium_high`, and `high_only`.
+- Alert burden increased sharply as eligibility moved toward higher coverage: for example, `severity_7d` mean burden rose from 2.80 (`all`) to 3.91 (`medium_high`) to 4.80 (`high_only`) episodes per athlete-season.
+
+**Interpretation:** The fixed policy package is still not ready for dashboard or pilot escalation. The earlier `severity_14d` improvement is not robust to coverage eligibility controls, so the next research step should test source/coverage-aware modeling or coverage-adjusted thresholds rather than productizing the current channels.
+
+## Previous Completed Step
 
 **Coverage-stratified evaluation** — implemented and verified on 2026-04-29.
 

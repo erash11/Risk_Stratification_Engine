@@ -82,6 +82,31 @@ Future work may add a dashboard performance tab inspired by the Malum/SPEAR mate
 
 ## Latest Completed Step
 
+**Repaired-snapshot season-forward and injury-history diagnostic review** - verified on 2026-05-08.
+
+**What changed:** No new data domains were added. The repaired ForcePlate live-input snapshot from `coverage_stratified_after_forceplate_repair_v1` was reused to run `season_forward_after_forceplate_repair_v1` and `injury_history_forward_diagnostic_after_forceplate_repair_v1`, preserving the same canonical measurement/injury inputs while updating season-forward and injury-history calibration evidence after the ForcePlate repair.
+
+**Verification:** `risk-engine --measurements outputs/live_inputs/coverage_stratified_after_forceplate_repair_v1/canonical_measurements.csv --injuries outputs/live_inputs/coverage_stratified_after_forceplate_repair_v1/canonical_injuries.csv --output-dir outputs --experiment-id season_forward_after_forceplate_repair_v1 --season-forward-validation --model-variant l2 --graph-window-size 4` completed and wrote the season-forward artifacts. `risk-engine --measurements outputs/live_inputs/coverage_stratified_after_forceplate_repair_v1/canonical_measurements.csv --injuries outputs/live_inputs/coverage_stratified_after_forceplate_repair_v1/canonical_injuries.csv --output-dir outputs --experiment-id injury_history_forward_diagnostic_after_forceplate_repair_v1 --injury-history-forward-diagnostic-sprint --model-variant l2 --graph-window-size 4` completed and wrote the injury-history diagnostic artifacts. No `risk-engine`, `run_pipeline.py`, or Python worker processes remained active after verification.
+
+**Live results (`season_forward_after_forceplate_repair_v1`, L2, window 4):**
+- Overall recommendation: `continue_season_forward_research`.
+- Best 7d ranking/calibration/triage all came from `graph_plus_coverage_source` in 2025-2026: AUROC 0.648, Brier skill 0.014, top-decile lift 1.556.
+- Best 14d ranking/calibration came from 2025-2026 with AUROC 0.650 and Brier skill 0.023; best 14d triage remained 2023-2024 with top-decile lift 1.852.
+- Best 30d ranking/triage remained 2023-2024 with AUROC 0.649 and top-decile lift 1.818; best 30d calibration remained 2025-2026 with Brier skill 0.035.
+- Alert-policy forward checks stayed research-only: `broad_30d` burden-capped 10.7% capture / 0.47 burden, `severity_14d` season-local 12.7% / 0.86, `severity_7d` burden-capped 5.9% / 0.40, and subtype review season-local 16.4% / 0.78 episodes per athlete-season.
+
+**Live results (`injury_history_forward_diagnostic_after_forceplate_repair_v1`, L2, window 4):**
+- Overall recommendation: `inspect_injury_history_forward_failure_modes`.
+- 2024-2025 remains the dominant high-priority failure slice across 7d/14d/30d.
+- In 2024-2025, adding injury history improved AUROC by +0.065/+0.071/+0.061 and top-decile lift by +1.536/+1.824/+1.838 at 7d/14d/30d, but Brier skill worsened by -0.508/-0.484/-0.407.
+- The 2024-2025 injury-history model over-predicted average risk relative to observed positive rates: 7d 8.8% mean predicted vs 2.8% observed, 14d 12.7% vs 4.8%, and 30d 19.1% vs 8.9%.
+- 2025-2026 was more mixed: 7d and 30d were `calibration_supported`, while 14d still showed a small calibration loss with improved ranking/triage.
+- Injury-history context is now common in later seasons: prior-injury context appears in 9,949 of 15,898 repaired-snapshot 2024-2025 feature rows and 8,504 of 14,427 2025-2026 rows.
+
+**Interpretation:** The ForcePlate repair improved coverage independence and reduced the injury-history calibration penalty compared with the earlier diagnostic, but it did not remove the 2024-2025 failure mode. Injury history is concentrating events into higher ranked groups while over-sharpening probability estimates. Do not proceed to new season-forward validation or pilot/dashboard work until the user's additional exposure/load, mechanism, availability/intervention, and frailty-related data for the next feature sprint has been reviewed.
+
+## Previous Completed Step
+
 **Post-ForcePlate repair coverage-stratified refresh** - verified on 2026-05-08.
 
 **What changed:** No code changes were needed for this refresh. The ForcePlate source DB had been repaired/backfilled upstream, so the Risk Engine live-source inputs were regenerated from `config/paths.local.yaml` and the coverage-stratified evaluation was rerun as `coverage_stratified_after_forceplate_repair_v1`.

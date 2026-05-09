@@ -82,6 +82,27 @@ Future work may add a dashboard performance tab inspired by the Malum/SPEAR mate
 
 ## Latest Completed Step
 
+**Post-ForcePlate repair coverage-stratified refresh** - verified on 2026-05-08.
+
+**What changed:** No code changes were needed for this refresh. The ForcePlate source DB had been repaired/backfilled upstream, so the Risk Engine live-source inputs were regenerated from `config/paths.local.yaml` and the coverage-stratified evaluation was rerun as `coverage_stratified_after_forceplate_repair_v1`.
+
+**Verification:** `risk-engine --from-live-sources --paths-config config/paths.local.yaml --output-dir outputs --experiment-id coverage_stratified_after_forceplate_repair_v1 --coverage-stratified-evaluation --model-variant l2 --graph-window-size 4` wrote the live-input snapshot but hit the shell timeout before experiment artifacts were created. The canonical snapshot was then reused directly with `risk-engine --measurements outputs/live_inputs/coverage_stratified_after_forceplate_repair_v1/canonical_measurements.csv --injuries outputs/live_inputs/coverage_stratified_after_forceplate_repair_v1/canonical_injuries.csv --output-dir outputs --experiment-id coverage_stratified_after_forceplate_repair_v1 --coverage-stratified-evaluation --model-variant l2`, which completed and wrote `coverage_tiers.csv`, `coverage_stratified_evaluation.csv`, `coverage_stratified_evaluation.json`, `coverage_stratified_evaluation_report.md`, and `config.json`.
+
+**Live results (`coverage_stratified_after_forceplate_repair_v1`, L2):**
+- Overall coverage flag changed to `coverage_independent`.
+- This supersedes the earlier `coverage_stratified_eval_v1` result of `coverage_confounded` and the interim `forceplate_2023_backfill_coverage_v1` result of `mixed`.
+- Live canonical inputs contained 913,973 measurement rows, 1,027 canonical injury rows, 638 detailed injury rows, and 331 observed events.
+- Measurement source rows were: GPS 637,013, ForcePlate 225,384, bodyweight 40,943, and Perch 10,633.
+- Coverage tiers were balanced: low 350 athlete-seasons, medium 335, and high 342.
+- Broad 30d capture by coverage tier was low 38.7%, medium 15.4%, high 28.0%.
+- Severity 7d capture was low 27.8%, medium 19.1%, high 27.5%.
+- Severity 14d capture was low 38.9%, medium 19.1%, high 35.2%.
+- Lower-extremity soft-tissue 30d capture was low 68.8%, medium 52.8%, high 50.6%.
+
+**Interpretation:** The earlier coverage-confounding concern appears materially improved after the ForcePlate repair. This supports continuing shadow-mode research with the repaired source snapshot, but it is not standalone pilot clearance because injury-history calibration failures and missing exposure/load, mechanism, availability/intervention, and frailty context remain open production-readiness blockers.
+
+## Previous Completed Step
+
 **Injury-history forward diagnostic sprint** - implemented and verified on 2026-05-08.
 
 **What changed:** Added `injury_history_forward_diagnostics.py` with calibration-diagnostic summary/report helpers, plus `run_injury_history_forward_diagnostic_sprint_experiment(...)` and the `--injury-history-forward-diagnostic-sprint` CLI mode. The new sprint compares forward-season `graph_plus_coverage_source` vs `graph_plus_coverage_injury_history` rows, creates season/horizon diagnostic cases, and writes `injury_history_features.csv`, `injury_history_season_forward_validation.csv`, `injury_history_calibration_diagnostics.csv`, `injury_history_forward_diagnostic_cases.csv`, `injury_history_forward_diagnostic.json`, `injury_history_forward_diagnostic_report.md`, and `config.json`.

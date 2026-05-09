@@ -70,6 +70,7 @@ Future work may add a dashboard performance tab inspired by the Malum/SPEAR mate
 - Forward case review sprints are available through `risk-engine --forward-case-review-sprint` and write `forward_case_review_cases.csv`, `forward_case_review.json`, and `forward_case_review_report.md`. The sprint targets forward-surviving seasons and channels, then classifies true positives, false positives, missed injuries, and high intra-individual deviation episodes into review diagnostics.
 - Case diagnostic requirements sprints are available through `risk-engine --case-diagnostic-requirements-sprint` and write `forward_case_review_cases.csv`, `case_diagnostic_requirements.csv`, `case_diagnostic_requirements.json`, and `case_diagnostic_requirements_report.md`. The sprint translates forward case-review diagnostics into prioritized production-readiness data domains and modeling actions before any pilot escalation.
 - Injury-history feature sprints are available through `risk-engine --injury-history-feature-sprint` and write `injury_history_features.csv`, `injury_history_model_comparison.csv`, `injury_history_model_comparison.json`, and `injury_history_model_comparison_report.md`. The sprint derives time-safe prior-injury, baseline/frailty, and mechanism-context features from `injury_events_detailed.csv`, then compares `graph_plus_coverage_source` against `graph_plus_coverage_injury_history`.
+- Injury-history season-forward validation sprints are available through `risk-engine --injury-history-season-forward-validation` and write `injury_history_features.csv`, `injury_history_season_forward_validation.csv`, `injury_history_season_forward_validation.json`, and `injury_history_season_forward_validation_report.md`. The sprint trains on earlier seasons, evaluates later seasons, compares `graph_plus_coverage_source` against `graph_plus_coverage_injury_history`, and scores fixed alert channels with the injury-history feature set.
 - Main single-experiment runs accept `--model-variant baseline|l2|l1|elasticnet`, allowing a regularized candidate to be run through the normal artifact path without using the robustness sweep.
 - Enriched graph features (`enriched_graph_features_v1` run, 349 athletes, 70 holdout): 7d AUROC 0.730 (+0.008), 14d AUROC 0.735 (+0.007), 30d AUROC 0.735 (+0.007); Brier skill 30d improved from 0.0142 to 0.0168 (+18%).
 - Intra-individual deviation features (`intra_individual_deviation_v1` run, 349 athletes, 70 holdout): 7d AUROC 0.723, Brier skill 0.0020, top-decile lift 3.76; 14d AUROC 0.731, Brier skill 0.0057, top-decile lift 3.96; 30d AUROC 0.736, Brier skill 0.0171, top-decile lift 4.48. Versus `enriched_graph_features_v1`, the 30d AUROC, 7d/30d Brier skill, and all top-decile lifts improved, while 7d/14d AUROC declined slightly.
@@ -79,6 +80,28 @@ Future work may add a dashboard performance tab inspired by the Malum/SPEAR mate
 - Window/model robustness (`window_model_robustness_v1` run, windows 2/4/7, 5 rotating splits, 349 athletes): no single window/variant dominates all operating goals. Window 7 + L2 won calibration at 7d/14d, window 4 + L2 won 30d calibration, window 2 regularized variants won triage lift at all horizons, and ranking split by horizon: window 2 baseline at 7d AUROC 0.731, window 4 L2 at 14d AUROC 0.729, and window 7 L1 at 30d AUROC 0.729. This supports using L2 as the calibration-oriented production candidate while keeping window 2 as a high-alert triage setting and window 7 under review for 30d ranking.
 
 ## Latest Completed Step
+
+**Injury-history season-forward validation sprint** - implemented and verified on 2026-05-08.
+
+**What changed:** Added `run_injury_history_season_forward_validation_sprint_experiment(...)` and the `--injury-history-season-forward-validation` CLI mode. Generalized the season-forward validation internals so a caller can provide a custom feature-set comparison and alert-policy scoring feature set. The new runner compares `graph_plus_coverage_source` with `graph_plus_coverage_injury_history`, scores fixed alert channels with injury-history features, and writes `injury_history_features.csv`, `injury_history_season_forward_validation.csv`, `injury_history_season_forward_validation.json`, `injury_history_season_forward_validation_report.md`, and `config.json`.
+
+**Peterson guardrail:** The sprint still trains on earlier complete athlete-season trajectories and evaluates later complete athlete-season trajectories. Injury-history features remain time-safe because they are derived only from detailed injury events before each graph snapshot date; the sprint does not use future injury details or convert daily rows into independent injury-classification examples.
+
+**Verification:** New TDD tests first failed because `build_season_forward_validation_summary(...)` did not accept a custom experiment type, `run_injury_history_season_forward_validation_sprint_experiment(...)` did not exist, and the `--injury-history-season-forward-validation` CLI dispatch did not exist. After implementation, focused tests passed and `python -m pytest` collected and passed 213 tests. The live command `risk-engine --from-live-sources --paths-config config/paths.local.yaml --output-dir outputs --experiment-id injury_history_season_forward_validation_v1 --injury-history-season-forward-validation --model-variant l2 --graph-window-size 4` completed and wrote the sprint artifacts.
+
+**Live results (`injury_history_season_forward_validation_v1`, L2, window 4):**
+- Overall recommendation: `continue_season_forward_research`.
+- Evaluated forward seasons 2021-2022 through 2025-2026 with 74,860 graph snapshot rows.
+- `graph_plus_coverage_injury_history` won selected forward ranking/triage slots, but did not dominate calibration.
+- 7d: best ranking was injury-history in 2025-2026 (AUROC 0.662); best calibration remained coverage/source in 2025-2026 (Brier skill 0.016); best top-decile lift was injury-history in 2024-2025 (2.477).
+- 14d: best ranking and calibration remained coverage/source in 2025-2026 (AUROC 0.677; Brier skill 0.028); best top-decile lift was injury-history in 2024-2025 (2.928).
+- 30d: best ranking was injury-history in 2023-2024 (AUROC 0.689); best calibration remained coverage/source in 2025-2026 (Brier skill 0.052); best top-decile lift was injury-history in 2024-2025 (3.063).
+- Injury-history alert-policy forward checks selected low-burden policies, but mean event capture stayed low: `broad_30d` burden-capped 5.0% capture / 0.14 episodes per athlete-season, `severity_14d` burden-capped 7.9% / 0.26, `severity_7d` burden-capped 4.8% / 0.29, and subtype review season-local 8.2% / 0.37.
+- Nonzero prior-injury context appeared in 30,482 snapshots; prior lower-extremity soft-tissue context appeared in 13,637 snapshots.
+
+**Interpretation:** Injury history survives forward validation as a ranking and triage signal in later seasons, but it is not a clean calibration improvement and alert capture remains too low for pilot clearance. The next sprint should inspect injury-history forward case behavior and calibration failure modes, especially 2024-2025 high-lift/poor-calibration rows and 2025-2026 calibration comparisons, before any dashboard or pilot work.
+
+## Previous Completed Step
 
 **Injury-history feature sprint** - implemented and verified on 2026-05-08.
 

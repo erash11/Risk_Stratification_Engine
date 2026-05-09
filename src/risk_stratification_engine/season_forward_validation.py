@@ -17,6 +17,7 @@ DECISION_METRICS = {
 
 def build_season_forward_validation_summary(
     rows: list[dict[str, object]],
+    experiment_type: str = "season_forward_validation_sprint",
 ) -> dict[str, object]:
     frame = pd.DataFrame(rows)
     test_seasons = (
@@ -25,7 +26,7 @@ def build_season_forward_validation_summary(
         else []
     )
     return {
-        "experiment_type": "season_forward_validation_sprint",
+        "experiment_type": experiment_type,
         "overall_recommendation": _overall_recommendation(frame),
         "split_policy": "season_forward_train_prior_evaluate_next",
         "evaluated_test_seasons": test_seasons,

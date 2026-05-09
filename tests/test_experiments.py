@@ -16,6 +16,7 @@ from risk_stratification_engine.experiments import (
     run_coverage_stratified_evaluation_experiment,
     run_forward_case_review_sprint_experiment,
     run_injury_history_feature_sprint_experiment,
+    run_injury_history_season_forward_validation_sprint_experiment,
     run_injury_outcome_policy_experiment,
     run_outcome_policy_model_comparison_experiment,
     run_policy_decision_sprint_experiment,
@@ -1237,6 +1238,63 @@ def test_run_injury_history_feature_sprint_writes_model_artifacts(tmp_path):
     report = (result / "injury_history_model_comparison_report.md").read_text()
     assert "Injury History Feature Sprint" in report
     assert "time-safe prior injury context" in report
+
+
+def test_run_injury_history_season_forward_validation_sprint_writes_forward_artifacts(
+    tmp_path,
+):
+    measurements_path, injuries_path, detailed_path = _write_season_forward_fixture_inputs(
+        tmp_path
+    )
+
+    result = run_injury_history_season_forward_validation_sprint_experiment(
+        measurements_path=measurements_path,
+        injuries_path=injuries_path,
+        detailed_injuries_path=detailed_path,
+        output_dir=tmp_path,
+        experiment_id="injury_history_season_forward",
+        graph_window_size=2,
+        model_variant="l2",
+    )
+
+    assert (result / "injury_history_season_forward_validation.csv").exists()
+    assert (result / "injury_history_season_forward_validation.json").exists()
+    assert (result / "injury_history_season_forward_validation_report.md").exists()
+    assert (result / "injury_history_features.csv").exists()
+    assert (result / "config.json").exists()
+
+    features = pd.read_csv(result / "injury_history_features.csv")
+    assert "injury_history_prior_injury_count" in features.columns
+
+    rows = pd.read_csv(result / "injury_history_season_forward_validation.csv")
+    model_rows = rows[rows["row_type"].eq("model_metric")]
+    assert {
+        "graph_plus_coverage_source",
+        "graph_plus_coverage_injury_history",
+    }.issubset(set(model_rows["feature_set"]))
+    alert_rows = rows[rows["row_type"].eq("alert_policy")]
+    assert set(alert_rows["feature_set"]) == {
+        "graph_plus_coverage_injury_history"
+    }
+
+    payload = json.loads(
+        (result / "injury_history_season_forward_validation.json").read_text()
+    )
+    assert (
+        payload["experiment_type"]
+        == "injury_history_season_forward_validation_sprint"
+    )
+    assert "injury_history_feature_columns" in payload
+    assert payload["feature_sets"] == [
+        "graph_plus_coverage_source",
+        "graph_plus_coverage_injury_history",
+    ]
+
+    report = (
+        result / "injury_history_season_forward_validation_report.md"
+    ).read_text()
+    assert "Season-Forward Validation Sprint" in report
+    assert "graph_plus_coverage_injury_history" in report
 
 
 # ---------------------------------------------------------------------------

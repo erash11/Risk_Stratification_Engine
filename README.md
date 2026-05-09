@@ -498,6 +498,29 @@ same-season prior injury count, days since last injury, prior time-loss load,
 lower-extremity and soft-tissue history, activity-context history, and prior
 unavailability history.
 
+Injury-history season-forward validation sprints test whether those prior-injury
+features survive the stricter train-prior-seasons / evaluate-later-seasons
+setup:
+
+```bash
+risk-engine \
+  --from-live-sources \
+  --paths-config config/paths.local.yaml \
+  --output-dir outputs \
+  --experiment-id injury_history_season_forward_validation_v1 \
+  --injury-history-season-forward-validation \
+  --model-variant l2 \
+  --graph-window-size 4
+```
+
+These runs write `injury_history_features.csv`,
+`injury_history_season_forward_validation.csv`,
+`injury_history_season_forward_validation.json`, and
+`injury_history_season_forward_validation_report.md`. The sprint compares
+`graph_plus_coverage_source` against `graph_plus_coverage_injury_history` under
+season-forward validation and scores fixed alert channels with the
+injury-history feature set.
+
 Latest live-source comparison (`intra_individual_deviation_v1`, 349 athletes,
 70 holdout): 7d AUROC 0.723, Brier skill 0.0020; 14d AUROC 0.731, Brier skill
 0.0057; 30d AUROC 0.736, Brier skill 0.0171. Compared with
@@ -712,8 +735,20 @@ holdout comparison. AUROC improved from 0.721 to 0.755 at 7d, 0.726 to 0.759 at
 1.85 to 3.73 at 7d, 1.84 to 3.51 at 14d, and 2.13 to 3.46 at 30d. Prior-injury
 context was nonzero in 30,482 of 74,860 graph snapshots, and prior
 lower-extremity soft-tissue context was nonzero in 13,637 snapshots. This is
-not pilot clearance yet because it still needs season-forward validation with
-the injury-history feature set. The current test suite has 210 passing tests.
+not pilot clearance yet.
+
+The injury-history season-forward validation sprint
+(`injury_history_season_forward_validation_v1`, L2, window 4) found that
+`graph_plus_coverage_injury_history` survives as a ranking and triage signal but
+does not cleanly win calibration. It won 7d ranking in 2025-2026 (AUROC 0.662),
+30d ranking in 2023-2024 (AUROC 0.689), and top-decile lift in 2024-2025 at 7d,
+14d, and 30d (2.477, 2.928, and 3.063). Calibration winners remained
+`graph_plus_coverage_source` in 2025-2026 at all horizons. Injury-history alert
+checks had low burden but low mean capture: `broad_30d` 5.0% capture / 0.14
+episodes per athlete-season, `severity_14d` 7.9% / 0.26, `severity_7d` 4.8% /
+0.29, and subtype review 8.2% / 0.37. The next research step is case/calibration
+review of the injury-history forward rows, not pilot escalation. The current
+test suite has 213 passing tests.
 
 The reported risk values are baseline model estimates for research comparison,
 not calibrated clinical probabilities.

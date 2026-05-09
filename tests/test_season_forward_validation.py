@@ -74,3 +74,30 @@ def test_write_season_forward_validation_report_names_temporal_guardrail(tmp_pat
     assert "Season-Forward Validation Sprint" in report
     assert "train on earlier seasons" in report
     assert "complete athlete-season trajectories" in report
+
+
+def test_build_season_forward_validation_summary_keeps_custom_experiment_type():
+    rows = [
+        {
+            "row_type": "model_metric",
+            "test_season_id": "2025",
+            "feature_set": "graph_plus_coverage_injury_history",
+            "horizon_days": 30,
+            "roc_auc": 0.72,
+            "brier_skill_score": 0.08,
+            "top_decile_lift": 2.4,
+        }
+    ]
+
+    summary = build_season_forward_validation_summary(
+        rows,
+        experiment_type="injury_history_season_forward_validation_sprint",
+    )
+
+    assert (
+        summary["experiment_type"]
+        == "injury_history_season_forward_validation_sprint"
+    )
+    assert summary["best_by_horizon"]["30"]["ranking"]["feature_set"] == (
+        "graph_plus_coverage_injury_history"
+    )

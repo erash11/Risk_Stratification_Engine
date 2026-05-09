@@ -1214,6 +1214,90 @@ def run_injury_history_feature_sprint_experiment(
     return experiment_dir
 
 
+def run_injury_history_season_forward_validation_sprint_experiment(
+    measurements_path: str | Path,
+    injuries_path: str | Path,
+    detailed_injuries_path: str | Path,
+    output_dir: str | Path,
+    experiment_id: str,
+    graph_window_size: int = 4,
+    model_variant: str = "l2",
+) -> Path:
+    experiment_dir = _experiment_path(output_dir, experiment_id)
+    measurements = load_measurements(measurements_path)
+    canonical_injuries = load_injury_events(injuries_path)
+    detailed_injuries = pd.read_csv(detailed_injuries_path)
+    matrix = build_measurement_matrix(measurements)
+    graph_features = build_graph_snapshots(matrix, window_size=graph_window_size)
+    if graph_features.empty:
+        raise ValueError("no graph snapshots produced")
+    coverage_features = attach_coverage_source_features(graph_features, measurements)
+    injury_history_features = attach_injury_history_features(
+        coverage_features,
+        detailed_injuries,
+    )
+    rows = _season_forward_validation_rows(
+        measurements=measurements,
+        canonical_injuries=canonical_injuries,
+        detailed_injuries=detailed_injuries,
+        graph_window_size=graph_window_size,
+        model_variant=model_variant,
+        feature_sets=INJURY_HISTORY_MODEL_FEATURE_SETS,
+        prepared_features=injury_history_features,
+        alert_policy_feature_set_name="graph_plus_coverage_injury_history",
+        alert_policy_feature_columns=INJURY_HISTORY_MODEL_FEATURE_SETS[
+            "graph_plus_coverage_injury_history"
+        ],
+        attach_injury_history_to_alert_features=True,
+    )
+    row_records = _json_records(rows)
+    summary = build_season_forward_validation_summary(
+        row_records,
+        experiment_type="injury_history_season_forward_validation_sprint",
+    )
+    summary.update(
+        {
+            "model_type": MODEL_TYPE,
+            "model_variant": model_variant,
+            "graph_window_size": graph_window_size,
+            "feature_sets": list(INJURY_HISTORY_MODEL_FEATURE_SETS),
+            "coverage_source_feature_columns": list(COVERAGE_SOURCE_FEATURE_COLUMNS),
+            "injury_history_feature_columns": list(INJURY_HISTORY_FEATURE_COLUMNS),
+            "channels": list(DEFAULT_SHADOW_MODE_CHANNELS),
+        }
+    )
+
+    write_frame(injury_history_features, experiment_dir / "injury_history_features.csv")
+    write_frame(
+        rows,
+        experiment_dir / "injury_history_season_forward_validation.csv",
+    )
+    _write_json(
+        experiment_dir / "config.json",
+        {
+            "experiment_id": experiment_id,
+            "experiment_type": "injury_history_season_forward_validation_sprint",
+            "measurements_path": str(measurements_path),
+            "injuries_path": str(injuries_path),
+            "detailed_injuries_path": str(detailed_injuries_path),
+            "graph_window_size": graph_window_size,
+            "model_variant": model_variant,
+            "feature_sets": list(INJURY_HISTORY_MODEL_FEATURE_SETS),
+            "injury_history_feature_columns": list(INJURY_HISTORY_FEATURE_COLUMNS),
+            "channels": list(DEFAULT_SHADOW_MODE_CHANNELS),
+        },
+    )
+    _write_json(
+        experiment_dir / "injury_history_season_forward_validation.json",
+        summary,
+    )
+    write_season_forward_validation_report(
+        experiment_dir / "injury_history_season_forward_validation_report.md",
+        summary,
+    )
+    return experiment_dir
+
+
 def run_season_forward_validation_sprint_experiment(
     measurements_path: str | Path,
     injuries_path: str | Path,
@@ -1233,6 +1317,11 @@ def run_season_forward_validation_sprint_experiment(
         detailed_injuries=detailed_injuries,
         graph_window_size=graph_window_size,
         model_variant=model_variant,
+        feature_sets=COVERAGE_SOURCE_MODEL_FEATURE_SETS,
+        alert_policy_feature_set_name="graph_plus_coverage_source",
+        alert_policy_feature_columns=COVERAGE_SOURCE_MODEL_FEATURE_SETS[
+            "graph_plus_coverage_source"
+        ],
     )
     row_records = _json_records(rows)
     summary = build_season_forward_validation_summary(row_records)
@@ -2218,18 +2307,24 @@ def _season_forward_validation_rows(
     detailed_injuries: pd.DataFrame,
     graph_window_size: int,
     model_variant: str,
+    feature_sets: dict[str, tuple[str, ...]],
+    alert_policy_feature_set_name: str,
+    alert_policy_feature_columns: tuple[str, ...],
+    prepared_features: pd.DataFrame | None = None,
+    attach_injury_history_to_alert_features: bool = False,
 ) -> pd.DataFrame:
     matrix = build_measurement_matrix(measurements)
-    graph_features = build_graph_snapshots(matrix, window_size=graph_window_size)
-    if graph_features.empty:
-        raise ValueError("no graph snapshots produced")
-    coverage_features = attach_coverage_source_features(graph_features, measurements)
-    labeled = attach_time_to_event_labels(coverage_features, canonical_injuries)
+    if prepared_features is None:
+        graph_features = build_graph_snapshots(matrix, window_size=graph_window_size)
+        if graph_features.empty:
+            raise ValueError("no graph snapshots produced")
+        prepared_features = attach_coverage_source_features(graph_features, measurements)
+    labeled = attach_time_to_event_labels(prepared_features, canonical_injuries)
     if labeled.empty:
         raise ValueError("no labeled graph snapshots produced")
     season_ids = _forward_season_ids(labeled)
     rows: list[dict[str, object]] = []
-    for feature_set_name, feature_columns in COVERAGE_SOURCE_MODEL_FEATURE_SETS.items():
+    for feature_set_name, feature_columns in feature_sets.items():
         rows.extend(
             _season_forward_model_metric_rows(
                 labeled=labeled,
@@ -2247,6 +2342,11 @@ def _season_forward_validation_rows(
             detailed_injuries=detailed_injuries,
             season_ids=season_ids,
             model_variant=model_variant,
+            feature_set_name=alert_policy_feature_set_name,
+            feature_columns=alert_policy_feature_columns,
+            attach_injury_history_features_to_graph=(
+                attach_injury_history_to_alert_features
+            ),
         )
     )
     return pd.DataFrame(rows)
@@ -2467,17 +2567,22 @@ def _season_forward_alert_policy_rows(
     detailed_injuries: pd.DataFrame,
     season_ids: list[str],
     model_variant: str,
+    feature_set_name: str,
+    feature_columns: tuple[str, ...],
+    attach_injury_history_features_to_graph: bool = False,
 ) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
     graph_cache: dict[int, pd.DataFrame] = {}
-    feature_columns = COVERAGE_SOURCE_MODEL_FEATURE_SETS["graph_plus_coverage_source"]
     for channel in DEFAULT_SHADOW_MODE_CHANNELS:
         window_size = int(channel["graph_window_size"])
         if window_size not in graph_cache:
-            graph_cache[window_size] = attach_coverage_source_features(
+            features = attach_coverage_source_features(
                 build_graph_snapshots(matrix, window_size=window_size),
                 measurements,
             )
+            if attach_injury_history_features_to_graph:
+                features = attach_injury_history_features(features, detailed_injuries)
+            graph_cache[window_size] = features
         graph_features = graph_cache[window_size]
         policy_injuries = build_policy_injury_events(
             canonical_injuries,
@@ -2517,7 +2622,7 @@ def _season_forward_alert_policy_rows(
                         "train_season_ids": ",".join(train_seasons),
                         "train_season_count": len(train_seasons),
                         "test_season_id": test_season,
-                        "feature_set": "graph_plus_coverage_source",
+                        "feature_set": feature_set_name,
                     }
                 )
                 rows.append(row)

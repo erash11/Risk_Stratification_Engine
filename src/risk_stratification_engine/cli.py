@@ -16,6 +16,7 @@ from risk_stratification_engine.experiments import (
     run_coverage_source_aware_model_sprint_experiment,
     run_coverage_stratified_evaluation_experiment,
     run_exposure_feature_requirements_sprint_experiment,
+    run_exposure_load_feature_sprint_experiment,
     run_forward_case_review_sprint_experiment,
     run_injury_history_feature_sprint_experiment,
     run_injury_history_forward_diagnostic_sprint_experiment,
@@ -87,6 +88,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--injury-history-forward-diagnostic-sprint", action="store_true")
     parser.add_argument("--exposure-cleaning-audit", action="store_true")
     parser.add_argument("--exposure-feature-requirements-sprint", action="store_true")
+    parser.add_argument("--exposure-load-feature-sprint", action="store_true")
     parser.add_argument("--stability-splits", type=int, default=5)
     return parser
 
@@ -244,6 +246,35 @@ def main(argv: list[str] | None = None) -> int:
             model_variant=args.model_variant,
         )
         print(f"Coverage/source-aware model artifacts written to {experiment_dir}")
+        return 0
+    if args.exposure_load_feature_sprint:
+        exposure_participations = args.exposure_participations
+        if exposure_participations is None:
+            exposure_dir = args.exposure_dir
+            if exposure_dir is None:
+                data_paths = load_data_source_paths(args.paths_config)
+                exposure_dir = data_paths.exposure_dir
+            if exposure_dir is None:
+                parser.error(
+                    "--exposure-load-feature-sprint requires "
+                    "--exposure-participations, --exposure-dir, or exposure_dir "
+                    "in --paths-config"
+                )
+            prepared_exposure = prepare_exposure_inputs(
+                exposure_dir,
+                args.output_dir / "exposure_inputs" / args.experiment_id,
+            )
+            exposure_participations = prepared_exposure.participations_path
+        experiment_dir = run_exposure_load_feature_sprint_experiment(
+            measurements_path=measurements_path,
+            injuries_path=injuries_path,
+            exposure_participations_path=exposure_participations,
+            output_dir=args.output_dir,
+            experiment_id=args.experiment_id,
+            graph_window_size=args.graph_window_size,
+            model_variant=args.model_variant,
+        )
+        print(f"Exposure load feature artifacts written to {experiment_dir}")
         return 0
     if args.coverage_adjusted_threshold_sprint:
         if detailed_injuries_path is None:

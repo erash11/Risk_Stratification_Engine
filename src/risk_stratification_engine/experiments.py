@@ -33,6 +33,14 @@ from risk_stratification_engine.exposure_feature_requirements import (
     build_exposure_feature_requirements_summary,
     write_exposure_feature_requirements_report,
 )
+from risk_stratification_engine.exposure_load_features import (
+    EXPOSURE_LOAD_FEATURE_COLUMNS,
+    attach_exposure_load_features,
+)
+from risk_stratification_engine.exposure_load_modeling import (
+    build_exposure_load_model_comparison_summary,
+    write_exposure_load_model_comparison_report,
+)
 from risk_stratification_engine.episode_quality import build_alert_episode_quality
 from risk_stratification_engine.forward_case_review import (
     build_forward_case_review_summary,
@@ -160,6 +168,15 @@ INJURY_HISTORY_MODEL_FEATURE_SETS = {
     "graph_plus_coverage_injury_history": (
         *COVERAGE_SOURCE_MODEL_FEATURE_SETS["graph_plus_coverage_source"],
         *INJURY_HISTORY_FEATURE_COLUMNS,
+    ),
+}
+EXPOSURE_LOAD_MODEL_FEATURE_SETS = {
+    "graph_plus_coverage_source": COVERAGE_SOURCE_MODEL_FEATURE_SETS[
+        "graph_plus_coverage_source"
+    ],
+    "graph_plus_coverage_exposure_load": (
+        *COVERAGE_SOURCE_MODEL_FEATURE_SETS["graph_plus_coverage_source"],
+        *EXPOSURE_LOAD_FEATURE_COLUMNS,
     ),
 }
 FORWARD_CASE_REVIEW_TARGET_CHANNELS = (
@@ -1626,6 +1643,96 @@ def run_exposure_feature_requirements_sprint_experiment(
     _write_json(experiment_dir / "exposure_feature_requirements.json", summary)
     write_exposure_feature_requirements_report(
         experiment_dir / "exposure_feature_requirements_report.md",
+        summary,
+    )
+    return experiment_dir
+
+
+def run_exposure_load_feature_sprint_experiment(
+    measurements_path: str | Path,
+    injuries_path: str | Path,
+    exposure_participations_path: str | Path,
+    output_dir: str | Path,
+    experiment_id: str,
+    graph_window_size: int = 4,
+    model_variant: str = "l2",
+) -> Path:
+    experiment_dir = _experiment_path(output_dir, experiment_id)
+    measurements = load_measurements(measurements_path)
+    injuries = load_injury_events(injuries_path)
+    exposure_participations = pd.read_csv(exposure_participations_path)
+
+    matrix = build_measurement_matrix(measurements)
+    graph_features = build_graph_snapshots(matrix, window_size=graph_window_size)
+    if graph_features.empty:
+        raise ValueError("no graph snapshots produced")
+    coverage_features = attach_coverage_source_features(graph_features, measurements)
+    exposure_features = attach_exposure_load_features(
+        coverage_features,
+        exposure_participations,
+    )
+    labeled = attach_time_to_event_labels(exposure_features, injuries)
+    if labeled.empty:
+        raise ValueError("no labeled graph snapshots produced")
+
+    comparison_rows: list[dict[str, object]] = []
+    feature_summaries: dict[str, object] = {}
+    for feature_set_name, feature_columns in EXPOSURE_LOAD_MODEL_FEATURE_SETS.items():
+        model_result = train_discrete_time_risk_model(
+            labeled,
+            feature_columns=feature_columns,
+            model_variant=model_variant,
+        )
+        evaluation = evaluate_risk_model(model_result.timeline, model_result.summary)
+        feature_summaries[feature_set_name] = {
+            "feature_columns": list(feature_columns),
+            "model_summary": model_result.summary,
+            "evaluation": evaluation,
+        }
+        comparison_rows.extend(
+            _coverage_source_comparison_rows(
+                feature_set_name=feature_set_name,
+                evaluation=evaluation,
+                model_summary=model_result.summary,
+            )
+        )
+
+    summary = build_exposure_load_model_comparison_summary(comparison_rows)
+    summary.update(
+        {
+            "model_type": MODEL_TYPE,
+            "model_variant": model_variant,
+            "graph_window_size": graph_window_size,
+            "graph_feature_columns": list(GRAPH_SNAPSHOT_FEATURE_COLUMNS),
+            "coverage_source_feature_columns": list(COVERAGE_SOURCE_FEATURE_COLUMNS),
+            "exposure_load_feature_columns": list(EXPOSURE_LOAD_FEATURE_COLUMNS),
+            "feature_set_summaries": feature_summaries,
+        }
+    )
+
+    write_frame(exposure_features, experiment_dir / "exposure_load_features.csv")
+    write_frame(
+        pd.DataFrame(comparison_rows),
+        experiment_dir / "exposure_load_model_comparison.csv",
+    )
+    _write_json(
+        experiment_dir / "config.json",
+        {
+            "experiment_id": experiment_id,
+            "experiment_type": "exposure_load_feature_sprint",
+            "measurements_path": str(measurements_path),
+            "injuries_path": str(injuries_path),
+            "exposure_participations_path": str(exposure_participations_path),
+            "graph_window_size": graph_window_size,
+            "model_variant": model_variant,
+            "feature_sets": list(EXPOSURE_LOAD_MODEL_FEATURE_SETS),
+            "coverage_source_feature_columns": list(COVERAGE_SOURCE_FEATURE_COLUMNS),
+            "exposure_load_feature_columns": list(EXPOSURE_LOAD_FEATURE_COLUMNS),
+        },
+    )
+    _write_json(experiment_dir / "exposure_load_model_comparison.json", summary)
+    write_exposure_load_model_comparison_report(
+        experiment_dir / "exposure_load_model_comparison_report.md",
         summary,
     )
     return experiment_dir

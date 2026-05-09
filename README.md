@@ -96,6 +96,44 @@ were caution domains because game participation duration was missing in 47.09%
 of rows. The next exposure modeling sprint should attach time-safe count,
 recency, participation-status, and coarse-category features first.
 
+## Run Exposure Load Feature Sprint
+
+The exposure load feature sprint attaches conservative, time-safe exposure
+context to graph snapshots and compares it against the coverage/source reference
+model:
+
+```bash
+risk-engine \
+  --from-live-sources \
+  --paths-config config/paths.local.yaml \
+  --exposure-load-feature-sprint \
+  --exposure-participations outputs/exposure_inputs/exposure_cleaning_audit_v1/exposure_participations.csv \
+  --output-dir outputs \
+  --experiment-id exposure_load_feature_v1 \
+  --model-variant l2 \
+  --graph-window-size 4
+```
+
+This writes `exposure_load_features.csv`,
+`exposure_load_model_comparison.csv`,
+`exposure_load_model_comparison.json`, and
+`exposure_load_model_comparison_report.md` under
+`outputs/experiments/<experiment-id>/`. The first-pass feature set includes
+prior 7/14/28 day training-session counts, season-to-date game count and game
+recency, prior 28 day full/modified/no-participation counts, days since the last
+modified or no-participation session, and coarse 28 day practice/lift/
+conditioning/RTP/game counts. Minute-load terms remain out of the first-pass
+model until duration semantics are reviewed.
+
+The live `exposure_load_feature_v1` run recommended
+`continue_exposure_load_research` while keeping production readiness at
+`not_ready_research_validation_required`. The exposure-load feature set beat the
+coverage/source reference at 7d, 14d, and 30d: AUROC improved from
+0.728/0.732/0.743 to 0.802/0.810/0.819, Brier skill improved from
+0.017/0.031/0.059 to 0.037/0.064/0.119, and top-decile lift improved from
+1.96/1.97/1.99 to 3.20/3.00/2.78. The next validation step is a
+season-forward exposure-load sprint before adding duration/minute-load terms.
+
 ## Run Live-Source Experiment
 
 When `config/paths.local.yaml` points to available local sources, the CLI can

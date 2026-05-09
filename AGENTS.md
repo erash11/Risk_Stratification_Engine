@@ -53,6 +53,7 @@ Future work may add a dashboard performance tab inspired by the Malum/SPEAR mate
 - Exposure cleaning filters football events by `ExternalSquadId == 94`, maps athlete identities from `FirstName + " " + LastName` through `stable_athlete_id(...)`, preserves `ExternalAthleteId` as source metadata, and treats only athletes whose pipe/comma/semicolon-delimited `ExternalSquadIds` include `94` as matched football athletes. Do not use football-looking `Position` text alone because Zandbox athletes can carry football positions.
 - Exposure cleaning excludes API/performance-source sessions containing Perch/Perks, ForceDecks, VALD/Vault/Nordbord/GroinBar, SmartSpeed, or Catapult, including `Perch - Weight Room`; plain human-entered `Weight Room` remains eligible.
 - Exposure feature requirements sprints are available through `risk-engine --exposure-feature-requirements-sprint --exposure-events <exposure_events.csv> --exposure-participations <exposure_participations.csv> --exposure-audit <exposure_cleaning_audit.json> --output-dir outputs --experiment-id <id>`. The sprint writes `exposure_category_summary.csv`, `exposure_duration_summary.csv`, `exposure_feature_requirements.csv`, `exposure_feature_requirements.json`, and `exposure_feature_requirements_report.md`; it should run after exposure cleaning and before any time-safe exposure/load model feature sprint.
+- Exposure load feature sprints are available through `risk-engine --from-live-sources --paths-config config/paths.local.yaml --exposure-load-feature-sprint --exposure-participations <exposure_participations.csv> --output-dir outputs --experiment-id <id> --model-variant l2 --graph-window-size 4`. The sprint writes `exposure_load_features.csv`, `exposure_load_model_comparison.csv`, `exposure_load_model_comparison.json`, and `exposure_load_model_comparison_report.md`; it attaches only participation context before each graph snapshot and compares `graph_plus_coverage_source` against `graph_plus_coverage_exposure_load`.
 - As of 2026-04-27, `run_research_experiment(...)` trains a discrete-time logistic baseline at the 7, 14, and 30 day horizons over 13 graph snapshot-time features: `time_index`, `node_count`, `edge_count`, `mean_abs_correlation`, `edge_density`, `delta_edge_count`, `delta_mean_abs_correlation`, `delta_edge_density`, `graph_instability`, `z_mean_abs_correlation`, `z_edge_density`, `z_edge_count`, and `z_graph_instability`.
 - The temporal delta features (`delta_*`) are computed per athlete-season in chronological order and are zero at each athlete's first snapshot; they capture change from one snapshot to the next. `edge_density` normalizes edge count by the maximum possible edges for the observed node count. `graph_instability` is the rolling population standard deviation of `mean_abs_correlation` over the most recent three snapshots, zero when fewer than two snapshots are available.
 - The intra-individual z-score features compare each athlete-season snapshot against that athlete-season's own strictly prior rolling baseline using the graph `window_size`. They require at least two prior snapshots, use population standard deviation, fall back to `0.0` when the prior standard deviation is zero, and are clipped to `[-10.0, 10.0]`.
@@ -85,6 +86,27 @@ Future work may add a dashboard performance tab inspired by the Malum/SPEAR mate
 - Window/model robustness (`window_model_robustness_v1` run, windows 2/4/7, 5 rotating splits, 349 athletes): no single window/variant dominates all operating goals. Window 7 + L2 won calibration at 7d/14d, window 4 + L2 won 30d calibration, window 2 regularized variants won triage lift at all horizons, and ranking split by horizon: window 2 baseline at 7d AUROC 0.731, window 4 L2 at 14d AUROC 0.729, and window 7 L1 at 30d AUROC 0.729. This supports using L2 as the calibration-oriented production candidate while keeping window 2 as a high-alert triage setting and window 7 under review for 30d ranking.
 
 ## Latest Completed Step
+
+**Exposure load feature sprint** - implemented and verified on 2026-05-09.
+
+**What changed:** Added `exposure_load_features.py`, `exposure_load_modeling.py`, the `run_exposure_load_feature_sprint_experiment(...)` runner, and the `--exposure-load-feature-sprint` CLI mode. The sprint attaches conservative time-safe exposure features to graph snapshots from cleaned participation rows, then compares `graph_plus_coverage_source` against `graph_plus_coverage_exposure_load`.
+
+**Verification:** New TDD tests first failed because `risk_stratification_engine.exposure_load_features` and the CLI runner hook did not exist. After implementation, focused exposure/CLI tests passed, then `python -m pytest` collected and passed 230 tests with one existing sklearn convergence warning. The live command `risk-engine --from-live-sources --paths-config config/paths.local.yaml --exposure-load-feature-sprint --exposure-participations outputs/exposure_inputs/exposure_cleaning_audit_v1/exposure_participations.csv --output-dir outputs --experiment-id exposure_load_feature_v1 --model-variant l2 --graph-window-size 4` completed and wrote the live inputs plus exposure-load artifacts.
+
+**Live results (`exposure_load_feature_v1`, L2, window 4):**
+- Overall recommendation: `continue_exposure_load_research`.
+- Production readiness: `not_ready_research_validation_required`.
+- Live inputs contained 913,973 measurement rows, 1,027 canonical injury rows, 638 detailed injury rows, and 331 observed events.
+- The feature table contained 75,380 graph snapshots.
+- Nonzero exposure context appeared in 48,984 snapshots for 7d training-session count, 50,470 for 28d training-session count, 34,837 for prior game count, 5,500 for 28d modified participation count, 16,319 for 28d no-participation count, and 21,723 for 28d game exposure count.
+- `graph_plus_coverage_exposure_load` beat `graph_plus_coverage_source` at all horizons and decision modes in the standard holdout comparison.
+- AUROC improved from 0.728 to 0.802 at 7d, 0.732 to 0.810 at 14d, and 0.743 to 0.819 at 30d.
+- Brier skill improved from 0.017 to 0.037 at 7d, 0.031 to 0.064 at 14d, and 0.059 to 0.119 at 30d.
+- Top-decile lift improved from 1.96 to 3.20 at 7d, 1.97 to 3.00 at 14d, and 1.99 to 2.78 at 30d.
+
+**Interpretation:** Exposure/load context is now a strong first-pass modeling signal when attached before each snapshot. This is still research validation, not dashboard or pilot clearance. The next sprint should run season-forward validation with the exposure-load feature set and inspect whether the gains survive forward-season splits, especially before adding duration/minute-load terms.
+
+## Previous Completed Step
 
 **Exposure feature requirements sprint** - implemented and verified on 2026-05-09.
 

@@ -119,6 +119,32 @@ def build_injury_history_calibration_diagnostics(
     )
 
 
+def build_injury_history_forward_diagnostic_cases(
+    calibration_diagnostics: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    cases: list[dict[str, object]] = []
+    for row in calibration_diagnostics:
+        label = str(row["diagnostic_label"])
+        if label == "mixed_or_no_injury_history_gain":
+            continue
+        cases.append(
+            {
+                "case_type": "season_horizon_calibration_slice",
+                "diagnostic_label": label,
+                "feature_set": INJURY_HISTORY_FEATURE_SET,
+                "test_season_id": row["test_season_id"],
+                "horizon_days": row["horizon_days"],
+                "priority_tier": row["priority_tier"],
+                "target_reason": _case_target_reason(row),
+                "delta_roc_auc": row["delta_roc_auc"],
+                "delta_brier_skill_score": row["delta_brier_skill_score"],
+                "delta_model_brier_score": row["delta_model_brier_score"],
+                "delta_top_decile_lift": row["delta_top_decile_lift"],
+            }
+        )
+    return cases
+
+
 def write_injury_history_forward_diagnostic_report(
     path: Path,
     summary: dict[str, object],
@@ -193,6 +219,14 @@ def _diagnostic_label(row: dict[str, object]) -> str:
     return "mixed_or_no_injury_history_gain"
 
 
+def _case_target_reason(row: dict[str, object]) -> str:
+    if row["diagnostic_label"] == "ranking_triage_gain_calibration_loss":
+        return "high_lift_calibration_failure"
+    if row["diagnostic_label"] == "calibration_supported":
+        return "forward_calibration_comparator"
+    return "injury_history_signal_comparator"
+
+
 def _priority_tier(label: str) -> str:
     if label == "ranking_triage_gain_calibration_loss":
         return "high"
@@ -223,7 +257,7 @@ def _interpretation(summary: dict[str, object]) -> str:
             "Prior injury context is helping ranking or triage while hurting "
             "calibration in at least one forward slice. Start with the "
             "2024-2025 high-lift calibration failures and compare them with "
-            "2025-2026 calibration-supported rows before any pilot escalation."
+            "2025-2026 calibration comparison rows before any pilot escalation."
         )
     return (
         "Use these rows to separate durable prior-injury signal from coverage, "

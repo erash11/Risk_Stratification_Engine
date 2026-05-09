@@ -38,6 +38,8 @@ from risk_stratification_engine.injury_history_features import (
     attach_injury_history_features,
 )
 from risk_stratification_engine.injury_history_forward_diagnostics import (
+    build_injury_history_calibration_diagnostics,
+    build_injury_history_forward_diagnostic_cases,
     build_injury_history_forward_diagnostic_summary,
     write_injury_history_forward_diagnostic_report,
 )
@@ -1338,18 +1340,13 @@ def run_injury_history_forward_diagnostic_sprint_experiment(
         ],
         attach_injury_history_to_alert_features=True,
     )
-    cases = _forward_case_review_cases(
-        measurements=measurements,
-        canonical_injuries=canonical_injuries,
-        detailed_injuries=detailed_injuries,
-        model_variant=model_variant,
-        feature_set_name="graph_plus_coverage_injury_history",
-        feature_columns=INJURY_HISTORY_MODEL_FEATURE_SETS[
-            "graph_plus_coverage_injury_history"
-        ],
-        attach_injury_history_features_to_graph=True,
-    )
     row_records = _json_records(rows)
+    calibration_diagnostics = build_injury_history_calibration_diagnostics(
+        row_records,
+    )
+    cases = pd.DataFrame(
+        build_injury_history_forward_diagnostic_cases(calibration_diagnostics)
+    )
     case_records = _json_records(cases)
     summary = build_injury_history_forward_diagnostic_summary(
         row_records,
@@ -1370,7 +1367,7 @@ def run_injury_history_forward_diagnostic_sprint_experiment(
     write_frame(injury_history_features, experiment_dir / "injury_history_features.csv")
     write_frame(rows, experiment_dir / "injury_history_season_forward_validation.csv")
     write_frame(
-        pd.DataFrame(summary["calibration_diagnostics"]),
+        pd.DataFrame(calibration_diagnostics),
         experiment_dir / "injury_history_calibration_diagnostics.csv",
     )
     write_frame(cases, experiment_dir / "injury_history_forward_diagnostic_cases.csv")

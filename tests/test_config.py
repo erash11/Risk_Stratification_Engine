@@ -5,6 +5,7 @@ import pytest
 from risk_stratification_engine.config import (
     DATA_SOURCE_PATH_KEYS,
     DataSourcePaths,
+    OPTIONAL_DATA_SOURCE_PATH_KEYS,
     load_data_source_paths,
 )
 
@@ -17,6 +18,7 @@ def test_data_source_path_keys_match_live_sources():
         "perch_db",
         "injury_csv",
     )
+    assert OPTIONAL_DATA_SOURCE_PATH_KEYS == ("exposure_dir",)
 
 
 def test_load_data_source_paths_reads_yaml_without_requiring_files(tmp_path):
@@ -42,6 +44,28 @@ def test_load_data_source_paths_reads_yaml_without_requiring_files(tmp_path):
     assert paths.bodyweight_csv == tmp_path / "BodyWeightMaster.csv"
     assert paths.perch_db == tmp_path / "perch.duckdb"
     assert paths.injury_csv == tmp_path / "injuries.csv"
+    assert paths.exposure_dir is None
+
+
+def test_load_data_source_paths_accepts_optional_exposure_dir(tmp_path):
+    config_path = tmp_path / "paths.local.yaml"
+    config_path.write_text(
+        "\n".join(
+            [
+                f"forceplate_db: {tmp_path / 'forceplate.db'}",
+                f"gps_db: {tmp_path / 'gps_history.duckdb'}",
+                f"bodyweight_csv: {tmp_path / 'BodyWeightMaster.csv'}",
+                f"perch_db: {tmp_path / 'perch.duckdb'}",
+                f"injury_csv: {tmp_path / 'injuries.csv'}",
+                f"exposure_dir: {tmp_path / 'Baylor_Exposure_Data'}",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    paths = load_data_source_paths(config_path, require_exists=False)
+
+    assert paths.exposure_dir == tmp_path / "Baylor_Exposure_Data"
 
 
 def test_load_data_source_paths_rejects_missing_required_key(tmp_path):

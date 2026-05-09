@@ -129,6 +129,45 @@ def test_cli_prepares_live_sources_before_running_experiment(tmp_path, monkeypat
     }
 
 
+def test_cli_runs_exposure_cleaning_audit_without_model_inputs(tmp_path, monkeypatch):
+    calls = {}
+
+    def fake_prepare_exposure_inputs(exposure_dir, output_dir):
+        calls["exposure_dir"] = exposure_dir
+        calls["output_dir"] = output_dir
+        output_dir.mkdir(parents=True)
+        events = output_dir / "exposure_events.csv"
+        participations = output_dir / "exposure_participations.csv"
+        audit = output_dir / "exposure_cleaning_audit.json"
+        events.write_text("events", encoding="utf-8")
+        participations.write_text("participations", encoding="utf-8")
+        audit.write_text("{}", encoding="utf-8")
+        return cli.ExposurePreparationResult(
+            events_path=events,
+            participations_path=participations,
+            audit_path=audit,
+            audit={},
+        )
+
+    monkeypatch.setattr(cli, "prepare_exposure_inputs", fake_prepare_exposure_inputs)
+
+    exit_code = main(
+        [
+            "--exposure-cleaning-audit",
+            "--exposure-dir",
+            "C:/tmp/Baylor_Exposure_Data",
+            "--output-dir",
+            str(tmp_path),
+            "--experiment-id",
+            "exposure_audit_v1",
+        ]
+    )
+
+    assert exit_code == 0
+    assert calls["exposure_dir"] == Path("C:/tmp/Baylor_Exposure_Data")
+    assert calls["output_dir"] == tmp_path / "exposure_inputs" / "exposure_audit_v1"
+
+
 def test_cli_runs_window_sensitivity_experiment(tmp_path, monkeypatch):
     calls = {}
 

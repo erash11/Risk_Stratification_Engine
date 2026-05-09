@@ -35,11 +35,36 @@ The expected sources are:
 - `bodyweight_csv`
 - `perch_db`
 - `injury_csv`
+- `exposure_dir` (optional, for cleaning football exposure exports)
 
 When `injury_csv` points at a file named `injuries-summary-export-*.csv`, live
 preparation loads all sibling injury summary exports with that pattern from the
 same folder. This supports period-sliced injury exports without manually
 concatenating them.
+
+## Run Exposure Cleaning Audit
+
+The exposure-data integration starts with a cleaning/audit pass, not a model
+validation sprint. The source folder should contain `athletes.csv`, `squads.csv`,
+`training_sessions.csv`, `training_session_participations.csv`, `games.csv`, and
+`game_participations.csv`.
+
+```bash
+risk-engine \
+  --exposure-cleaning-audit \
+  --exposure-dir C:/Users/eric_rash/Desktop/DEV/Football/Baylor_Exposure_Data \
+  --output-dir outputs \
+  --experiment-id exposure_cleaning_audit_v1
+```
+
+This writes `exposure_events.csv`, `exposure_participations.csv`, and
+`exposure_cleaning_audit.json` under
+`outputs/exposure_inputs/<experiment-id>/`. The cleaner filters events to
+football with `ExternalSquadId == 94`, maps athlete identities through
+`stable_athlete_id(FirstName + " " + LastName)`, excludes API/performance-source
+sessions such as Perch, ForceDecks, VALD, SmartSpeed, and Catapult, and keeps
+plain human-entered football training, practice, weight-room, conditioning,
+scrimmage, walkthrough, RTP, and game exposure rows for audit review.
 
 ## Run Live-Source Experiment
 

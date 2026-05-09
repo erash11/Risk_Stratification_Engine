@@ -16,6 +16,8 @@ DATA_SOURCE_PATH_KEYS = (
     "injury_csv",
 )
 
+OPTIONAL_DATA_SOURCE_PATH_KEYS = ("exposure_dir",)
+
 DEFAULT_PATHS_CONFIG = Path("config/paths.local.yaml")
 
 
@@ -26,15 +28,19 @@ class DataSourcePaths:
     bodyweight_csv: Path
     perch_db: Path
     injury_csv: Path
+    exposure_dir: Path | None = None
 
     def as_dict(self) -> dict[str, Path]:
-        return {
+        paths = {
             "forceplate_db": self.forceplate_db,
             "gps_db": self.gps_db,
             "bodyweight_csv": self.bodyweight_csv,
             "perch_db": self.perch_db,
             "injury_csv": self.injury_csv,
         }
+        if self.exposure_dir is not None:
+            paths["exposure_dir"] = self.exposure_dir
+        return paths
 
 
 def load_data_source_paths(
@@ -52,6 +58,11 @@ def load_data_source_paths(
         bodyweight_csv=_normalize_path(raw_config["bodyweight_csv"]),
         perch_db=_normalize_path(raw_config["perch_db"]),
         injury_csv=_normalize_path(raw_config["injury_csv"]),
+        exposure_dir=(
+            _normalize_path(raw_config["exposure_dir"])
+            if "exposure_dir" in raw_config
+            else None
+        ),
     )
     if require_exists:
         _require_existing_paths(paths)
@@ -74,8 +85,9 @@ def _read_yaml_mapping(config_path: Path) -> dict[str, Any]:
 def _validate_config_keys(config: dict[str, Any]) -> None:
     provided_keys = set(config)
     expected_keys = set(DATA_SOURCE_PATH_KEYS)
+    allowed_keys = expected_keys | set(OPTIONAL_DATA_SOURCE_PATH_KEYS)
     missing = sorted(expected_keys - provided_keys)
-    unknown = sorted(provided_keys - expected_keys)
+    unknown = sorted(provided_keys - allowed_keys)
     if missing:
         raise ValueError(f"paths config missing required keys: {', '.join(missing)}")
     if unknown:

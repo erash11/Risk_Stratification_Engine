@@ -38,7 +38,7 @@ Future work may add a dashboard performance tab inspired by the Malum/SPEAR mate
 - Use athlete-level and time-aware validation splits. Avoid random daily-row splits.
 - Real/local source data should remain in canonical upstream project locations or ignored raw-data folders, not under `src/`.
 - Use `config/paths.example.yaml` as the committed template and `config/paths.local.yaml` as the ignored machine-specific file for live source paths.
-- The current live-source keys are `forceplate_db`, `gps_db`, `bodyweight_csv`, `perch_db`, and `injury_csv`.
+- The current required live-source keys are `forceplate_db`, `gps_db`, `bodyweight_csv`, `perch_db`, and `injury_csv`; optional `exposure_dir` points to the Baylor exposure export folder for cleaning/audit runs.
 - As of 2026-04-25, the local `config/paths.local.yaml` resolves all five live-source keys successfully.
 - Local injury exports are in `data/raw/` as ignored `injuries-summary-export-*.csv` files; keep raw injury data ignored.
 - When running against live source files, record path metadata, file existence, schemas, and row counts in experiment/data-quality artifacts for reproducibility.
@@ -49,6 +49,9 @@ Future work may add a dashboard performance tab inspired by the Malum/SPEAR mate
 - Live-source name normalization reconciles common `Last, First` export names with `First Last` names before hashing, and duplicate same-day metric rows are aggregated by mean value before modeling with counts recorded in `prep_metadata.json`.
 - `data_quality_audit.json` includes privacy-preserving review context for remaining single-source hashed identities and observed injury events outside the nearby-measurement window.
 - Observed live-source injury events are labeled by nearest same-season measurement distance: `modelable` at 14 days or less, `low_confidence` at 15-30 days, and `out_of_window` beyond 30 days; downstream modeling should prefer `primary_model_event = true` until calibration work says otherwise.
+- Exposure-source cleaning is available through `risk-engine --exposure-cleaning-audit --exposure-dir <Baylor_Exposure_Data> --output-dir outputs --experiment-id <id>`. This cleaning-only pass writes `exposure_events.csv`, `exposure_participations.csv`, and `exposure_cleaning_audit.json` under `outputs/exposure_inputs/<experiment-id>/`; it must precede any exposure/load feature sprint or season-forward validation.
+- Exposure cleaning filters football events by `ExternalSquadId == 94`, maps athlete identities from `FirstName + " " + LastName` through `stable_athlete_id(...)`, preserves `ExternalAthleteId` as source metadata, and treats only athletes whose pipe/comma/semicolon-delimited `ExternalSquadIds` include `94` as matched football athletes. Do not use football-looking `Position` text alone because Zandbox athletes can carry football positions.
+- Exposure cleaning excludes API/performance-source sessions containing Perch/Perks, ForceDecks, VALD/Vault/Nordbord/GroinBar, SmartSpeed, or Catapult, including `Perch - Weight Room`; plain human-entered `Weight Room` remains eligible.
 - As of 2026-04-27, `run_research_experiment(...)` trains a discrete-time logistic baseline at the 7, 14, and 30 day horizons over 13 graph snapshot-time features: `time_index`, `node_count`, `edge_count`, `mean_abs_correlation`, `edge_density`, `delta_edge_count`, `delta_mean_abs_correlation`, `delta_edge_density`, `graph_instability`, `z_mean_abs_correlation`, `z_edge_density`, `z_edge_count`, and `z_graph_instability`.
 - The temporal delta features (`delta_*`) are computed per athlete-season in chronological order and are zero at each athlete's first snapshot; they capture change from one snapshot to the next. `edge_density` normalizes edge count by the maximum possible edges for the observed node count. `graph_instability` is the rolling population standard deviation of `mean_abs_correlation` over the most recent three snapshots, zero when fewer than two snapshots are available.
 - The intra-individual z-score features compare each athlete-season snapshot against that athlete-season's own strictly prior rolling baseline using the graph `window_size`. They require at least two prior snapshots, use population standard deviation, fall back to `0.0` when the prior standard deviation is zero, and are clipped to `[-10.0, 10.0]`.
@@ -81,6 +84,23 @@ Future work may add a dashboard performance tab inspired by the Malum/SPEAR mate
 - Window/model robustness (`window_model_robustness_v1` run, windows 2/4/7, 5 rotating splits, 349 athletes): no single window/variant dominates all operating goals. Window 7 + L2 won calibration at 7d/14d, window 4 + L2 won 30d calibration, window 2 regularized variants won triage lift at all horizons, and ranking split by horizon: window 2 baseline at 7d AUROC 0.731, window 4 L2 at 14d AUROC 0.729, and window 7 L1 at 30d AUROC 0.729. This supports using L2 as the calibration-oriented production candidate while keeping window 2 as a high-alert triage setting and window 7 under review for 30d ranking.
 
 ## Latest Completed Step
+
+**Exposure-data cleaning/audit layer** - implemented and verified on 2026-05-09.
+
+**What changed:** Added `exposure_sources.py`, optional `exposure_dir` path config support, and the `--exposure-cleaning-audit` CLI mode. The sprint intentionally stops at cleaned exposure artifacts and audit summaries before model features. It writes `exposure_events.csv`, `exposure_participations.csv`, and `exposure_cleaning_audit.json` under `outputs/exposure_inputs/<experiment-id>/`.
+
+**Verification:** New TDD tests first failed because optional exposure path config, `risk_stratification_engine.exposure_sources`, and the `--exposure-cleaning-audit` dispatch did not exist. After implementation, focused CLI/config/exposure tests passed and `python -m pytest` collected and passed 221 tests with one existing sklearn convergence warning. The live command `risk-engine --exposure-cleaning-audit --exposure-dir C:\Users\eric_rash\Desktop\DEV\Football\Baylor_Exposure_Data --output-dir outputs --experiment-id exposure_cleaning_audit_v1` completed and wrote the exposure audit artifacts.
+
+**Live results (`exposure_cleaning_audit_v1`):**
+- Football scope matched the handoff: 2,997 training events / 170,006 training participation rows and 64 games / 5,623 game participation rows.
+- Clean retained artifacts contain 991 human-entered football training events, 64 football games, 102,964 retained training participation rows, and 5,623 game participation rows.
+- Excluded football training events were 2,006 API/performance-source sessions; no football session types remained unclassified after keeping the `Speed-Power + Cond + Weight Room` and `Speed-Power + Conditioning` variants as human-entered exposure.
+- Athlete matching uses football squad membership rather than position text alone: retained training rows had 102,935 matched and 29 unmatched rows; game rows had 5,621 matched and 2 unmatched rows.
+- No duplicate retained athlete-event keys were found in training or game participations.
+
+**Interpretation:** Exposure/load data now has a reproducible cleaning layer and audit surface. The next sprint should review retained/excluded exposure categories, missing participation duration, and candidate feature definitions before attaching prior-window exposure features to graph snapshots. Do not run season-forward validation or pilot/dashboard work until the exposure/load feature design is reviewed.
+
+## Previous Completed Step
 
 **Repaired-snapshot season-forward and injury-history diagnostic review** - verified on 2026-05-08.
 

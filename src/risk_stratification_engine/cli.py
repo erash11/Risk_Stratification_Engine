@@ -30,6 +30,10 @@ from risk_stratification_engine.experiments import (
     run_window_model_robustness_experiment,
     run_window_sensitivity_experiment,
 )
+from risk_stratification_engine.exposure_sources import (
+    ExposurePreparationResult,
+    prepare_exposure_inputs,
+)
 from risk_stratification_engine.live_sources import (
     LiveSourcePreparationResult,
     prepare_live_source_inputs,
@@ -49,6 +53,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Prepare canonical inputs from config/paths.local.yaml before running.",
     )
     parser.add_argument("--paths-config", type=Path, default=DEFAULT_PATHS_CONFIG)
+    parser.add_argument("--exposure-dir", type=Path)
     parser.add_argument("--output-dir", required=True, type=Path)
     parser.add_argument("--experiment-id", required=True)
     parser.add_argument("--graph-window-size", type=int, default=4)
@@ -76,6 +81,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
     )
     parser.add_argument("--injury-history-forward-diagnostic-sprint", action="store_true")
+    parser.add_argument("--exposure-cleaning-audit", action="store_true")
     parser.add_argument("--stability-splits", type=int, default=5)
     return parser
 
@@ -83,6 +89,28 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    if args.exposure_cleaning_audit:
+        exposure_dir = args.exposure_dir
+        if exposure_dir is None:
+            data_paths = load_data_source_paths(args.paths_config)
+            exposure_dir = data_paths.exposure_dir
+        if exposure_dir is None:
+            parser.error(
+                "--exposure-cleaning-audit requires --exposure-dir or "
+                "exposure_dir in --paths-config"
+            )
+        prepared_exposure = prepare_exposure_inputs(
+            exposure_dir,
+            args.output_dir / "exposure_inputs" / args.experiment_id,
+        )
+        print(f"Exposure events written to {prepared_exposure.events_path}")
+        print(
+            "Exposure participations written to "
+            f"{prepared_exposure.participations_path}"
+        )
+        print(f"Exposure cleaning audit written to {prepared_exposure.audit_path}")
+        return 0
+
     if args.from_live_sources:
         data_paths = load_data_source_paths(args.paths_config)
         prepared = prepare_live_source_inputs(

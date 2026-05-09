@@ -19,6 +19,7 @@ from risk_stratification_engine.experiments import (
     run_exposure_load_forward_diagnostic_sprint_experiment,
     run_exposure_load_guardrail_policy_sprint_experiment,
     run_exposure_load_season_forward_validation_sprint_experiment,
+    run_exposure_load_shift_context_sprint_experiment,
     run_injury_history_feature_sprint_experiment,
     run_injury_history_forward_diagnostic_sprint_experiment,
     run_injury_history_season_forward_validation_sprint_experiment,
@@ -1541,6 +1542,134 @@ def test_run_exposure_load_guardrail_policy_sprint_writes_policy_artifacts(tmp_p
     )
     assert payload["overall_recommendation"] == "use_exposure_load_for_shadow_ranking_only"
     assert payload["production_readiness"] == "not_ready_for_probability_or_pilot"
+
+
+def test_run_exposure_load_shift_context_sprint_writes_context_artifacts(tmp_path):
+    events_path = tmp_path / "exposure_events.csv"
+    participations_path = tmp_path / "exposure_participations.csv"
+    features_path = tmp_path / "exposure_load_features.csv"
+    diagnostics_path = tmp_path / "exposure_load_calibration_diagnostics.csv"
+    failure_modes_path = tmp_path / "exposure_load_failure_modes.json"
+
+    pd.DataFrame(
+        [
+            {
+                "event_id": "f_game",
+                "event_type": "game",
+                "season_id": "2024-2025",
+                "date": "2024-09-01",
+                "exposure_category": "game",
+                "duration_minutes": 180,
+                "rtp_flag": False,
+            },
+            {
+                "event_id": "c_lift",
+                "event_type": "training",
+                "season_id": "2023-2024",
+                "date": "2023-09-01",
+                "exposure_category": "weight_room",
+                "duration_minutes": 50,
+                "rtp_flag": False,
+            },
+        ]
+    ).to_csv(events_path, index=False)
+    pd.DataFrame(
+        [
+            {
+                "event_id": "f_game",
+                "athlete_id": "a1",
+                "athlete_match_status": "matched",
+                "season_id": "2024-2025",
+                "date": "2024-09-01",
+                "exposure_category": "game",
+                "participation_category": "full",
+                "related_external_issue_id": "",
+                "duration_minutes": 180,
+                "rpe": "",
+                "workload_unit_amount": "",
+            },
+            {
+                "event_id": "c_lift",
+                "athlete_id": "a1",
+                "athlete_match_status": "matched",
+                "season_id": "2023-2024",
+                "date": "2023-09-01",
+                "exposure_category": "weight_room",
+                "participation_category": "modified",
+                "related_external_issue_id": "issue-1",
+                "duration_minutes": 45,
+                "rpe": 5,
+                "workload_unit_amount": 225,
+            },
+        ]
+    ).to_csv(participations_path, index=False)
+    pd.DataFrame(
+        [
+            {
+                "season_id": "2024-2025",
+                "exposure_games_prior_count": 3,
+                "exposure_lift_sessions_28d": 1,
+                "exposure_modified_participations_28d": 0,
+            },
+            {
+                "season_id": "2023-2024",
+                "exposure_games_prior_count": 1,
+                "exposure_lift_sessions_28d": 2,
+                "exposure_modified_participations_28d": 1,
+            },
+        ]
+    ).to_csv(features_path, index=False)
+    pd.DataFrame(
+        [
+            {
+                "test_season_id": "2024-2025",
+                "horizon_days": 30,
+                "diagnostic_label": "ranking_triage_gain_calibration_loss",
+                "target_reason": "over_sharpened_probability_slice",
+            }
+        ]
+    ).to_csv(diagnostics_path, index=False)
+    failure_modes_path.write_text(
+        json.dumps(
+            {
+                "experiment_type": "exposure_load_failure_mode_sprint",
+                "failure_seasons": ["2024-2025"],
+                "comparator_seasons": ["2023-2024"],
+                "top_driver_features": [
+                    {
+                        "feature_name": "exposure_games_prior_count",
+                        "feature_domain": "game_exposure",
+                        "shift_direction": "elevated_in_failure",
+                        "driver_score": 0.24,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_exposure_load_shift_context_sprint_experiment(
+        exposure_events_path=events_path,
+        exposure_participations_path=participations_path,
+        exposure_load_features_path=features_path,
+        exposure_load_diagnostics_path=diagnostics_path,
+        exposure_load_failure_modes_path=failure_modes_path,
+        output_dir=tmp_path,
+        experiment_id="exposure_load_shift_context",
+    )
+
+    assert (result / "exposure_load_shift_context.csv").exists()
+    assert (result / "exposure_load_shift_context_drivers.csv").exists()
+    assert (result / "exposure_load_shift_context_cases.csv").exists()
+    assert (result / "exposure_load_shift_context.json").exists()
+    assert (result / "exposure_load_shift_context_report.md").exists()
+    assert (result / "config.json").exists()
+
+    payload = json.loads((result / "exposure_load_shift_context.json").read_text())
+    assert payload["experiment_type"] == "exposure_load_shift_context_sprint"
+    assert payload["overall_recommendation"] == (
+        "review_schedule_roster_availability_context"
+    )
 
 
 def test_run_injury_history_forward_diagnostic_sprint_writes_diagnostic_artifacts(

@@ -52,6 +52,11 @@ from risk_stratification_engine.exposure_load_guardrail_policy import (
     clean_guardrail_rows,
     write_exposure_load_guardrail_policy_report,
 )
+from risk_stratification_engine.exposure_load_shift_context import (
+    build_exposure_load_shift_context_summary,
+    clean_shift_context_rows,
+    write_exposure_load_shift_context_report,
+)
 from risk_stratification_engine.exposure_load_modeling import (
     build_exposure_load_model_comparison_summary,
     write_exposure_load_model_comparison_report,
@@ -1963,6 +1968,62 @@ def run_exposure_load_guardrail_policy_sprint_experiment(
     write_exposure_load_guardrail_policy_report(
         experiment_dir / "exposure_load_guardrail_policy_report.md",
         policy,
+    )
+    return experiment_dir
+
+
+def run_exposure_load_shift_context_sprint_experiment(
+    exposure_events_path: str | Path,
+    exposure_participations_path: str | Path,
+    exposure_load_features_path: str | Path,
+    exposure_load_diagnostics_path: str | Path,
+    exposure_load_failure_modes_path: str | Path,
+    output_dir: str | Path,
+    experiment_id: str,
+) -> Path:
+    experiment_dir = _experiment_path(output_dir, experiment_id)
+    exposure_events = pd.read_csv(exposure_events_path)
+    exposure_participations = pd.read_csv(exposure_participations_path)
+    exposure_features = pd.read_csv(exposure_load_features_path)
+    diagnostics = _load_records_from_path(exposure_load_diagnostics_path)
+    failure_modes = _load_json_payload(exposure_load_failure_modes_path)
+
+    summary = build_exposure_load_shift_context_summary(
+        exposure_events=_json_records(exposure_events),
+        exposure_participations=_json_records(exposure_participations),
+        exposure_load_features=_json_records(exposure_features),
+        exposure_load_diagnostics=diagnostics,
+        exposure_load_failure_modes=failure_modes,
+    )
+
+    write_frame(
+        pd.DataFrame(clean_shift_context_rows(summary["shift_context_rows"])),
+        experiment_dir / "exposure_load_shift_context.csv",
+    )
+    write_frame(
+        pd.DataFrame(clean_shift_context_rows(summary["driver_context_rows"])),
+        experiment_dir / "exposure_load_shift_context_drivers.csv",
+    )
+    write_frame(
+        pd.DataFrame(clean_shift_context_rows(summary["shift_context_cases"])),
+        experiment_dir / "exposure_load_shift_context_cases.csv",
+    )
+    _write_json(
+        experiment_dir / "config.json",
+        {
+            "experiment_id": experiment_id,
+            "experiment_type": "exposure_load_shift_context_sprint",
+            "exposure_events_path": str(exposure_events_path),
+            "exposure_participations_path": str(exposure_participations_path),
+            "exposure_load_features_path": str(exposure_load_features_path),
+            "exposure_load_diagnostics_path": str(exposure_load_diagnostics_path),
+            "exposure_load_failure_modes_path": str(exposure_load_failure_modes_path),
+        },
+    )
+    _write_json(experiment_dir / "exposure_load_shift_context.json", summary)
+    write_exposure_load_shift_context_report(
+        experiment_dir / "exposure_load_shift_context_report.md",
+        summary,
     )
     return experiment_dir
 

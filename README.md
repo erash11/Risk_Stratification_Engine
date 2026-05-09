@@ -248,6 +248,41 @@ until the 2024-2025 failure mode is resolved, ranking/triage use is limited to
 shadow research with calibration monitoring, minute-load expansion is deferred,
 and shifted feature-domain review is required before the next model expansion.
 
+## Run Exposure Load Shift Context Sprint
+
+The exposure-load shift context sprint joins the failure-mode driver artifacts
+back to cleaned exposure events and participations. It reviews whether the
+failed season's shifted exposure domains reflect schedule density, roster
+participation, availability flagging, or managed-risk documentation before any
+probability-facing, pilot, dashboard, or minute-load escalation:
+
+```bash
+risk-engine \
+  --exposure-load-shift-context-sprint \
+  --exposure-events outputs/exposure_inputs/exposure_cleaning_audit_v1/exposure_events.csv \
+  --exposure-participations outputs/exposure_inputs/exposure_cleaning_audit_v1/exposure_participations.csv \
+  --exposure-load-features outputs/experiments/exposure_load_season_forward_validation_v1/exposure_load_features.csv \
+  --exposure-load-diagnostics outputs/experiments/exposure_load_forward_diagnostic_v1/exposure_load_calibration_diagnostics.csv \
+  --exposure-load-failure-modes outputs/experiments/exposure_load_failure_modes_v1/exposure_load_failure_modes.json \
+  --output-dir outputs \
+  --experiment-id exposure_load_shift_context_v1
+```
+
+This writes `exposure_load_shift_context.csv`,
+`exposure_load_shift_context_drivers.csv`,
+`exposure_load_shift_context_cases.csv`, `exposure_load_shift_context.json`, and
+`exposure_load_shift_context_report.md`.
+
+The live `exposure_load_shift_context_v1` run recommended
+`review_schedule_roster_availability_context`. The failed season remained
+2024-2025, with 2023-2024 and 2025-2026 as comparators. The main context
+signals were reduced 28d lift-session exposure, elevated prior game count,
+reduced modified-participation flagging, longer gaps since modified/no
+participation and game exposure, elevated 28d practice exposure, and slightly
+elevated 28d game-event exposure. Probability-facing use, pilot escalation,
+dashboard work, and minute-load expansion remain blocked until this schedule,
+roster, availability, and managed-risk context is reviewed.
+
 ## Run Live-Source Experiment
 
 When `config/paths.local.yaml` points to available local sources, the CLI can

@@ -21,6 +21,7 @@ from risk_stratification_engine.experiments import (
     run_exposure_load_forward_diagnostic_sprint_experiment,
     run_exposure_load_guardrail_policy_sprint_experiment,
     run_exposure_load_season_forward_validation_sprint_experiment,
+    run_exposure_load_shift_context_sprint_experiment,
     run_forward_case_review_sprint_experiment,
     run_injury_history_feature_sprint_experiment,
     run_injury_history_forward_diagnostic_sprint_experiment,
@@ -107,6 +108,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--exposure-load-failure-mode-sprint", action="store_true")
     parser.add_argument("--exposure-load-guardrail-policy-sprint", action="store_true")
+    parser.add_argument("--exposure-load-shift-context-sprint", action="store_true")
     parser.add_argument("--stability-splits", type=int, default=5)
     return parser
 
@@ -252,6 +254,32 @@ def main(argv: list[str] | None = None) -> int:
             experiment_id=args.experiment_id,
         )
         print(f"Exposure load guardrail policy artifacts written to {experiment_dir}")
+        return 0
+
+    if args.exposure_load_shift_context_sprint:
+        required_paths = {
+            "--exposure-events": args.exposure_events,
+            "--exposure-participations": args.exposure_participations,
+            "--exposure-load-features": args.exposure_load_features,
+            "--exposure-load-diagnostics": args.exposure_load_diagnostics,
+            "--exposure-load-failure-modes": args.exposure_load_failure_modes,
+        }
+        missing = [flag for flag, path in required_paths.items() if path is None]
+        if missing:
+            parser.error(
+                "--exposure-load-shift-context-sprint requires "
+                + ", ".join(missing)
+            )
+        experiment_dir = run_exposure_load_shift_context_sprint_experiment(
+            exposure_events_path=args.exposure_events,
+            exposure_participations_path=args.exposure_participations,
+            exposure_load_features_path=args.exposure_load_features,
+            exposure_load_diagnostics_path=args.exposure_load_diagnostics,
+            exposure_load_failure_modes_path=args.exposure_load_failure_modes,
+            output_dir=args.output_dir,
+            experiment_id=args.experiment_id,
+        )
+        print(f"Exposure load shift context artifacts written to {experiment_dir}")
         return 0
 
     if args.from_live_sources:

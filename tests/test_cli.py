@@ -596,6 +596,85 @@ def test_cli_runs_exposure_load_guardrail_policy_from_artifacts(
     }
 
 
+def test_cli_runs_exposure_load_shift_context_from_artifacts(
+    tmp_path,
+    monkeypatch,
+):
+    events_path = tmp_path / "exposure_events.csv"
+    participations_path = tmp_path / "exposure_participations.csv"
+    features_path = tmp_path / "exposure_load_features.csv"
+    diagnostics_path = tmp_path / "exposure_load_calibration_diagnostics.csv"
+    failure_modes_path = tmp_path / "exposure_load_failure_modes.json"
+    for path in (
+        events_path,
+        participations_path,
+        features_path,
+        diagnostics_path,
+        failure_modes_path,
+    ):
+        path.write_text("artifact", encoding="utf-8")
+    calls = {}
+
+    def fake_run_exposure_load_shift_context_sprint_experiment(
+        exposure_events_path,
+        exposure_participations_path,
+        exposure_load_features_path,
+        exposure_load_diagnostics_path,
+        exposure_load_failure_modes_path,
+        output_dir,
+        experiment_id,
+    ):
+        calls["shift_context"] = {
+            "exposure_events_path": exposure_events_path,
+            "exposure_participations_path": exposure_participations_path,
+            "exposure_load_features_path": exposure_load_features_path,
+            "exposure_load_diagnostics_path": exposure_load_diagnostics_path,
+            "exposure_load_failure_modes_path": exposure_load_failure_modes_path,
+            "output_dir": output_dir,
+            "experiment_id": experiment_id,
+        }
+        result = output_dir / "experiments" / experiment_id
+        result.mkdir(parents=True)
+        return result
+
+    monkeypatch.setattr(
+        cli,
+        "run_exposure_load_shift_context_sprint_experiment",
+        fake_run_exposure_load_shift_context_sprint_experiment,
+    )
+
+    exit_code = main(
+        [
+            "--output-dir",
+            str(tmp_path),
+            "--experiment-id",
+            "exposure_load_shift_context",
+            "--exposure-load-shift-context-sprint",
+            "--exposure-events",
+            str(events_path),
+            "--exposure-participations",
+            str(participations_path),
+            "--exposure-load-features",
+            str(features_path),
+            "--exposure-load-diagnostics",
+            str(diagnostics_path),
+            "--exposure-load-failure-modes",
+            str(failure_modes_path),
+        ]
+    )
+
+    assert exit_code == 0
+    assert calls["shift_context"] == {
+        "exposure_events_path": events_path,
+        "exposure_participations_path": participations_path,
+        "exposure_load_features_path": features_path,
+        "exposure_load_diagnostics_path": diagnostics_path,
+        "exposure_load_failure_modes_path": failure_modes_path,
+        "output_dir": tmp_path,
+        "experiment_id": "exposure_load_shift_context",
+    }
+
+
 def test_cli_runs_window_sensitivity_experiment(tmp_path, monkeypatch):
     calls = {}
 

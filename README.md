@@ -197,6 +197,57 @@ observed positive rates of 2.8% / 4.8% / 8.9%, so the next modeling work should
 inspect 2024-2025 exposure-load over-sharpening before adding duration or
 minute-load terms.
 
+## Run Exposure Load Failure Mode Sprint
+
+The exposure-load failure-mode sprint compares the failed forward season against
+calibration-supported comparator seasons by exposure feature/domain:
+
+```bash
+risk-engine \
+  --exposure-load-failure-mode-sprint \
+  --exposure-load-features outputs/experiments/exposure_load_season_forward_validation_v1/exposure_load_features.csv \
+  --exposure-load-diagnostics outputs/experiments/exposure_load_forward_diagnostic_v1/exposure_load_calibration_diagnostics.csv \
+  --output-dir outputs \
+  --experiment-id exposure_load_failure_modes_v1
+```
+
+This writes `exposure_load_failure_mode_features.csv`,
+`exposure_load_failure_mode_domains.csv`, `exposure_load_failure_modes.json`,
+and `exposure_load_failure_mode_report.md`.
+
+The live `exposure_load_failure_modes_v1` run recommended
+`inspect_exposure_feature_shift_drivers`. The failure season was 2024-2025, with
+2023-2024 and 2025-2026 as calibration-supported comparators. The largest shifted
+drivers were reduced 28d lift sessions, elevated prior game count, reduced 28d
+modified-participation count, and more days since last modified/no-participation
+session. The top shifted domains were `category_specific_load`, `game_exposure`,
+and `participation_status`.
+
+## Run Exposure Load Guardrail Policy Sprint
+
+The exposure-load guardrail policy sprint converts the forward diagnostic and
+failure-mode artifacts into research operating guardrails:
+
+```bash
+risk-engine \
+  --exposure-load-guardrail-policy-sprint \
+  --exposure-load-failure-modes outputs/experiments/exposure_load_failure_modes_v1/exposure_load_failure_modes.json \
+  --exposure-load-diagnostics outputs/experiments/exposure_load_forward_diagnostic_v1/exposure_load_calibration_diagnostics.csv \
+  --output-dir outputs \
+  --experiment-id exposure_load_guardrail_policy_v1
+```
+
+This writes `exposure_load_guardrail_policy.csv`,
+`exposure_load_guardrail_policy.json`, and
+`exposure_load_guardrail_policy_report.md`.
+
+The live `exposure_load_guardrail_policy_v1` run recommended
+`use_exposure_load_for_shadow_ranking_only` with production readiness
+`not_ready_for_probability_or_pilot`. Probability calibration remains blocked
+until the 2024-2025 failure mode is resolved, ranking/triage use is limited to
+shadow research with calibration monitoring, minute-load expansion is deferred,
+and shifted feature-domain review is required before the next model expansion.
+
 ## Run Live-Source Experiment
 
 When `config/paths.local.yaml` points to available local sources, the CLI can

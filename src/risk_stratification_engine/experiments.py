@@ -37,11 +37,20 @@ from risk_stratification_engine.exposure_load_features import (
     EXPOSURE_LOAD_FEATURE_COLUMNS,
     attach_exposure_load_features,
 )
+from risk_stratification_engine.exposure_load_failure_modes import (
+    build_exposure_load_failure_mode_summary,
+    write_exposure_load_failure_mode_report,
+)
 from risk_stratification_engine.exposure_load_forward_diagnostics import (
     build_exposure_load_calibration_diagnostics,
     build_exposure_load_forward_diagnostic_cases,
     build_exposure_load_forward_diagnostic_summary,
     write_exposure_load_forward_diagnostic_report,
+)
+from risk_stratification_engine.exposure_load_guardrail_policy import (
+    build_exposure_load_guardrail_policy,
+    clean_guardrail_rows,
+    write_exposure_load_guardrail_policy_report,
 )
 from risk_stratification_engine.exposure_load_modeling import (
     build_exposure_load_model_comparison_summary,
@@ -1879,6 +1888,81 @@ def run_exposure_load_forward_diagnostic_sprint_experiment(
     write_exposure_load_forward_diagnostic_report(
         experiment_dir / "exposure_load_forward_diagnostic_report.md",
         summary,
+    )
+    return experiment_dir
+
+
+def run_exposure_load_failure_mode_sprint_experiment(
+    exposure_load_features_path: str | Path,
+    exposure_load_diagnostics_path: str | Path,
+    output_dir: str | Path,
+    experiment_id: str,
+) -> Path:
+    experiment_dir = _experiment_path(output_dir, experiment_id)
+    exposure_features = pd.read_csv(exposure_load_features_path)
+    diagnostics = _load_records_from_path(exposure_load_diagnostics_path)
+    summary = build_exposure_load_failure_mode_summary(
+        _json_records(exposure_features),
+        diagnostics,
+    )
+    feature_shift_rows = pd.DataFrame(summary["feature_shift_summary"])
+    domain_shift_rows = pd.DataFrame(summary["domain_shift_summary"])
+
+    write_frame(
+        feature_shift_rows,
+        experiment_dir / "exposure_load_failure_mode_features.csv",
+    )
+    write_frame(
+        domain_shift_rows,
+        experiment_dir / "exposure_load_failure_mode_domains.csv",
+    )
+    _write_json(
+        experiment_dir / "config.json",
+        {
+            "experiment_id": experiment_id,
+            "experiment_type": "exposure_load_failure_mode_sprint",
+            "exposure_load_features_path": str(exposure_load_features_path),
+            "exposure_load_diagnostics_path": str(exposure_load_diagnostics_path),
+            "exposure_load_feature_columns": list(EXPOSURE_LOAD_FEATURE_COLUMNS),
+        },
+    )
+    _write_json(experiment_dir / "exposure_load_failure_modes.json", summary)
+    write_exposure_load_failure_mode_report(
+        experiment_dir / "exposure_load_failure_mode_report.md",
+        summary,
+    )
+    return experiment_dir
+
+
+def run_exposure_load_guardrail_policy_sprint_experiment(
+    exposure_load_failure_modes_path: str | Path,
+    exposure_load_diagnostics_path: str | Path,
+    output_dir: str | Path,
+    experiment_id: str,
+) -> Path:
+    experiment_dir = _experiment_path(output_dir, experiment_id)
+    failure_mode_summary = _load_json_payload(exposure_load_failure_modes_path)
+    diagnostics = _load_records_from_path(exposure_load_diagnostics_path)
+    policy = build_exposure_load_guardrail_policy(failure_mode_summary, diagnostics)
+    guardrail_rows = pd.DataFrame(clean_guardrail_rows(policy["guardrail_rows"]))
+
+    write_frame(
+        guardrail_rows,
+        experiment_dir / "exposure_load_guardrail_policy.csv",
+    )
+    _write_json(
+        experiment_dir / "config.json",
+        {
+            "experiment_id": experiment_id,
+            "experiment_type": "exposure_load_guardrail_policy_sprint",
+            "exposure_load_failure_modes_path": str(exposure_load_failure_modes_path),
+            "exposure_load_diagnostics_path": str(exposure_load_diagnostics_path),
+        },
+    )
+    _write_json(experiment_dir / "exposure_load_guardrail_policy.json", policy)
+    write_exposure_load_guardrail_policy_report(
+        experiment_dir / "exposure_load_guardrail_policy_report.md",
+        policy,
     )
     return experiment_dir
 
@@ -3771,6 +3855,34 @@ def _feature_attribution_and_ablation(
 def _write_json(path: Path, payload: dict[str, object]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, allow_nan=False), encoding="utf-8")
+
+
+def _load_json_payload(path: str | Path) -> dict[str, object]:
+    payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError(f"expected JSON object at {path}")
+    return payload
+
+
+def _load_records_from_path(path: str | Path) -> list[dict[str, object]]:
+    source = Path(path)
+    if source.suffix.lower() == ".json":
+        payload = _load_json_payload(source)
+        for key in (
+            "calibration_diagnostics",
+            "feature_shift_summary",
+            "guardrail_rows",
+            "validation_rows",
+        ):
+            value = payload.get(key)
+            if isinstance(value, list):
+                return [
+                    item
+                    for item in value
+                    if isinstance(item, dict)
+                ]
+        raise ValueError(f"JSON artifact at {path} does not contain record rows")
+    return _json_records(pd.read_csv(source))
 
 
 def _json_records(frame: pd.DataFrame) -> list[dict[str, object]]:

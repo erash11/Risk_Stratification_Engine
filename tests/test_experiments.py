@@ -15,7 +15,9 @@ from risk_stratification_engine.experiments import (
     run_coverage_source_aware_model_sprint_experiment,
     run_coverage_stratified_evaluation_experiment,
     run_forward_case_review_sprint_experiment,
+    run_exposure_load_failure_mode_sprint_experiment,
     run_exposure_load_forward_diagnostic_sprint_experiment,
+    run_exposure_load_guardrail_policy_sprint_experiment,
     run_exposure_load_season_forward_validation_sprint_experiment,
     run_injury_history_feature_sprint_experiment,
     run_injury_history_forward_diagnostic_sprint_experiment,
@@ -1430,6 +1432,115 @@ def test_run_exposure_load_forward_diagnostic_sprint_writes_diagnostic_artifacts
     report = (result / "exposure_load_forward_diagnostic_report.md").read_text()
     assert "Exposure Load Forward Diagnostic Sprint" in report
     assert "complete athlete-season trajectories" in report
+
+
+def test_run_exposure_load_failure_mode_sprint_writes_shift_artifacts(tmp_path):
+    features_path = tmp_path / "exposure_load_features.csv"
+    diagnostics_path = tmp_path / "exposure_load_calibration_diagnostics.csv"
+    pd.DataFrame(
+        [
+            {
+                "season_id": "2024-2025",
+                "exposure_training_sessions_28d": 18,
+                "exposure_game_events_28d": 4,
+            },
+            {
+                "season_id": "2023-2024",
+                "exposure_training_sessions_28d": 10,
+                "exposure_game_events_28d": 1,
+            },
+        ]
+    ).to_csv(features_path, index=False)
+    pd.DataFrame(
+        [
+            {
+                "test_season_id": "2024-2025",
+                "horizon_days": 30,
+                "diagnostic_label": "ranking_triage_gain_calibration_loss",
+            },
+            {
+                "test_season_id": "2023-2024",
+                "horizon_days": 30,
+                "diagnostic_label": "calibration_supported",
+            },
+        ]
+    ).to_csv(diagnostics_path, index=False)
+
+    result = run_exposure_load_failure_mode_sprint_experiment(
+        exposure_load_features_path=features_path,
+        exposure_load_diagnostics_path=diagnostics_path,
+        output_dir=tmp_path,
+        experiment_id="exposure_load_failure_modes",
+    )
+
+    assert (result / "exposure_load_failure_mode_features.csv").exists()
+    assert (result / "exposure_load_failure_mode_domains.csv").exists()
+    assert (result / "exposure_load_failure_modes.json").exists()
+    assert (result / "exposure_load_failure_mode_report.md").exists()
+    assert (result / "config.json").exists()
+
+    feature_shifts = pd.read_csv(
+        result / "exposure_load_failure_mode_features.csv"
+    )
+    assert "feature_domain" in feature_shifts.columns
+    assert "driver_score" in feature_shifts.columns
+
+    payload = json.loads((result / "exposure_load_failure_modes.json").read_text())
+    assert payload["experiment_type"] == "exposure_load_failure_mode_sprint"
+    assert payload["failure_seasons"] == ["2024-2025"]
+
+
+def test_run_exposure_load_guardrail_policy_sprint_writes_policy_artifacts(tmp_path):
+    failure_modes_path = tmp_path / "exposure_load_failure_modes.json"
+    diagnostics_path = tmp_path / "exposure_load_calibration_diagnostics.csv"
+    failure_modes_path.write_text(
+        json.dumps(
+            {
+                "experiment_type": "exposure_load_failure_mode_sprint",
+                "overall_recommendation": "inspect_exposure_feature_shift_drivers",
+                "failure_seasons": ["2024-2025"],
+                "top_driver_features": [
+                    {
+                        "feature_name": "exposure_game_events_28d",
+                        "feature_domain": "game_exposure",
+                        "shift_direction": "elevated_in_failure",
+                    }
+                ],
+                "domain_shift_summary": [
+                    {"feature_domain": "game_exposure", "mean_abs_shift": 2.5}
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    pd.DataFrame(
+        [
+            {
+                "test_season_id": "2024-2025",
+                "horizon_days": 30,
+                "diagnostic_label": "ranking_triage_gain_calibration_loss",
+                "target_reason": "over_sharpened_probability_slice",
+            }
+        ]
+    ).to_csv(diagnostics_path, index=False)
+
+    result = run_exposure_load_guardrail_policy_sprint_experiment(
+        exposure_load_failure_modes_path=failure_modes_path,
+        exposure_load_diagnostics_path=diagnostics_path,
+        output_dir=tmp_path,
+        experiment_id="exposure_load_guardrail_policy",
+    )
+
+    assert (result / "exposure_load_guardrail_policy.csv").exists()
+    assert (result / "exposure_load_guardrail_policy.json").exists()
+    assert (result / "exposure_load_guardrail_policy_report.md").exists()
+    assert (result / "config.json").exists()
+
+    payload = json.loads(
+        (result / "exposure_load_guardrail_policy.json").read_text()
+    )
+    assert payload["overall_recommendation"] == "use_exposure_load_for_shadow_ranking_only"
+    assert payload["production_readiness"] == "not_ready_for_probability_or_pilot"
 
 
 def test_run_injury_history_forward_diagnostic_sprint_writes_diagnostic_artifacts(

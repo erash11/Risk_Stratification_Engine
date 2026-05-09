@@ -17,7 +17,9 @@ from risk_stratification_engine.experiments import (
     run_coverage_stratified_evaluation_experiment,
     run_exposure_feature_requirements_sprint_experiment,
     run_exposure_load_feature_sprint_experiment,
+    run_exposure_load_failure_mode_sprint_experiment,
     run_exposure_load_forward_diagnostic_sprint_experiment,
+    run_exposure_load_guardrail_policy_sprint_experiment,
     run_exposure_load_season_forward_validation_sprint_experiment,
     run_forward_case_review_sprint_experiment,
     run_injury_history_feature_sprint_experiment,
@@ -61,6 +63,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--exposure-events", type=Path)
     parser.add_argument("--exposure-participations", type=Path)
     parser.add_argument("--exposure-audit", type=Path)
+    parser.add_argument("--exposure-load-features", type=Path)
+    parser.add_argument("--exposure-load-diagnostics", type=Path)
+    parser.add_argument("--exposure-load-failure-modes", type=Path)
     parser.add_argument("--season-forward-validation-path", type=Path)
     parser.add_argument("--output-dir", required=True, type=Path)
     parser.add_argument("--experiment-id", required=True)
@@ -100,6 +105,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--exposure-load-forward-diagnostic-sprint",
         action="store_true",
     )
+    parser.add_argument("--exposure-load-failure-mode-sprint", action="store_true")
+    parser.add_argument("--exposure-load-guardrail-policy-sprint", action="store_true")
     parser.add_argument("--stability-splits", type=int, default=5)
     return parser
 
@@ -205,6 +212,46 @@ def main(argv: list[str] | None = None) -> int:
             experiment_id=args.experiment_id,
         )
         print(f"Exposure load forward diagnostic artifacts written to {experiment_dir}")
+        return 0
+
+    if args.exposure_load_failure_mode_sprint:
+        if args.exposure_load_features is None:
+            parser.error(
+                "--exposure-load-failure-mode-sprint requires "
+                "--exposure-load-features"
+            )
+        if args.exposure_load_diagnostics is None:
+            parser.error(
+                "--exposure-load-failure-mode-sprint requires "
+                "--exposure-load-diagnostics"
+            )
+        experiment_dir = run_exposure_load_failure_mode_sprint_experiment(
+            exposure_load_features_path=args.exposure_load_features,
+            exposure_load_diagnostics_path=args.exposure_load_diagnostics,
+            output_dir=args.output_dir,
+            experiment_id=args.experiment_id,
+        )
+        print(f"Exposure load failure mode artifacts written to {experiment_dir}")
+        return 0
+
+    if args.exposure_load_guardrail_policy_sprint:
+        if args.exposure_load_failure_modes is None:
+            parser.error(
+                "--exposure-load-guardrail-policy-sprint requires "
+                "--exposure-load-failure-modes"
+            )
+        if args.exposure_load_diagnostics is None:
+            parser.error(
+                "--exposure-load-guardrail-policy-sprint requires "
+                "--exposure-load-diagnostics"
+            )
+        experiment_dir = run_exposure_load_guardrail_policy_sprint_experiment(
+            exposure_load_failure_modes_path=args.exposure_load_failure_modes,
+            exposure_load_diagnostics_path=args.exposure_load_diagnostics,
+            output_dir=args.output_dir,
+            experiment_id=args.experiment_id,
+        )
+        print(f"Exposure load guardrail policy artifacts written to {experiment_dir}")
         return 0
 
     if args.from_live_sources:

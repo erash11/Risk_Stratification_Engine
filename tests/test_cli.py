@@ -486,6 +486,116 @@ def test_cli_runs_exposure_load_forward_diagnostic_from_validation_csv(
     }
 
 
+def test_cli_runs_exposure_load_failure_mode_from_artifacts(
+    tmp_path,
+    monkeypatch,
+):
+    features_path = tmp_path / "exposure_load_features.csv"
+    diagnostics_path = tmp_path / "exposure_load_calibration_diagnostics.csv"
+    features_path.write_text("features", encoding="utf-8")
+    diagnostics_path.write_text("diagnostics", encoding="utf-8")
+    calls = {}
+
+    def fake_run_exposure_load_failure_mode_sprint_experiment(
+        exposure_load_features_path,
+        exposure_load_diagnostics_path,
+        output_dir,
+        experiment_id,
+    ):
+        calls["failure_modes"] = {
+            "exposure_load_features_path": exposure_load_features_path,
+            "exposure_load_diagnostics_path": exposure_load_diagnostics_path,
+            "output_dir": output_dir,
+            "experiment_id": experiment_id,
+        }
+        result = output_dir / "experiments" / experiment_id
+        result.mkdir(parents=True)
+        return result
+
+    monkeypatch.setattr(
+        cli,
+        "run_exposure_load_failure_mode_sprint_experiment",
+        fake_run_exposure_load_failure_mode_sprint_experiment,
+    )
+
+    exit_code = main(
+        [
+            "--output-dir",
+            str(tmp_path),
+            "--experiment-id",
+            "exposure_load_failure_modes",
+            "--exposure-load-failure-mode-sprint",
+            "--exposure-load-features",
+            str(features_path),
+            "--exposure-load-diagnostics",
+            str(diagnostics_path),
+        ]
+    )
+
+    assert exit_code == 0
+    assert calls["failure_modes"] == {
+        "exposure_load_features_path": features_path,
+        "exposure_load_diagnostics_path": diagnostics_path,
+        "output_dir": tmp_path,
+        "experiment_id": "exposure_load_failure_modes",
+    }
+
+
+def test_cli_runs_exposure_load_guardrail_policy_from_artifacts(
+    tmp_path,
+    monkeypatch,
+):
+    failure_modes_path = tmp_path / "exposure_load_failure_modes.json"
+    diagnostics_path = tmp_path / "exposure_load_calibration_diagnostics.csv"
+    failure_modes_path.write_text("failure modes", encoding="utf-8")
+    diagnostics_path.write_text("diagnostics", encoding="utf-8")
+    calls = {}
+
+    def fake_run_exposure_load_guardrail_policy_sprint_experiment(
+        exposure_load_failure_modes_path,
+        exposure_load_diagnostics_path,
+        output_dir,
+        experiment_id,
+    ):
+        calls["guardrail_policy"] = {
+            "exposure_load_failure_modes_path": exposure_load_failure_modes_path,
+            "exposure_load_diagnostics_path": exposure_load_diagnostics_path,
+            "output_dir": output_dir,
+            "experiment_id": experiment_id,
+        }
+        result = output_dir / "experiments" / experiment_id
+        result.mkdir(parents=True)
+        return result
+
+    monkeypatch.setattr(
+        cli,
+        "run_exposure_load_guardrail_policy_sprint_experiment",
+        fake_run_exposure_load_guardrail_policy_sprint_experiment,
+    )
+
+    exit_code = main(
+        [
+            "--output-dir",
+            str(tmp_path),
+            "--experiment-id",
+            "exposure_load_guardrail_policy",
+            "--exposure-load-guardrail-policy-sprint",
+            "--exposure-load-failure-modes",
+            str(failure_modes_path),
+            "--exposure-load-diagnostics",
+            str(diagnostics_path),
+        ]
+    )
+
+    assert exit_code == 0
+    assert calls["guardrail_policy"] == {
+        "exposure_load_failure_modes_path": failure_modes_path,
+        "exposure_load_diagnostics_path": diagnostics_path,
+        "output_dir": tmp_path,
+        "experiment_id": "exposure_load_guardrail_policy",
+    }
+
+
 def test_cli_runs_window_sensitivity_experiment(tmp_path, monkeypatch):
     calls = {}
 

@@ -23,6 +23,7 @@ from risk_stratification_engine.experiments import (
     run_exposure_load_schedule_roster_sprint_experiment,
     run_exposure_load_availability_capture_sprint_experiment,
     run_exposure_load_context_decision_sprint_experiment,
+    run_exposure_load_source_context_classification_sprint_experiment,
     run_injury_history_feature_sprint_experiment,
     run_injury_history_forward_diagnostic_sprint_experiment,
     run_injury_history_season_forward_validation_sprint_experiment,
@@ -1793,6 +1794,77 @@ def test_run_exposure_load_context_decision_sprint_writes_decision_artifacts(
     payload = json.loads((result / "exposure_load_context_decision.json").read_text())
     assert payload["overall_recommendation"] == (
         "keep_shadow_ranking_and_resolve_context_before_model_expansion"
+    )
+
+
+def test_run_exposure_load_source_context_classification_sprint_writes_artifacts(
+    tmp_path,
+):
+    events_path, participations_path, shift_context_path = _write_context_review_inputs(
+        tmp_path
+    )
+    schedule_path = tmp_path / "exposure_load_schedule_roster_context.json"
+    availability_path = tmp_path / "exposure_load_availability_capture.json"
+    decision_path = tmp_path / "exposure_load_context_decision.json"
+    schedule_path.write_text(
+        json.dumps(
+            {
+                "overall_recommendation": "review_failed_season_schedule_roster_shift",
+                "schedule_roster_drivers": [
+                    {"metric_name": "game_event_count", "review_signal": "elevated_game_schedule"}
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    availability_path.write_text(
+        json.dumps(
+            {
+                "overall_recommendation": "review_failed_season_availability_capture",
+                "availability_capture_drivers": [
+                    {
+                        "metric_name": "modified_participation_rate",
+                        "review_signal": "reduced_modified_availability_flagging",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    decision_path.write_text(
+        json.dumps(
+            {
+                "overall_recommendation": (
+                    "keep_shadow_ranking_and_resolve_context_before_model_expansion"
+                ),
+                "production_readiness": "not_ready_for_probability_or_pilot",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_exposure_load_source_context_classification_sprint_experiment(
+        exposure_events_path=events_path,
+        exposure_participations_path=participations_path,
+        exposure_load_shift_context_path=shift_context_path,
+        exposure_load_schedule_roster_path=schedule_path,
+        exposure_load_availability_capture_path=availability_path,
+        exposure_load_context_decision_path=decision_path,
+        output_dir=tmp_path,
+        experiment_id="exposure_load_source_context_classification",
+    )
+
+    assert (result / "exposure_load_source_context_classification.csv").exists()
+    assert (result / "exposure_load_source_context_evidence.csv").exists()
+    assert (result / "exposure_load_source_context_classification.json").exists()
+    assert (result / "exposure_load_source_context_classification_report.md").exists()
+    assert (result / "config.json").exists()
+
+    payload = json.loads(
+        (result / "exposure_load_source_context_classification.json").read_text()
+    )
+    assert payload["experiment_type"] == (
+        "exposure_load_source_context_classification_sprint"
     )
 
 

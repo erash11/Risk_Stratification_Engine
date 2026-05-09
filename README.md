@@ -354,6 +354,34 @@ with monitoring, and model expansion stays blocked until the failed season is
 classified as true managed-risk context, schedule/roster shift, or
 exposure-capture change.
 
+## Run Exposure Load Source Context Classification Sprint
+
+```bash
+risk-engine \
+  --exposure-load-source-context-classification-sprint \
+  --exposure-events outputs/exposure_inputs/exposure_cleaning_audit_v1/exposure_events.csv \
+  --exposure-participations outputs/exposure_inputs/exposure_cleaning_audit_v1/exposure_participations.csv \
+  --exposure-load-shift-context outputs/experiments/exposure_load_shift_context_v1/exposure_load_shift_context.json \
+  --exposure-load-schedule-roster outputs/experiments/exposure_load_schedule_roster_v1/exposure_load_schedule_roster_context.json \
+  --exposure-load-availability-capture outputs/experiments/exposure_load_availability_capture_v1/exposure_load_availability_capture.json \
+  --exposure-load-context-decision outputs/experiments/exposure_load_context_decision_v1/exposure_load_context_decision.json \
+  --output-dir outputs \
+  --experiment-id exposure_load_source_context_classification_v1
+```
+
+This writes `exposure_load_source_context_classification.csv`,
+`exposure_load_source_context_evidence.csv`,
+`exposure_load_source_context_classification.json`, and
+`exposure_load_source_context_classification_report.md`.
+
+The live `exposure_load_source_context_classification_v1` run recommended
+`treat_failed_season_as_schedule_roster_plus_capture_shift`. It classified
+true managed-risk support as `not_supported_by_source_flags`, schedule/roster
+context as `supported_schedule_roster_shift`, availability context as
+`supported_capture_or_documentation_shift`, and the next model action as
+`do_not_expand_model_features`. Exposure-load remains shadow-only until this
+source context is resolved.
+
 ## Run Live-Source Experiment
 
 When `config/paths.local.yaml` points to available local sources, the CLI can

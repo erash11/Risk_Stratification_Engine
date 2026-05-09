@@ -66,6 +66,11 @@ from risk_stratification_engine.exposure_load_context_review import (
     write_exposure_load_context_decision_report,
     write_exposure_load_schedule_roster_report,
 )
+from risk_stratification_engine.exposure_load_source_context_classification import (
+    build_exposure_load_source_context_classification_summary,
+    clean_source_context_rows,
+    write_exposure_load_source_context_classification_report,
+)
 from risk_stratification_engine.exposure_load_modeling import (
     build_exposure_load_model_comparison_summary,
     write_exposure_load_model_comparison_report,
@@ -2160,6 +2165,73 @@ def run_exposure_load_context_decision_sprint_experiment(
     _write_json(experiment_dir / "exposure_load_context_decision.json", summary)
     write_exposure_load_context_decision_report(
         experiment_dir / "exposure_load_context_decision_report.md",
+        summary,
+    )
+    return experiment_dir
+
+
+def run_exposure_load_source_context_classification_sprint_experiment(
+    exposure_events_path: str | Path,
+    exposure_participations_path: str | Path,
+    exposure_load_shift_context_path: str | Path,
+    exposure_load_schedule_roster_path: str | Path,
+    exposure_load_availability_capture_path: str | Path,
+    exposure_load_context_decision_path: str | Path,
+    output_dir: str | Path,
+    experiment_id: str,
+) -> Path:
+    experiment_dir = _experiment_path(output_dir, experiment_id)
+    exposure_events = pd.read_csv(exposure_events_path)
+    exposure_participations = pd.read_csv(exposure_participations_path)
+    shift_context = _load_json_payload(exposure_load_shift_context_path)
+    schedule_roster = _load_json_payload(exposure_load_schedule_roster_path)
+    availability_capture = _load_json_payload(exposure_load_availability_capture_path)
+    context_decision = _load_json_payload(exposure_load_context_decision_path)
+    summary = build_exposure_load_source_context_classification_summary(
+        exposure_events=_json_records(exposure_events),
+        exposure_participations=_json_records(exposure_participations),
+        exposure_load_shift_context=shift_context,
+        exposure_load_schedule_roster=schedule_roster,
+        exposure_load_availability_capture=availability_capture,
+        exposure_load_context_decision=context_decision,
+    )
+    write_frame(
+        pd.DataFrame(
+            clean_source_context_rows(summary["source_context_classification_rows"])
+        ),
+        experiment_dir / "exposure_load_source_context_classification.csv",
+    )
+    write_frame(
+        pd.DataFrame(clean_source_context_rows(summary["source_evidence_rows"])),
+        experiment_dir / "exposure_load_source_context_evidence.csv",
+    )
+    _write_json(
+        experiment_dir / "config.json",
+        {
+            "experiment_id": experiment_id,
+            "experiment_type": (
+                "exposure_load_source_context_classification_sprint"
+            ),
+            "exposure_events_path": str(exposure_events_path),
+            "exposure_participations_path": str(exposure_participations_path),
+            "exposure_load_shift_context_path": str(exposure_load_shift_context_path),
+            "exposure_load_schedule_roster_path": str(
+                exposure_load_schedule_roster_path
+            ),
+            "exposure_load_availability_capture_path": str(
+                exposure_load_availability_capture_path
+            ),
+            "exposure_load_context_decision_path": str(
+                exposure_load_context_decision_path
+            ),
+        },
+    )
+    _write_json(
+        experiment_dir / "exposure_load_source_context_classification.json",
+        summary,
+    )
+    write_exposure_load_source_context_classification_report(
+        experiment_dir / "exposure_load_source_context_classification_report.md",
         summary,
     )
     return experiment_dir

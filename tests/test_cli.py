@@ -859,6 +859,94 @@ def test_cli_runs_exposure_load_context_decision_from_artifacts(tmp_path, monkey
     }
 
 
+def test_cli_runs_exposure_load_source_context_classification_from_artifacts(
+    tmp_path,
+    monkeypatch,
+):
+    events_path = tmp_path / "exposure_events.csv"
+    participations_path = tmp_path / "exposure_participations.csv"
+    shift_context_path = tmp_path / "exposure_load_shift_context.json"
+    schedule_roster_path = tmp_path / "exposure_load_schedule_roster_context.json"
+    availability_path = tmp_path / "exposure_load_availability_capture.json"
+    decision_path = tmp_path / "exposure_load_context_decision.json"
+    for path in (
+        events_path,
+        participations_path,
+        shift_context_path,
+        schedule_roster_path,
+        availability_path,
+        decision_path,
+    ):
+        path.write_text("artifact", encoding="utf-8")
+    calls = {}
+
+    def fake_run_exposure_load_source_context_classification_sprint_experiment(
+        exposure_events_path,
+        exposure_participations_path,
+        exposure_load_shift_context_path,
+        exposure_load_schedule_roster_path,
+        exposure_load_availability_capture_path,
+        exposure_load_context_decision_path,
+        output_dir,
+        experiment_id,
+    ):
+        calls["source_context_classification"] = {
+            "exposure_events_path": exposure_events_path,
+            "exposure_participations_path": exposure_participations_path,
+            "exposure_load_shift_context_path": exposure_load_shift_context_path,
+            "exposure_load_schedule_roster_path": exposure_load_schedule_roster_path,
+            "exposure_load_availability_capture_path": (
+                exposure_load_availability_capture_path
+            ),
+            "exposure_load_context_decision_path": exposure_load_context_decision_path,
+            "output_dir": output_dir,
+            "experiment_id": experiment_id,
+        }
+        result = output_dir / "experiments" / experiment_id
+        result.mkdir(parents=True)
+        return result
+
+    monkeypatch.setattr(
+        cli,
+        "run_exposure_load_source_context_classification_sprint_experiment",
+        fake_run_exposure_load_source_context_classification_sprint_experiment,
+    )
+
+    exit_code = main(
+        [
+            "--output-dir",
+            str(tmp_path),
+            "--experiment-id",
+            "exposure_load_source_context_classification",
+            "--exposure-load-source-context-classification-sprint",
+            "--exposure-events",
+            str(events_path),
+            "--exposure-participations",
+            str(participations_path),
+            "--exposure-load-shift-context",
+            str(shift_context_path),
+            "--exposure-load-schedule-roster",
+            str(schedule_roster_path),
+            "--exposure-load-availability-capture",
+            str(availability_path),
+            "--exposure-load-context-decision",
+            str(decision_path),
+        ]
+    )
+
+    assert exit_code == 0
+    assert calls["source_context_classification"] == {
+        "exposure_events_path": events_path,
+        "exposure_participations_path": participations_path,
+        "exposure_load_shift_context_path": shift_context_path,
+        "exposure_load_schedule_roster_path": schedule_roster_path,
+        "exposure_load_availability_capture_path": availability_path,
+        "exposure_load_context_decision_path": decision_path,
+        "output_dir": tmp_path,
+        "experiment_id": "exposure_load_source_context_classification",
+    }
+
+
 def test_cli_runs_window_sensitivity_experiment(tmp_path, monkeypatch):
     calls = {}
 

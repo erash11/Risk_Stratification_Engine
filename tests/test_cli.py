@@ -438,6 +438,54 @@ def test_cli_runs_exposure_load_season_forward_validation_from_live_sources(
     }
 
 
+def test_cli_runs_exposure_load_forward_diagnostic_from_validation_csv(
+    tmp_path,
+    monkeypatch,
+):
+    validation_path = tmp_path / "exposure_load_season_forward_validation.csv"
+    validation_path.write_text("validation rows", encoding="utf-8")
+    calls = {}
+
+    def fake_run_exposure_load_forward_diagnostic_sprint_experiment(
+        season_forward_validation_path,
+        output_dir,
+        experiment_id,
+    ):
+        calls["exposure_load_forward_diagnostic"] = {
+            "season_forward_validation_path": season_forward_validation_path,
+            "output_dir": output_dir,
+            "experiment_id": experiment_id,
+        }
+        result = output_dir / "experiments" / experiment_id
+        result.mkdir(parents=True)
+        return result
+
+    monkeypatch.setattr(
+        cli,
+        "run_exposure_load_forward_diagnostic_sprint_experiment",
+        fake_run_exposure_load_forward_diagnostic_sprint_experiment,
+    )
+
+    exit_code = main(
+        [
+            "--output-dir",
+            str(tmp_path),
+            "--experiment-id",
+            "exposure_load_forward_diagnostic",
+            "--exposure-load-forward-diagnostic-sprint",
+            "--season-forward-validation-path",
+            str(validation_path),
+        ]
+    )
+
+    assert exit_code == 0
+    assert calls["exposure_load_forward_diagnostic"] == {
+        "season_forward_validation_path": validation_path,
+        "output_dir": tmp_path,
+        "experiment_id": "exposure_load_forward_diagnostic",
+    }
+
+
 def test_cli_runs_window_sensitivity_experiment(tmp_path, monkeypatch):
     calls = {}
 

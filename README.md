@@ -166,6 +166,37 @@ Brier skill worsened to -0.682/-0.691/-0.567 at 7d/14d/30d. This remains
 research-only; the next step is an exposure-load forward diagnostic before
 adding duration or minute-load terms.
 
+## Run Exposure Load Forward Diagnostic Sprint
+
+The exposure-load forward diagnostic sprint consumes a completed
+`exposure_load_season_forward_validation.csv` artifact and diagnoses which
+season/horizon rows show exposure-load ranking or triage gains with calibration
+loss:
+
+```bash
+risk-engine \
+  --exposure-load-forward-diagnostic-sprint \
+  --season-forward-validation-path outputs/experiments/exposure_load_season_forward_validation_v1/exposure_load_season_forward_validation.csv \
+  --output-dir outputs \
+  --experiment-id exposure_load_forward_diagnostic_v1
+```
+
+This writes `exposure_load_season_forward_validation.csv`,
+`exposure_load_calibration_diagnostics.csv`,
+`exposure_load_forward_diagnostic_cases.csv`,
+`exposure_load_forward_diagnostic.json`, and
+`exposure_load_forward_diagnostic_report.md`.
+
+The live `exposure_load_forward_diagnostic_v1` run recommended
+`inspect_exposure_load_forward_failure_modes`. The diagnostic found three
+high-priority `ranking_triage_gain_calibration_loss` rows, all in 2024-2025.
+Exposure-load improved AUROC by +0.044/+0.052/+0.058 and top-decile lift by
++0.157/+0.571/+0.949 at 7d/14d/30d, but Brier skill worsened by
+-0.655/-0.663/-0.544. Mean predicted risk was 9.3% / 13.4% / 20.2% against
+observed positive rates of 2.8% / 4.8% / 8.9%, so the next modeling work should
+inspect 2024-2025 exposure-load over-sharpening before adding duration or
+minute-load terms.
+
 ## Run Live-Source Experiment
 
 When `config/paths.local.yaml` points to available local sources, the CLI can

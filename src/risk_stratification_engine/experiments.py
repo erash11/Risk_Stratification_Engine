@@ -37,6 +37,12 @@ from risk_stratification_engine.exposure_load_features import (
     EXPOSURE_LOAD_FEATURE_COLUMNS,
     attach_exposure_load_features,
 )
+from risk_stratification_engine.exposure_load_forward_diagnostics import (
+    build_exposure_load_calibration_diagnostics,
+    build_exposure_load_forward_diagnostic_cases,
+    build_exposure_load_forward_diagnostic_summary,
+    write_exposure_load_forward_diagnostic_report,
+)
 from risk_stratification_engine.exposure_load_modeling import (
     build_exposure_load_model_comparison_summary,
     write_exposure_load_model_comparison_report,
@@ -1820,6 +1826,58 @@ def run_exposure_load_season_forward_validation_sprint_experiment(
     )
     write_season_forward_validation_report(
         experiment_dir / "exposure_load_season_forward_validation_report.md",
+        summary,
+    )
+    return experiment_dir
+
+
+def run_exposure_load_forward_diagnostic_sprint_experiment(
+    season_forward_validation_path: str | Path,
+    output_dir: str | Path,
+    experiment_id: str,
+) -> Path:
+    experiment_dir = _experiment_path(output_dir, experiment_id)
+    validation_rows = pd.read_csv(season_forward_validation_path)
+    row_records = _json_records(validation_rows)
+    diagnostics = build_exposure_load_calibration_diagnostics(row_records)
+    cases = build_exposure_load_forward_diagnostic_cases(diagnostics)
+    summary = build_exposure_load_forward_diagnostic_summary(row_records, cases)
+    summary.update(
+        {
+            "source_validation_path": str(season_forward_validation_path),
+            "source_validation_artifact": "exposure_load_season_forward_validation.csv",
+            "feature_sets": list(EXPOSURE_LOAD_MODEL_FEATURE_SETS),
+            "exposure_load_feature_columns": list(EXPOSURE_LOAD_FEATURE_COLUMNS),
+            "channels": list(DEFAULT_SHADOW_MODE_CHANNELS),
+        }
+    )
+
+    write_frame(
+        validation_rows,
+        experiment_dir / "exposure_load_season_forward_validation.csv",
+    )
+    write_frame(
+        pd.DataFrame(diagnostics),
+        experiment_dir / "exposure_load_calibration_diagnostics.csv",
+    )
+    write_frame(
+        pd.DataFrame(cases),
+        experiment_dir / "exposure_load_forward_diagnostic_cases.csv",
+    )
+    _write_json(
+        experiment_dir / "config.json",
+        {
+            "experiment_id": experiment_id,
+            "experiment_type": "exposure_load_forward_diagnostic_sprint",
+            "season_forward_validation_path": str(season_forward_validation_path),
+            "feature_sets": list(EXPOSURE_LOAD_MODEL_FEATURE_SETS),
+            "exposure_load_feature_columns": list(EXPOSURE_LOAD_FEATURE_COLUMNS),
+            "channels": list(DEFAULT_SHADOW_MODE_CHANNELS),
+        },
+    )
+    _write_json(experiment_dir / "exposure_load_forward_diagnostic.json", summary)
+    write_exposure_load_forward_diagnostic_report(
+        experiment_dir / "exposure_load_forward_diagnostic_report.md",
         summary,
     )
     return experiment_dir

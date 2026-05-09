@@ -17,6 +17,7 @@ from risk_stratification_engine.experiments import (
     run_coverage_stratified_evaluation_experiment,
     run_exposure_feature_requirements_sprint_experiment,
     run_exposure_load_feature_sprint_experiment,
+    run_exposure_load_forward_diagnostic_sprint_experiment,
     run_exposure_load_season_forward_validation_sprint_experiment,
     run_forward_case_review_sprint_experiment,
     run_injury_history_feature_sprint_experiment,
@@ -60,6 +61,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--exposure-events", type=Path)
     parser.add_argument("--exposure-participations", type=Path)
     parser.add_argument("--exposure-audit", type=Path)
+    parser.add_argument("--season-forward-validation-path", type=Path)
     parser.add_argument("--output-dir", required=True, type=Path)
     parser.add_argument("--experiment-id", required=True)
     parser.add_argument("--graph-window-size", type=int, default=4)
@@ -92,6 +94,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--exposure-load-feature-sprint", action="store_true")
     parser.add_argument(
         "--exposure-load-season-forward-validation",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--exposure-load-forward-diagnostic-sprint",
         action="store_true",
     )
     parser.add_argument("--stability-splits", type=int, default=5)
@@ -185,6 +191,20 @@ def main(argv: list[str] | None = None) -> int:
             experiment_id=args.experiment_id,
         )
         print(f"Exposure feature requirements artifacts written to {experiment_dir}")
+        return 0
+
+    if args.exposure_load_forward_diagnostic_sprint:
+        if args.season_forward_validation_path is None:
+            parser.error(
+                "--exposure-load-forward-diagnostic-sprint requires "
+                "--season-forward-validation-path"
+            )
+        experiment_dir = run_exposure_load_forward_diagnostic_sprint_experiment(
+            season_forward_validation_path=args.season_forward_validation_path,
+            output_dir=args.output_dir,
+            experiment_id=args.experiment_id,
+        )
+        print(f"Exposure load forward diagnostic artifacts written to {experiment_dir}")
         return 0
 
     if args.from_live_sources:

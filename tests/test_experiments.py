@@ -15,6 +15,7 @@ from risk_stratification_engine.experiments import (
     run_coverage_source_aware_model_sprint_experiment,
     run_coverage_stratified_evaluation_experiment,
     run_forward_case_review_sprint_experiment,
+    run_exposure_load_forward_diagnostic_sprint_experiment,
     run_exposure_load_season_forward_validation_sprint_experiment,
     run_injury_history_feature_sprint_experiment,
     run_injury_history_forward_diagnostic_sprint_experiment,
@@ -1355,6 +1356,80 @@ def test_run_exposure_load_season_forward_validation_sprint_writes_forward_artif
     ).read_text()
     assert "Season-Forward Validation Sprint" in report
     assert "graph_plus_coverage_exposure_load" in report
+
+
+def test_run_exposure_load_forward_diagnostic_sprint_writes_diagnostic_artifacts(
+    tmp_path,
+):
+    validation_path = tmp_path / "exposure_load_season_forward_validation.csv"
+    pd.DataFrame(
+        [
+            {
+                "row_type": "model_metric",
+                "test_season_id": "2024-2025",
+                "horizon_days": 7,
+                "feature_set": "graph_plus_coverage_source",
+                "roc_auc": 0.58,
+                "brier_skill_score": -0.02,
+                "model_brier_score": 0.04,
+                "top_decile_lift": 1.0,
+                "test_positive_rate": 0.03,
+                "mean_predicted_risk": 0.04,
+            },
+            {
+                "row_type": "model_metric",
+                "test_season_id": "2024-2025",
+                "horizon_days": 7,
+                "feature_set": "graph_plus_coverage_exposure_load",
+                "roc_auc": 0.63,
+                "brier_skill_score": -0.68,
+                "model_brier_score": 0.08,
+                "top_decile_lift": 1.3,
+                "test_positive_rate": 0.03,
+                "mean_predicted_risk": 0.12,
+            },
+        ]
+    ).to_csv(validation_path, index=False)
+
+    result = run_exposure_load_forward_diagnostic_sprint_experiment(
+        season_forward_validation_path=validation_path,
+        output_dir=tmp_path,
+        experiment_id="exposure_load_forward_diagnostic",
+    )
+
+    assert (result / "exposure_load_season_forward_validation.csv").exists()
+    assert (result / "exposure_load_calibration_diagnostics.csv").exists()
+    assert (result / "exposure_load_forward_diagnostic_cases.csv").exists()
+    assert (result / "exposure_load_forward_diagnostic.json").exists()
+    assert (result / "exposure_load_forward_diagnostic_report.md").exists()
+    assert (result / "config.json").exists()
+
+    diagnostics = pd.read_csv(result / "exposure_load_calibration_diagnostics.csv")
+    assert {
+        "test_season_id",
+        "horizon_days",
+        "diagnostic_label",
+        "delta_brier_skill_score",
+        "delta_prediction_to_observed_gap",
+    }.issubset(diagnostics.columns)
+
+    cases = pd.read_csv(result / "exposure_load_forward_diagnostic_cases.csv")
+    assert set(cases["feature_set"]) == {"graph_plus_coverage_exposure_load"}
+    assert set(cases["target_reason"]) == {"over_sharpened_probability_slice"}
+
+    payload = json.loads(
+        (result / "exposure_load_forward_diagnostic.json").read_text()
+    )
+    assert payload["experiment_type"] == "exposure_load_forward_diagnostic_sprint"
+    assert (
+        payload["overall_recommendation"]
+        == "inspect_exposure_load_forward_failure_modes"
+    )
+    assert "calibration_diagnostic_summary" in payload
+
+    report = (result / "exposure_load_forward_diagnostic_report.md").read_text()
+    assert "Exposure Load Forward Diagnostic Sprint" in report
+    assert "complete athlete-season trajectories" in report
 
 
 def test_run_injury_history_forward_diagnostic_sprint_writes_diagnostic_artifacts(

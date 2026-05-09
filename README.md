@@ -404,6 +404,30 @@ until source eligibility is resolved, blocks probability calibration and broader
 model expansion, defers minute-load expansion, and keeps exposure-load available
 only for shadow ranking with season-level monitoring.
 
+## Run Exposure Load Source-Eligible Calibration Sprint
+
+```bash
+risk-engine \
+  --exposure-load-source-eligible-calibration-sprint \
+  --season-forward-validation-path outputs/experiments/exposure_load_season_forward_validation_v1/exposure_load_season_forward_validation.csv \
+  --exposure-load-source-resolution-policy outputs/experiments/exposure_load_source_resolution_v1/exposure_load_source_resolution_policy.json \
+  --output-dir outputs \
+  --experiment-id exposure_load_source_eligible_calibration_v1
+```
+
+This writes `exposure_load_source_eligible_calibration.csv`,
+`exposure_load_source_eligible_calibration_diagnostics.csv`,
+`exposure_load_source_eligible_calibration.json`, and
+`exposure_load_source_eligible_calibration_report.md`.
+
+The live `exposure_load_source_eligible_calibration_v1` run recommended
+`probability_research_can_resume_on_source_eligible_seasons`. All seasons still
+showed 3 calibration-loss rows with mean Brier skill delta -0.106, but after
+excluding source-ineligible 2024-2025 the source-eligible scope had 0
+calibration-loss rows, 6 calibration-supported rows, mean Brier skill delta
++0.065, and mean prediction-gap delta -0.005. This reopens probability research
+only for source-eligible seasons; it is still not pilot or dashboard clearance.
+
 ## Run Live-Source Experiment
 
 When `config/paths.local.yaml` points to available local sources, the CLI can

@@ -24,6 +24,7 @@ from risk_stratification_engine.experiments import (
     run_exposure_load_availability_capture_sprint_experiment,
     run_exposure_load_context_decision_sprint_experiment,
     run_exposure_load_source_context_classification_sprint_experiment,
+    run_exposure_load_source_eligible_calibration_sprint_experiment,
     run_exposure_load_source_resolution_sprint_experiment,
     run_injury_history_feature_sprint_experiment,
     run_injury_history_forward_diagnostic_sprint_experiment,
@@ -1951,6 +1952,108 @@ def test_run_exposure_load_source_resolution_sprint_writes_artifacts(tmp_path):
     assert payload["overall_recommendation"] == (
         "exclude_failed_season_from_probability_calibration_until_source_resolved"
     )
+
+
+def test_run_exposure_load_source_eligible_calibration_sprint_writes_artifacts(
+    tmp_path,
+):
+    validation_path = tmp_path / "exposure_load_season_forward_validation.csv"
+    source_resolution_path = tmp_path / "exposure_load_source_resolution_policy.json"
+    pd.DataFrame(
+        [
+            _source_eligible_metric_row(
+                "2024-2025",
+                "graph_plus_coverage_source",
+                brier_skill_score=0.10,
+                roc_auc=0.70,
+                top_decile_lift=1.20,
+            ),
+            _source_eligible_metric_row(
+                "2024-2025",
+                "graph_plus_coverage_exposure_load",
+                brier_skill_score=-0.20,
+                roc_auc=0.76,
+                top_decile_lift=1.80,
+            ),
+            _source_eligible_metric_row(
+                "2025-2026",
+                "graph_plus_coverage_source",
+                brier_skill_score=0.02,
+                roc_auc=0.65,
+                top_decile_lift=1.30,
+            ),
+            _source_eligible_metric_row(
+                "2025-2026",
+                "graph_plus_coverage_exposure_load",
+                brier_skill_score=0.06,
+                roc_auc=0.69,
+                top_decile_lift=1.50,
+            ),
+        ]
+    ).to_csv(validation_path, index=False)
+    source_resolution_path.write_text(
+        json.dumps(
+            {
+                "overall_recommendation": (
+                    "exclude_failed_season_from_probability_calibration_until_source_resolved"
+                ),
+                "production_readiness": "not_ready_for_probability_or_pilot",
+                "failure_seasons": ["2024-2025"],
+                "policy_rows": [
+                    {
+                        "policy_domain": "season_eligibility",
+                        "policy_decision": (
+                            "exclude_failed_season_from_probability_calibration"
+                        ),
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_exposure_load_source_eligible_calibration_sprint_experiment(
+        season_forward_validation_path=validation_path,
+        exposure_load_source_resolution_policy_path=source_resolution_path,
+        output_dir=tmp_path,
+        experiment_id="exposure_load_source_eligible_calibration",
+    )
+
+    assert (result / "exposure_load_source_eligible_calibration.csv").exists()
+    assert (
+        result / "exposure_load_source_eligible_calibration_diagnostics.csv"
+    ).exists()
+    assert (result / "exposure_load_source_eligible_calibration.json").exists()
+    assert (result / "exposure_load_source_eligible_calibration_report.md").exists()
+    assert (result / "config.json").exists()
+
+    payload = json.loads(
+        (result / "exposure_load_source_eligible_calibration.json").read_text()
+    )
+    assert payload["overall_recommendation"] == (
+        "probability_research_can_resume_on_source_eligible_seasons"
+    )
+
+
+def _source_eligible_metric_row(
+    test_season_id: str,
+    feature_set: str,
+    brier_skill_score: float,
+    roc_auc: float,
+    top_decile_lift: float,
+) -> dict[str, object]:
+    return {
+        "row_type": "model_metric",
+        "test_season_id": test_season_id,
+        "horizon_days": 30,
+        "feature_set": feature_set,
+        "brier_skill_score": brier_skill_score,
+        "model_brier_score": 0.10 - brier_skill_score,
+        "roc_auc": roc_auc,
+        "top_decile_lift": top_decile_lift,
+        "mean_predicted_risk": 0.06,
+        "test_positive_rate": 0.06,
+    }
 
 
 def _write_context_review_inputs(tmp_path):

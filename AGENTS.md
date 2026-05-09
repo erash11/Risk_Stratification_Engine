@@ -52,6 +52,7 @@ Future work may add a dashboard performance tab inspired by the Malum/SPEAR mate
 - Exposure-source cleaning is available through `risk-engine --exposure-cleaning-audit --exposure-dir <Baylor_Exposure_Data> --output-dir outputs --experiment-id <id>`. This cleaning-only pass writes `exposure_events.csv`, `exposure_participations.csv`, and `exposure_cleaning_audit.json` under `outputs/exposure_inputs/<experiment-id>/`; it must precede any exposure/load feature sprint or season-forward validation.
 - Exposure cleaning filters football events by `ExternalSquadId == 94`, maps athlete identities from `FirstName + " " + LastName` through `stable_athlete_id(...)`, preserves `ExternalAthleteId` as source metadata, and treats only athletes whose pipe/comma/semicolon-delimited `ExternalSquadIds` include `94` as matched football athletes. Do not use football-looking `Position` text alone because Zandbox athletes can carry football positions.
 - Exposure cleaning excludes API/performance-source sessions containing Perch/Perks, ForceDecks, VALD/Vault/Nordbord/GroinBar, SmartSpeed, or Catapult, including `Perch - Weight Room`; plain human-entered `Weight Room` remains eligible.
+- Exposure feature requirements sprints are available through `risk-engine --exposure-feature-requirements-sprint --exposure-events <exposure_events.csv> --exposure-participations <exposure_participations.csv> --exposure-audit <exposure_cleaning_audit.json> --output-dir outputs --experiment-id <id>`. The sprint writes `exposure_category_summary.csv`, `exposure_duration_summary.csv`, `exposure_feature_requirements.csv`, `exposure_feature_requirements.json`, and `exposure_feature_requirements_report.md`; it should run after exposure cleaning and before any time-safe exposure/load model feature sprint.
 - As of 2026-04-27, `run_research_experiment(...)` trains a discrete-time logistic baseline at the 7, 14, and 30 day horizons over 13 graph snapshot-time features: `time_index`, `node_count`, `edge_count`, `mean_abs_correlation`, `edge_density`, `delta_edge_count`, `delta_mean_abs_correlation`, `delta_edge_density`, `graph_instability`, `z_mean_abs_correlation`, `z_edge_density`, `z_edge_count`, and `z_graph_instability`.
 - The temporal delta features (`delta_*`) are computed per athlete-season in chronological order and are zero at each athlete's first snapshot; they capture change from one snapshot to the next. `edge_density` normalizes edge count by the maximum possible edges for the observed node count. `graph_instability` is the rolling population standard deviation of `mean_abs_correlation` over the most recent three snapshots, zero when fewer than two snapshots are available.
 - The intra-individual z-score features compare each athlete-season snapshot against that athlete-season's own strictly prior rolling baseline using the graph `window_size`. They require at least two prior snapshots, use population standard deviation, fall back to `0.0` when the prior standard deviation is zero, and are clipped to `[-10.0, 10.0]`.
@@ -84,6 +85,27 @@ Future work may add a dashboard performance tab inspired by the Malum/SPEAR mate
 - Window/model robustness (`window_model_robustness_v1` run, windows 2/4/7, 5 rotating splits, 349 athletes): no single window/variant dominates all operating goals. Window 7 + L2 won calibration at 7d/14d, window 4 + L2 won 30d calibration, window 2 regularized variants won triage lift at all horizons, and ranking split by horizon: window 2 baseline at 7d AUROC 0.731, window 4 L2 at 14d AUROC 0.729, and window 7 L1 at 30d AUROC 0.729. This supports using L2 as the calibration-oriented production candidate while keeping window 2 as a high-alert triage setting and window 7 under review for 30d ranking.
 
 ## Latest Completed Step
+
+**Exposure feature requirements sprint** - implemented and verified on 2026-05-09.
+
+**What changed:** Added `exposure_feature_requirements.py`, the `run_exposure_feature_requirements_sprint_experiment(...)` runner, and the `--exposure-feature-requirements-sprint` CLI mode. The sprint consumes cleaned `exposure_events.csv`, `exposure_participations.csv`, and `exposure_cleaning_audit.json` artifacts, then writes `exposure_category_summary.csv`, `exposure_duration_summary.csv`, `exposure_feature_requirements.csv`, `exposure_feature_requirements.json`, and `exposure_feature_requirements_report.md`.
+
+**Verification:** New TDD tests first failed because `risk_stratification_engine.exposure_feature_requirements`, the experiment runner, and CLI dispatch did not exist. After implementation, focused exposure/CLI tests passed and `python -m pytest` collected and passed 226 tests with one existing sklearn convergence warning. The live command `risk-engine --exposure-feature-requirements-sprint --exposure-events outputs/exposure_inputs/exposure_cleaning_audit_v1/exposure_events.csv --exposure-participations outputs/exposure_inputs/exposure_cleaning_audit_v1/exposure_participations.csv --exposure-audit outputs/exposure_inputs/exposure_cleaning_audit_v1/exposure_cleaning_audit.json --output-dir outputs --experiment-id exposure_feature_requirements_v1` completed and wrote the requirements artifacts.
+
+**Live results (`exposure_feature_requirements_v1`):**
+- Overall recommendation: `proceed_with_count_and_status_features_first`.
+- Production readiness: `not_ready_feature_design_required`.
+- Reviewed 1,055 retained exposure events and 108,587 participation rows.
+- Readiness summary: 3 ready domains and 2 caution domains.
+- Ready domains: `session_count_load`, `participation_status`, and `category_specific_load`.
+- Caution domains: `duration_load` and `game_exposure`, driven mainly by game participation duration missingness.
+- Training participation duration missingness was 8,703 of 102,964 rows (8.45%); game participation duration missingness was 2,648 of 5,623 rows (47.09%).
+- Athlete matching remained strong: 102,935 of 102,964 retained training rows and 5,621 of 5,623 game rows matched.
+- Retained training categories covered 17 usable categories with no unclassified session types.
+
+**Interpretation:** The next major modeling sprint should attach time-safe count, recency, participation-status, and coarse-category exposure features to graph snapshots before using minute-load terms as primary features. Use game counts/recency first and treat game minutes as secondary until duration semantics are reviewed. This is still research-readiness work, not dashboard or pilot clearance.
+
+## Previous Completed Step
 
 **Exposure-data cleaning/audit layer** - implemented and verified on 2026-05-09.
 

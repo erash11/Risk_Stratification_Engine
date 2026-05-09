@@ -168,6 +168,70 @@ def test_cli_runs_exposure_cleaning_audit_without_model_inputs(tmp_path, monkeyp
     assert calls["output_dir"] == tmp_path / "exposure_inputs" / "exposure_audit_v1"
 
 
+def test_cli_runs_exposure_feature_requirements_sprint_from_cleaned_inputs(
+    tmp_path,
+    monkeypatch,
+):
+    exposure_dir = tmp_path / "exposure_inputs" / "exposure_audit_v1"
+    exposure_dir.mkdir(parents=True)
+    events = exposure_dir / "exposure_events.csv"
+    participations = exposure_dir / "exposure_participations.csv"
+    audit = exposure_dir / "exposure_cleaning_audit.json"
+    events.write_text("events", encoding="utf-8")
+    participations.write_text("participations", encoding="utf-8")
+    audit.write_text("{}", encoding="utf-8")
+    calls = {}
+
+    def fake_run_exposure_feature_requirements_sprint_experiment(
+        exposure_events_path,
+        exposure_participations_path,
+        exposure_audit_path,
+        output_dir,
+        experiment_id,
+    ):
+        calls["requirements"] = {
+            "exposure_events_path": exposure_events_path,
+            "exposure_participations_path": exposure_participations_path,
+            "exposure_audit_path": exposure_audit_path,
+            "output_dir": output_dir,
+            "experiment_id": experiment_id,
+        }
+        experiment_dir = output_dir / "experiments" / experiment_id
+        experiment_dir.mkdir(parents=True)
+        return experiment_dir
+
+    monkeypatch.setattr(
+        cli,
+        "run_exposure_feature_requirements_sprint_experiment",
+        fake_run_exposure_feature_requirements_sprint_experiment,
+    )
+
+    exit_code = main(
+        [
+            "--exposure-feature-requirements-sprint",
+            "--exposure-events",
+            str(events),
+            "--exposure-participations",
+            str(participations),
+            "--exposure-audit",
+            str(audit),
+            "--output-dir",
+            str(tmp_path),
+            "--experiment-id",
+            "exposure_feature_requirements_v1",
+        ]
+    )
+
+    assert exit_code == 0
+    assert calls["requirements"] == {
+        "exposure_events_path": events,
+        "exposure_participations_path": participations,
+        "exposure_audit_path": audit,
+        "output_dir": tmp_path,
+        "experiment_id": "exposure_feature_requirements_v1",
+    }
+
+
 def test_cli_runs_window_sensitivity_experiment(tmp_path, monkeypatch):
     calls = {}
 

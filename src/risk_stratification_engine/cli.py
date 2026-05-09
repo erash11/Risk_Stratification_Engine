@@ -15,6 +15,7 @@ from risk_stratification_engine.experiments import (
     run_coverage_normalized_policy_sprint_experiment,
     run_coverage_source_aware_model_sprint_experiment,
     run_coverage_stratified_evaluation_experiment,
+    run_exposure_feature_requirements_sprint_experiment,
     run_forward_case_review_sprint_experiment,
     run_injury_history_feature_sprint_experiment,
     run_injury_history_forward_diagnostic_sprint_experiment,
@@ -54,6 +55,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--paths-config", type=Path, default=DEFAULT_PATHS_CONFIG)
     parser.add_argument("--exposure-dir", type=Path)
+    parser.add_argument("--exposure-events", type=Path)
+    parser.add_argument("--exposure-participations", type=Path)
+    parser.add_argument("--exposure-audit", type=Path)
     parser.add_argument("--output-dir", required=True, type=Path)
     parser.add_argument("--experiment-id", required=True)
     parser.add_argument("--graph-window-size", type=int, default=4)
@@ -82,6 +86,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--injury-history-forward-diagnostic-sprint", action="store_true")
     parser.add_argument("--exposure-cleaning-audit", action="store_true")
+    parser.add_argument("--exposure-feature-requirements-sprint", action="store_true")
     parser.add_argument("--stability-splits", type=int, default=5)
     return parser
 
@@ -109,6 +114,46 @@ def main(argv: list[str] | None = None) -> int:
             f"{prepared_exposure.participations_path}"
         )
         print(f"Exposure cleaning audit written to {prepared_exposure.audit_path}")
+        return 0
+    if args.exposure_feature_requirements_sprint:
+        exposure_events = args.exposure_events
+        exposure_participations = args.exposure_participations
+        exposure_audit = args.exposure_audit
+        explicit_paths = (exposure_events, exposure_participations, exposure_audit)
+        if any(path is not None for path in explicit_paths) and not all(
+            path is not None for path in explicit_paths
+        ):
+            parser.error(
+                "--exposure-feature-requirements-sprint requires all of "
+                "--exposure-events, --exposure-participations, and --exposure-audit "
+                "when using cleaned artifact paths"
+            )
+        if not all(path is not None for path in explicit_paths):
+            exposure_dir = args.exposure_dir
+            if exposure_dir is None:
+                data_paths = load_data_source_paths(args.paths_config)
+                exposure_dir = data_paths.exposure_dir
+            if exposure_dir is None:
+                parser.error(
+                    "--exposure-feature-requirements-sprint requires cleaned "
+                    "exposure artifact paths, --exposure-dir, or exposure_dir "
+                    "in --paths-config"
+                )
+            prepared_exposure = prepare_exposure_inputs(
+                exposure_dir,
+                args.output_dir / "exposure_inputs" / args.experiment_id,
+            )
+            exposure_events = prepared_exposure.events_path
+            exposure_participations = prepared_exposure.participations_path
+            exposure_audit = prepared_exposure.audit_path
+        experiment_dir = run_exposure_feature_requirements_sprint_experiment(
+            exposure_events_path=exposure_events,
+            exposure_participations_path=exposure_participations,
+            exposure_audit_path=exposure_audit,
+            output_dir=args.output_dir,
+            experiment_id=args.experiment_id,
+        )
+        print(f"Exposure feature requirements artifacts written to {experiment_dir}")
         return 0
 
     if args.from_live_sources:

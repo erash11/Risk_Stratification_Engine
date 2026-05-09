@@ -66,6 +66,36 @@ sessions such as Perch, ForceDecks, VALD, SmartSpeed, and Catapult, and keeps
 plain human-entered football training, practice, weight-room, conditioning,
 scrimmage, walkthrough, RTP, and game exposure rows for audit review.
 
+## Run Exposure Feature Requirements Sprint
+
+Before exposure/load features are attached to graph snapshots, run the feature
+requirements sprint against the cleaned exposure artifacts:
+
+```bash
+risk-engine \
+  --exposure-feature-requirements-sprint \
+  --exposure-events outputs/exposure_inputs/exposure_cleaning_audit_v1/exposure_events.csv \
+  --exposure-participations outputs/exposure_inputs/exposure_cleaning_audit_v1/exposure_participations.csv \
+  --exposure-audit outputs/exposure_inputs/exposure_cleaning_audit_v1/exposure_cleaning_audit.json \
+  --output-dir outputs \
+  --experiment-id exposure_feature_requirements_v1
+```
+
+This writes `exposure_category_summary.csv`, `exposure_duration_summary.csv`,
+`exposure_feature_requirements.csv`, `exposure_feature_requirements.json`, and
+`exposure_feature_requirements_report.md` under
+`outputs/experiments/<experiment-id>/`. The sprint separates count/status
+features that are ready for first-pass time-safe modeling from minute-load
+features that need duration-completeness review.
+
+The live `exposure_feature_requirements_v1` run recommended
+`proceed_with_count_and_status_features_first`. It reviewed 1,055 retained
+events and 108,587 participation rows. Session counts, participation status, and
+coarse category features were ready; duration-load and game-exposure minutes
+were caution domains because game participation duration was missing in 47.09%
+of rows. The next exposure modeling sprint should attach time-safe count,
+recency, participation-status, and coarse-category features first.
+
 ## Run Live-Source Experiment
 
 When `config/paths.local.yaml` points to available local sources, the CLI can

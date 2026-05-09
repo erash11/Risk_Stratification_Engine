@@ -26,6 +26,13 @@ from risk_stratification_engine.case_diagnostic_requirements import (
 )
 from risk_stratification_engine.evaluation import evaluate_risk_model
 from risk_stratification_engine.events import DEFAULT_HORIZONS, attach_time_to_event_labels
+from risk_stratification_engine.exposure_feature_requirements import (
+    build_exposure_category_summary,
+    build_exposure_duration_summary,
+    build_exposure_feature_requirements,
+    build_exposure_feature_requirements_summary,
+    write_exposure_feature_requirements_report,
+)
 from risk_stratification_engine.episode_quality import build_alert_episode_quality
 from risk_stratification_engine.forward_case_review import (
     build_forward_case_review_summary,
@@ -1560,6 +1567,65 @@ def run_case_diagnostic_requirements_sprint_experiment(
     _write_json(experiment_dir / "case_diagnostic_requirements.json", summary)
     write_case_diagnostic_requirements_report(
         experiment_dir / "case_diagnostic_requirements_report.md",
+        summary,
+    )
+    return experiment_dir
+
+
+def run_exposure_feature_requirements_sprint_experiment(
+    exposure_events_path: str | Path,
+    exposure_participations_path: str | Path,
+    exposure_audit_path: str | Path,
+    output_dir: str | Path,
+    experiment_id: str,
+) -> Path:
+    experiment_dir = _experiment_path(output_dir, experiment_id)
+    events = pd.read_csv(exposure_events_path)
+    participations = pd.read_csv(exposure_participations_path)
+    audit = json.loads(Path(exposure_audit_path).read_text(encoding="utf-8"))
+
+    requirements = build_exposure_feature_requirements(
+        events,
+        participations,
+        audit,
+    )
+    summary = build_exposure_feature_requirements_summary(
+        events,
+        participations,
+        audit,
+        requirements,
+    )
+
+    write_frame(
+        build_exposure_category_summary(events),
+        experiment_dir / "exposure_category_summary.csv",
+    )
+    write_frame(
+        build_exposure_duration_summary(participations),
+        experiment_dir / "exposure_duration_summary.csv",
+    )
+    write_frame(
+        pd.DataFrame(requirements),
+        experiment_dir / "exposure_feature_requirements.csv",
+    )
+    _write_json(
+        experiment_dir / "config.json",
+        {
+            "experiment_id": experiment_id,
+            "experiment_type": "exposure_feature_requirements_sprint",
+            "exposure_events_path": str(exposure_events_path),
+            "exposure_participations_path": str(exposure_participations_path),
+            "exposure_audit_path": str(exposure_audit_path),
+            "source_cleaning_artifacts": [
+                "exposure_events.csv",
+                "exposure_participations.csv",
+                "exposure_cleaning_audit.json",
+            ],
+        },
+    )
+    _write_json(experiment_dir / "exposure_feature_requirements.json", summary)
+    write_exposure_feature_requirements_report(
+        experiment_dir / "exposure_feature_requirements_report.md",
         summary,
     )
     return experiment_dir

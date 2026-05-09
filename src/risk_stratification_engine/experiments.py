@@ -1738,6 +1738,93 @@ def run_exposure_load_feature_sprint_experiment(
     return experiment_dir
 
 
+def run_exposure_load_season_forward_validation_sprint_experiment(
+    measurements_path: str | Path,
+    injuries_path: str | Path,
+    detailed_injuries_path: str | Path,
+    exposure_participations_path: str | Path,
+    output_dir: str | Path,
+    experiment_id: str,
+    graph_window_size: int = 4,
+    model_variant: str = "l2",
+) -> Path:
+    experiment_dir = _experiment_path(output_dir, experiment_id)
+    measurements = load_measurements(measurements_path)
+    canonical_injuries = load_injury_events(injuries_path)
+    detailed_injuries = pd.read_csv(detailed_injuries_path)
+    exposure_participations = pd.read_csv(exposure_participations_path)
+    matrix = build_measurement_matrix(measurements)
+    graph_features = build_graph_snapshots(matrix, window_size=graph_window_size)
+    if graph_features.empty:
+        raise ValueError("no graph snapshots produced")
+    coverage_features = attach_coverage_source_features(graph_features, measurements)
+    exposure_features = attach_exposure_load_features(
+        coverage_features,
+        exposure_participations,
+    )
+    rows = _season_forward_validation_rows(
+        measurements=measurements,
+        canonical_injuries=canonical_injuries,
+        detailed_injuries=detailed_injuries,
+        graph_window_size=graph_window_size,
+        model_variant=model_variant,
+        feature_sets=EXPOSURE_LOAD_MODEL_FEATURE_SETS,
+        prepared_features=exposure_features,
+        alert_policy_feature_set_name="graph_plus_coverage_exposure_load",
+        alert_policy_feature_columns=EXPOSURE_LOAD_MODEL_FEATURE_SETS[
+            "graph_plus_coverage_exposure_load"
+        ],
+        exposure_participations_for_alert_features=exposure_participations,
+    )
+    row_records = _json_records(rows)
+    summary = build_season_forward_validation_summary(
+        row_records,
+        experiment_type="exposure_load_season_forward_validation_sprint",
+    )
+    summary.update(
+        {
+            "model_type": MODEL_TYPE,
+            "model_variant": model_variant,
+            "graph_window_size": graph_window_size,
+            "feature_sets": list(EXPOSURE_LOAD_MODEL_FEATURE_SETS),
+            "coverage_source_feature_columns": list(COVERAGE_SOURCE_FEATURE_COLUMNS),
+            "exposure_load_feature_columns": list(EXPOSURE_LOAD_FEATURE_COLUMNS),
+            "channels": list(DEFAULT_SHADOW_MODE_CHANNELS),
+        }
+    )
+
+    write_frame(exposure_features, experiment_dir / "exposure_load_features.csv")
+    write_frame(
+        rows,
+        experiment_dir / "exposure_load_season_forward_validation.csv",
+    )
+    _write_json(
+        experiment_dir / "config.json",
+        {
+            "experiment_id": experiment_id,
+            "experiment_type": "exposure_load_season_forward_validation_sprint",
+            "measurements_path": str(measurements_path),
+            "injuries_path": str(injuries_path),
+            "detailed_injuries_path": str(detailed_injuries_path),
+            "exposure_participations_path": str(exposure_participations_path),
+            "graph_window_size": graph_window_size,
+            "model_variant": model_variant,
+            "feature_sets": list(EXPOSURE_LOAD_MODEL_FEATURE_SETS),
+            "exposure_load_feature_columns": list(EXPOSURE_LOAD_FEATURE_COLUMNS),
+            "channels": list(DEFAULT_SHADOW_MODE_CHANNELS),
+        },
+    )
+    _write_json(
+        experiment_dir / "exposure_load_season_forward_validation.json",
+        summary,
+    )
+    write_season_forward_validation_report(
+        experiment_dir / "exposure_load_season_forward_validation_report.md",
+        summary,
+    )
+    return experiment_dir
+
+
 def run_window_sensitivity_experiment(
     measurements_path: str | Path,
     injuries_path: str | Path,
@@ -2584,6 +2671,7 @@ def _season_forward_validation_rows(
     alert_policy_feature_columns: tuple[str, ...],
     prepared_features: pd.DataFrame | None = None,
     attach_injury_history_to_alert_features: bool = False,
+    exposure_participations_for_alert_features: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     matrix = build_measurement_matrix(measurements)
     if prepared_features is None:
@@ -2618,6 +2706,9 @@ def _season_forward_validation_rows(
             feature_columns=alert_policy_feature_columns,
             attach_injury_history_features_to_graph=(
                 attach_injury_history_to_alert_features
+            ),
+            exposure_participations_for_graph=(
+                exposure_participations_for_alert_features
             ),
         )
     )
@@ -2853,6 +2944,7 @@ def _season_forward_alert_policy_rows(
     feature_set_name: str,
     feature_columns: tuple[str, ...],
     attach_injury_history_features_to_graph: bool = False,
+    exposure_participations_for_graph: pd.DataFrame | None = None,
 ) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
     graph_cache: dict[int, pd.DataFrame] = {}
@@ -2865,6 +2957,11 @@ def _season_forward_alert_policy_rows(
             )
             if attach_injury_history_features_to_graph:
                 features = attach_injury_history_features(features, detailed_injuries)
+            if exposure_participations_for_graph is not None:
+                features = attach_exposure_load_features(
+                    features,
+                    exposure_participations_for_graph,
+                )
             graph_cache[window_size] = features
         graph_features = graph_cache[window_size]
         policy_injuries = build_policy_injury_events(

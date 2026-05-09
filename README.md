@@ -134,6 +134,38 @@ coverage/source reference at 7d, 14d, and 30d: AUROC improved from
 1.96/1.97/1.99 to 3.20/3.00/2.78. The next validation step is a
 season-forward exposure-load sprint before adding duration/minute-load terms.
 
+## Run Exposure Load Season-Forward Validation Sprint
+
+The exposure-load season-forward validation sprint tests whether the conservative
+count, recency, participation-status, and category-count features survive the
+train-prior-seasons / evaluate-later-seasons setup:
+
+```bash
+risk-engine \
+  --from-live-sources \
+  --paths-config config/paths.local.yaml \
+  --exposure-load-season-forward-validation \
+  --exposure-participations outputs/exposure_inputs/exposure_cleaning_audit_v1/exposure_participations.csv \
+  --output-dir outputs \
+  --experiment-id exposure_load_season_forward_validation_v1 \
+  --model-variant l2 \
+  --graph-window-size 4
+```
+
+This writes `exposure_load_features.csv`,
+`exposure_load_season_forward_validation.csv`,
+`exposure_load_season_forward_validation.json`, and
+`exposure_load_season_forward_validation_report.md`.
+
+The live `exposure_load_season_forward_validation_v1` run recommended
+`continue_season_forward_research`. `graph_plus_coverage_exposure_load` won all
+selected best forward ranking, calibration, and burden-triage slots, with
+2025-2026 best AUROC/Brier skill of 0.682/0.016 at 7d, 0.699/0.035 at 14d, and
+0.719/0.074 at 30d. The main caution is calibration instability: in 2024-2025,
+Brier skill worsened to -0.682/-0.691/-0.567 at 7d/14d/30d. This remains
+research-only; the next step is an exposure-load forward diagnostic before
+adding duration or minute-load terms.
+
 ## Run Live-Source Experiment
 
 When `config/paths.local.yaml` points to available local sources, the CLI can

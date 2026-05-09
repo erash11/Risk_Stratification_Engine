@@ -15,6 +15,7 @@ from risk_stratification_engine.experiments import (
     run_coverage_source_aware_model_sprint_experiment,
     run_coverage_stratified_evaluation_experiment,
     run_forward_case_review_sprint_experiment,
+    run_exposure_load_season_forward_validation_sprint_experiment,
     run_injury_history_feature_sprint_experiment,
     run_injury_history_forward_diagnostic_sprint_experiment,
     run_injury_history_season_forward_validation_sprint_experiment,
@@ -1298,6 +1299,64 @@ def test_run_injury_history_season_forward_validation_sprint_writes_forward_arti
     assert "graph_plus_coverage_injury_history" in report
 
 
+def test_run_exposure_load_season_forward_validation_sprint_writes_forward_artifacts(
+    tmp_path,
+):
+    measurements_path, injuries_path, detailed_path = _write_season_forward_fixture_inputs(
+        tmp_path
+    )
+    exposure_participations_path = _write_exposure_participations_for_season_forward_fixture(
+        tmp_path
+    )
+
+    result = run_exposure_load_season_forward_validation_sprint_experiment(
+        measurements_path=measurements_path,
+        injuries_path=injuries_path,
+        detailed_injuries_path=detailed_path,
+        exposure_participations_path=exposure_participations_path,
+        output_dir=tmp_path,
+        experiment_id="exposure_load_season_forward",
+        graph_window_size=2,
+        model_variant="l2",
+    )
+
+    assert (result / "exposure_load_season_forward_validation.csv").exists()
+    assert (result / "exposure_load_season_forward_validation.json").exists()
+    assert (result / "exposure_load_season_forward_validation_report.md").exists()
+    assert (result / "exposure_load_features.csv").exists()
+    assert (result / "config.json").exists()
+
+    features = pd.read_csv(result / "exposure_load_features.csv")
+    assert "exposure_training_sessions_7d" in features.columns
+
+    rows = pd.read_csv(result / "exposure_load_season_forward_validation.csv")
+    model_rows = rows[rows["row_type"].eq("model_metric")]
+    assert {
+        "graph_plus_coverage_source",
+        "graph_plus_coverage_exposure_load",
+    }.issubset(set(model_rows["feature_set"]))
+    alert_rows = rows[rows["row_type"].eq("alert_policy")]
+    assert set(alert_rows["feature_set"]) == {
+        "graph_plus_coverage_exposure_load"
+    }
+
+    payload = json.loads(
+        (result / "exposure_load_season_forward_validation.json").read_text()
+    )
+    assert payload["experiment_type"] == "exposure_load_season_forward_validation_sprint"
+    assert "exposure_load_feature_columns" in payload
+    assert payload["feature_sets"] == [
+        "graph_plus_coverage_source",
+        "graph_plus_coverage_exposure_load",
+    ]
+
+    report = (
+        result / "exposure_load_season_forward_validation_report.md"
+    ).read_text()
+    assert "Season-Forward Validation Sprint" in report
+    assert "graph_plus_coverage_exposure_load" in report
+
+
 def test_run_injury_history_forward_diagnostic_sprint_writes_diagnostic_artifacts(
     tmp_path,
 ):
@@ -1551,6 +1610,53 @@ def _write_season_forward_fixture_inputs(tmp_path):
     pd.DataFrame(injury_rows).to_csv(injuries_path, index=False)
     pd.DataFrame(detailed_rows).to_csv(detailed_path, index=False)
     return measurements_path, injuries_path, detailed_path
+
+
+def _write_exposure_participations_for_season_forward_fixture(tmp_path):
+    exposure_path = tmp_path / "exposure_participations.csv"
+    rows = []
+    season_start_years = {
+        "2024-2025": 2024,
+        "2025-2026": 2025,
+        "2026-2027": 2026,
+    }
+    for season_id, year in season_start_years.items():
+        for athlete_index, athlete_id in enumerate(("a1", "a2", "a3", "a4")):
+            status = "modified" if athlete_id == "a1" else "full"
+            for day, category in (
+                (2, "practice"),
+                (6, "weight_room"),
+                (10, "conditioning"),
+                (14, "rtp"),
+            ):
+                rows.append(
+                    {
+                        "event_id": f"{season_id}_{category}_{day}",
+                        "event_type": "training",
+                        "athlete_id": athlete_id,
+                        "athlete_match_status": "matched",
+                        "date": f"{year}-01-{day:02d}",
+                        "season_id": season_id,
+                        "exposure_category": category,
+                        "participation_category": status
+                        if day != 14
+                        else "no_participation",
+                    }
+                )
+            rows.append(
+                {
+                    "event_id": f"{season_id}_game_{athlete_index}",
+                    "event_type": "game",
+                    "athlete_id": athlete_id,
+                    "athlete_match_status": "matched",
+                    "date": f"{year}-01-18",
+                    "season_id": season_id,
+                    "exposure_category": "game",
+                    "participation_category": "full",
+                }
+            )
+    pd.DataFrame(rows).to_csv(exposure_path, index=False)
+    return exposure_path
 
 
 def test_compute_snapshot_contributions_correct_math():

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 
 
@@ -19,6 +20,7 @@ EXPOSURE_LOAD_FEATURE_COLUMNS = (
     "exposure_rtp_sessions_28d",
     "exposure_game_events_28d",
 )
+NANOSECONDS_PER_DAY = 24 * 60 * 60 * 1_000_000_000
 
 
 def attach_exposure_load_features(
@@ -32,21 +34,28 @@ def attach_exposure_load_features(
         return out
 
     out["season_id"] = out["season_id"].astype(str)
+    out["athlete_id"] = out["athlete_id"].astype(str)
     out["snapshot_date"] = pd.to_datetime(out["snapshot_date"], errors="coerce")
     participations = _normalized_participations(exposure_participations)
     if participations.empty:
         return out
 
-    rows = []
-    for _, snapshot in out.iterrows():
-        athlete_rows = participations[
-            participations["athlete_id"].eq(snapshot["athlete_id"])
-            & participations["season_id"].eq(str(snapshot["season_id"]))
-            & participations["date"].lt(snapshot["snapshot_date"])
-        ]
-        rows.append(_prior_exposure_features(snapshot, athlete_rows))
+    participation_groups = {
+        key: group.sort_values("date")
+        for key, group in participations.groupby(["athlete_id", "season_id"])
+    }
+    empty_participations = participations.iloc[0:0]
+    feature_frame = pd.DataFrame(
+        0,
+        index=out.index,
+        columns=EXPOSURE_LOAD_FEATURE_COLUMNS,
+    )
+    for group_key, snapshots in out.groupby(["athlete_id", "season_id"], sort=False):
+        athlete_rows = participation_groups.get(group_key, empty_participations)
+        feature_frame.loc[snapshots.index, EXPOSURE_LOAD_FEATURE_COLUMNS] = (
+            _prior_exposure_features_for_snapshots(snapshots, athlete_rows)
+        )
 
-    feature_frame = pd.DataFrame(rows, index=out.index)
     for column in EXPOSURE_LOAD_FEATURE_COLUMNS:
         out[column] = pd.to_numeric(feature_frame[column], errors="coerce").fillna(0)
         out[column] = out[column].round().astype(int)
@@ -136,6 +145,123 @@ def _prior_exposure_features(
         ),
         "exposure_game_events_28d": _unique_event_count(games_28),
     }
+
+
+def _prior_exposure_features_for_snapshots(
+    snapshots: pd.DataFrame,
+    prior: pd.DataFrame,
+) -> pd.DataFrame:
+    features = pd.DataFrame(
+        0,
+        index=snapshots.index,
+        columns=EXPOSURE_LOAD_FEATURE_COLUMNS,
+    )
+    if snapshots.empty or prior.empty:
+        return features
+
+    snapshot_ns = _datetime_ns(snapshots["snapshot_date"], sort=False)
+    prior_28_flags = _category_flags(prior)
+    training = prior[prior["event_type"].eq("training")]
+    games = prior[prior["event_type"].eq("game")]
+    limited = prior[
+        prior["participation_category"].isin({"modified", "no_participation"})
+    ]
+
+    training_dates = _unique_event_dates(training)
+    for days, column in (
+        (7, "exposure_training_sessions_7d"),
+        (14, "exposure_training_sessions_14d"),
+        (28, "exposure_training_sessions_28d"),
+    ):
+        features[column] = _window_counts(snapshot_ns, training_dates, days)
+
+    game_dates = _unique_event_dates(games)
+    features["exposure_games_prior_count"] = _prior_counts(snapshot_ns, game_dates)
+    features["exposure_days_since_last_game"] = _days_since_last_for_snapshots(
+        snapshot_ns,
+        game_dates,
+    )
+    features["exposure_game_events_28d"] = _window_counts(snapshot_ns, game_dates, 28)
+
+    for category, column in (
+        ("full", "exposure_full_participations_28d"),
+        ("modified", "exposure_modified_participations_28d"),
+        ("no_participation", "exposure_no_participations_28d"),
+    ):
+        status_dates = _datetime_ns(
+            prior.loc[prior["participation_category"].eq(category), "date"]
+        )
+        features[column] = _window_counts(snapshot_ns, status_dates, 28)
+
+    features["exposure_days_since_last_modified_or_no_participation"] = (
+        _days_since_last_for_snapshots(snapshot_ns, _datetime_ns(limited["date"]))
+    )
+
+    for category, column in (
+        ("practice", "exposure_practice_sessions_28d"),
+        ("lift", "exposure_lift_sessions_28d"),
+        ("conditioning", "exposure_conditioning_sessions_28d"),
+        ("rtp", "exposure_rtp_sessions_28d"),
+    ):
+        features[column] = _window_counts(
+            snapshot_ns,
+            _unique_event_dates(prior[prior_28_flags[category]]),
+            28,
+        )
+    return features
+
+
+def _datetime_ns(values: pd.Series, sort: bool = True) -> np.ndarray:
+    if values.empty:
+        return np.array([], dtype=np.int64)
+    parsed = pd.to_datetime(values, errors="coerce").dropna()
+    if sort:
+        parsed = parsed.sort_values()
+    return parsed.to_numpy(dtype="datetime64[ns]").astype(np.int64)
+
+
+def _unique_event_dates(frame: pd.DataFrame) -> np.ndarray:
+    if frame.empty:
+        return np.array([], dtype=np.int64)
+    return _datetime_ns(frame.drop_duplicates("event_id")["date"])
+
+
+def _window_counts(
+    snapshot_ns: np.ndarray,
+    event_ns: np.ndarray,
+    days: int,
+) -> np.ndarray:
+    if len(event_ns) == 0:
+        return np.zeros(len(snapshot_ns), dtype=int)
+    right = np.searchsorted(event_ns, snapshot_ns, side="left")
+    left = np.searchsorted(
+        event_ns,
+        snapshot_ns - days * NANOSECONDS_PER_DAY,
+        side="left",
+    )
+    return (right - left).astype(int)
+
+
+def _prior_counts(snapshot_ns: np.ndarray, event_ns: np.ndarray) -> np.ndarray:
+    if len(event_ns) == 0:
+        return np.zeros(len(snapshot_ns), dtype=int)
+    return np.searchsorted(event_ns, snapshot_ns, side="left").astype(int)
+
+
+def _days_since_last_for_snapshots(
+    snapshot_ns: np.ndarray,
+    event_ns: np.ndarray,
+) -> np.ndarray:
+    days = np.zeros(len(snapshot_ns), dtype=int)
+    if len(event_ns) == 0:
+        return days
+    prior_index = np.searchsorted(event_ns, snapshot_ns, side="left") - 1
+    has_prior = prior_index >= 0
+    days[has_prior] = (
+        (snapshot_ns[has_prior] - event_ns[prior_index[has_prior]])
+        // NANOSECONDS_PER_DAY
+    ).astype(int)
+    return days
 
 
 def _category_flags(frame: pd.DataFrame) -> dict[str, pd.Series]:

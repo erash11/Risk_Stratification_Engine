@@ -283,6 +283,77 @@ elevated 28d game-event exposure. Probability-facing use, pilot escalation,
 dashboard work, and minute-load expansion remain blocked until this schedule,
 roster, availability, and managed-risk context is reviewed.
 
+## Run Exposure Load Schedule/Roster Sprint
+
+```bash
+risk-engine \
+  --exposure-load-schedule-roster-sprint \
+  --exposure-events outputs/exposure_inputs/exposure_cleaning_audit_v1/exposure_events.csv \
+  --exposure-participations outputs/exposure_inputs/exposure_cleaning_audit_v1/exposure_participations.csv \
+  --exposure-load-shift-context outputs/experiments/exposure_load_shift_context_v1/exposure_load_shift_context.json \
+  --output-dir outputs \
+  --experiment-id exposure_load_schedule_roster_v1
+```
+
+This writes `exposure_load_schedule_roster_context.csv`,
+`exposure_load_schedule_roster_drivers.csv`,
+`exposure_load_schedule_roster_context.json`, and
+`exposure_load_schedule_roster_report.md`.
+
+The live `exposure_load_schedule_roster_v1` run recommended
+`review_failed_season_schedule_roster_shift`. In 2024-2025, the failed season
+had fewer lift events than comparators (41.0 vs 49.0), but more training events
+(203.0 vs 180.5), more total retained events (216.0 vs 192.5), more
+participations per active athlete (148.4 vs 133.0), and slightly more game
+events (13.0 vs 12.0).
+
+## Run Exposure Load Availability Capture Sprint
+
+```bash
+risk-engine \
+  --exposure-load-availability-capture-sprint \
+  --exposure-participations outputs/exposure_inputs/exposure_cleaning_audit_v1/exposure_participations.csv \
+  --exposure-load-shift-context outputs/experiments/exposure_load_shift_context_v1/exposure_load_shift_context.json \
+  --output-dir outputs \
+  --experiment-id exposure_load_availability_capture_v1
+```
+
+This writes `exposure_load_availability_capture.csv`,
+`exposure_load_availability_capture_drivers.csv`,
+`exposure_load_availability_capture.json`, and
+`exposure_load_availability_capture_report.md`.
+
+The live `exposure_load_availability_capture_v1` run recommended
+`review_failed_season_availability_capture`. The failed 2024-2025 season had a
+lower modified-participation rate (0.014 vs 0.021) and lower no-participation
+rate (0.050 vs 0.057) than comparator seasons, while issue-linked participation
+rows remained absent.
+
+## Run Exposure Load Context Decision Sprint
+
+```bash
+risk-engine \
+  --exposure-load-context-decision-sprint \
+  --exposure-load-shift-context outputs/experiments/exposure_load_shift_context_v1/exposure_load_shift_context.json \
+  --exposure-load-schedule-roster outputs/experiments/exposure_load_schedule_roster_v1/exposure_load_schedule_roster_context.json \
+  --exposure-load-availability-capture outputs/experiments/exposure_load_availability_capture_v1/exposure_load_availability_capture.json \
+  --exposure-load-guardrail-policy outputs/experiments/exposure_load_guardrail_policy_v1/exposure_load_guardrail_policy.json \
+  --output-dir outputs \
+  --experiment-id exposure_load_context_decision_v1
+```
+
+This writes `exposure_load_context_decision.csv`,
+`exposure_load_context_decision.json`, and
+`exposure_load_context_decision_report.md`.
+
+The live `exposure_load_context_decision_v1` run recommended
+`keep_shadow_ranking_and_resolve_context_before_model_expansion`, with
+production readiness still `not_ready_for_probability_or_pilot`. Probability
+calibration and minute-load expansion remain blocked, shadow ranking is allowed
+with monitoring, and model expansion stays blocked until the failed season is
+classified as true managed-risk context, schedule/roster shift, or
+exposure-capture change.
+
 ## Run Live-Source Experiment
 
 When `config/paths.local.yaml` points to available local sources, the CLI can

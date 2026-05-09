@@ -675,6 +675,190 @@ def test_cli_runs_exposure_load_shift_context_from_artifacts(
     }
 
 
+def test_cli_runs_exposure_load_schedule_roster_from_artifacts(tmp_path, monkeypatch):
+    events_path = tmp_path / "exposure_events.csv"
+    participations_path = tmp_path / "exposure_participations.csv"
+    shift_context_path = tmp_path / "exposure_load_shift_context.json"
+    for path in (events_path, participations_path, shift_context_path):
+        path.write_text("artifact", encoding="utf-8")
+    calls = {}
+
+    def fake_run_exposure_load_schedule_roster_sprint_experiment(
+        exposure_events_path,
+        exposure_participations_path,
+        exposure_load_shift_context_path,
+        output_dir,
+        experiment_id,
+    ):
+        calls["schedule_roster"] = {
+            "exposure_events_path": exposure_events_path,
+            "exposure_participations_path": exposure_participations_path,
+            "exposure_load_shift_context_path": exposure_load_shift_context_path,
+            "output_dir": output_dir,
+            "experiment_id": experiment_id,
+        }
+        result = output_dir / "experiments" / experiment_id
+        result.mkdir(parents=True)
+        return result
+
+    monkeypatch.setattr(
+        cli,
+        "run_exposure_load_schedule_roster_sprint_experiment",
+        fake_run_exposure_load_schedule_roster_sprint_experiment,
+    )
+
+    exit_code = main(
+        [
+            "--output-dir",
+            str(tmp_path),
+            "--experiment-id",
+            "exposure_load_schedule_roster",
+            "--exposure-load-schedule-roster-sprint",
+            "--exposure-events",
+            str(events_path),
+            "--exposure-participations",
+            str(participations_path),
+            "--exposure-load-shift-context",
+            str(shift_context_path),
+        ]
+    )
+
+    assert exit_code == 0
+    assert calls["schedule_roster"] == {
+        "exposure_events_path": events_path,
+        "exposure_participations_path": participations_path,
+        "exposure_load_shift_context_path": shift_context_path,
+        "output_dir": tmp_path,
+        "experiment_id": "exposure_load_schedule_roster",
+    }
+
+
+def test_cli_runs_exposure_load_availability_capture_from_artifacts(
+    tmp_path,
+    monkeypatch,
+):
+    participations_path = tmp_path / "exposure_participations.csv"
+    shift_context_path = tmp_path / "exposure_load_shift_context.json"
+    for path in (participations_path, shift_context_path):
+        path.write_text("artifact", encoding="utf-8")
+    calls = {}
+
+    def fake_run_exposure_load_availability_capture_sprint_experiment(
+        exposure_participations_path,
+        exposure_load_shift_context_path,
+        output_dir,
+        experiment_id,
+    ):
+        calls["availability_capture"] = {
+            "exposure_participations_path": exposure_participations_path,
+            "exposure_load_shift_context_path": exposure_load_shift_context_path,
+            "output_dir": output_dir,
+            "experiment_id": experiment_id,
+        }
+        result = output_dir / "experiments" / experiment_id
+        result.mkdir(parents=True)
+        return result
+
+    monkeypatch.setattr(
+        cli,
+        "run_exposure_load_availability_capture_sprint_experiment",
+        fake_run_exposure_load_availability_capture_sprint_experiment,
+    )
+
+    exit_code = main(
+        [
+            "--output-dir",
+            str(tmp_path),
+            "--experiment-id",
+            "exposure_load_availability_capture",
+            "--exposure-load-availability-capture-sprint",
+            "--exposure-participations",
+            str(participations_path),
+            "--exposure-load-shift-context",
+            str(shift_context_path),
+        ]
+    )
+
+    assert exit_code == 0
+    assert calls["availability_capture"] == {
+        "exposure_participations_path": participations_path,
+        "exposure_load_shift_context_path": shift_context_path,
+        "output_dir": tmp_path,
+        "experiment_id": "exposure_load_availability_capture",
+    }
+
+
+def test_cli_runs_exposure_load_context_decision_from_artifacts(tmp_path, monkeypatch):
+    shift_context_path = tmp_path / "exposure_load_shift_context.json"
+    schedule_roster_path = tmp_path / "exposure_load_schedule_roster_context.json"
+    availability_path = tmp_path / "exposure_load_availability_capture.json"
+    guardrail_path = tmp_path / "exposure_load_guardrail_policy.json"
+    for path in (
+        shift_context_path,
+        schedule_roster_path,
+        availability_path,
+        guardrail_path,
+    ):
+        path.write_text("artifact", encoding="utf-8")
+    calls = {}
+
+    def fake_run_exposure_load_context_decision_sprint_experiment(
+        exposure_load_shift_context_path,
+        exposure_load_schedule_roster_path,
+        exposure_load_availability_capture_path,
+        exposure_load_guardrail_policy_path,
+        output_dir,
+        experiment_id,
+    ):
+        calls["context_decision"] = {
+            "exposure_load_shift_context_path": exposure_load_shift_context_path,
+            "exposure_load_schedule_roster_path": exposure_load_schedule_roster_path,
+            "exposure_load_availability_capture_path": (
+                exposure_load_availability_capture_path
+            ),
+            "exposure_load_guardrail_policy_path": exposure_load_guardrail_policy_path,
+            "output_dir": output_dir,
+            "experiment_id": experiment_id,
+        }
+        result = output_dir / "experiments" / experiment_id
+        result.mkdir(parents=True)
+        return result
+
+    monkeypatch.setattr(
+        cli,
+        "run_exposure_load_context_decision_sprint_experiment",
+        fake_run_exposure_load_context_decision_sprint_experiment,
+    )
+
+    exit_code = main(
+        [
+            "--output-dir",
+            str(tmp_path),
+            "--experiment-id",
+            "exposure_load_context_decision",
+            "--exposure-load-context-decision-sprint",
+            "--exposure-load-shift-context",
+            str(shift_context_path),
+            "--exposure-load-schedule-roster",
+            str(schedule_roster_path),
+            "--exposure-load-availability-capture",
+            str(availability_path),
+            "--exposure-load-guardrail-policy",
+            str(guardrail_path),
+        ]
+    )
+
+    assert exit_code == 0
+    assert calls["context_decision"] == {
+        "exposure_load_shift_context_path": shift_context_path,
+        "exposure_load_schedule_roster_path": schedule_roster_path,
+        "exposure_load_availability_capture_path": availability_path,
+        "exposure_load_guardrail_policy_path": guardrail_path,
+        "output_dir": tmp_path,
+        "experiment_id": "exposure_load_context_decision",
+    }
+
+
 def test_cli_runs_window_sensitivity_experiment(tmp_path, monkeypatch):
     calls = {}
 

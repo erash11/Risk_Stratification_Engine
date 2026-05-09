@@ -20,6 +20,9 @@ from risk_stratification_engine.experiments import (
     run_exposure_load_guardrail_policy_sprint_experiment,
     run_exposure_load_season_forward_validation_sprint_experiment,
     run_exposure_load_shift_context_sprint_experiment,
+    run_exposure_load_schedule_roster_sprint_experiment,
+    run_exposure_load_availability_capture_sprint_experiment,
+    run_exposure_load_context_decision_sprint_experiment,
     run_injury_history_feature_sprint_experiment,
     run_injury_history_forward_diagnostic_sprint_experiment,
     run_injury_history_season_forward_validation_sprint_experiment,
@@ -1670,6 +1673,205 @@ def test_run_exposure_load_shift_context_sprint_writes_context_artifacts(tmp_pat
     assert payload["overall_recommendation"] == (
         "review_schedule_roster_availability_context"
     )
+
+
+def test_run_exposure_load_schedule_roster_sprint_writes_context_artifacts(tmp_path):
+    events_path, participations_path, shift_context_path = _write_context_review_inputs(
+        tmp_path
+    )
+
+    result = run_exposure_load_schedule_roster_sprint_experiment(
+        exposure_events_path=events_path,
+        exposure_participations_path=participations_path,
+        exposure_load_shift_context_path=shift_context_path,
+        output_dir=tmp_path,
+        experiment_id="exposure_load_schedule_roster",
+    )
+
+    assert (result / "exposure_load_schedule_roster_context.csv").exists()
+    assert (result / "exposure_load_schedule_roster_drivers.csv").exists()
+    assert (result / "exposure_load_schedule_roster_context.json").exists()
+    assert (result / "exposure_load_schedule_roster_report.md").exists()
+    assert (result / "config.json").exists()
+
+    payload = json.loads(
+        (result / "exposure_load_schedule_roster_context.json").read_text()
+    )
+    assert payload["experiment_type"] == "exposure_load_schedule_roster_sprint"
+
+
+def test_run_exposure_load_availability_capture_sprint_writes_context_artifacts(
+    tmp_path,
+):
+    _, participations_path, shift_context_path = _write_context_review_inputs(tmp_path)
+
+    result = run_exposure_load_availability_capture_sprint_experiment(
+        exposure_participations_path=participations_path,
+        exposure_load_shift_context_path=shift_context_path,
+        output_dir=tmp_path,
+        experiment_id="exposure_load_availability_capture",
+    )
+
+    assert (result / "exposure_load_availability_capture.csv").exists()
+    assert (result / "exposure_load_availability_capture_drivers.csv").exists()
+    assert (result / "exposure_load_availability_capture.json").exists()
+    assert (result / "exposure_load_availability_capture_report.md").exists()
+    assert (result / "config.json").exists()
+
+    payload = json.loads(
+        (result / "exposure_load_availability_capture.json").read_text()
+    )
+    assert payload["experiment_type"] == "exposure_load_availability_capture_sprint"
+
+
+def test_run_exposure_load_context_decision_sprint_writes_decision_artifacts(
+    tmp_path,
+):
+    shift_context_path = tmp_path / "exposure_load_shift_context.json"
+    schedule_path = tmp_path / "exposure_load_schedule_roster_context.json"
+    availability_path = tmp_path / "exposure_load_availability_capture.json"
+    guardrail_path = tmp_path / "exposure_load_guardrail_policy.json"
+    shift_context_path.write_text(
+        json.dumps(
+            {
+                "experiment_type": "exposure_load_shift_context_sprint",
+                "failure_seasons": ["2024-2025"],
+                "overall_recommendation": "review_schedule_roster_availability_context",
+            }
+        ),
+        encoding="utf-8",
+    )
+    schedule_path.write_text(
+        json.dumps(
+            {
+                "overall_recommendation": "review_failed_season_schedule_roster_shift",
+                "schedule_roster_drivers": [
+                    {"metric_name": "game_event_count", "review_signal": "elevated_game_schedule"}
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    availability_path.write_text(
+        json.dumps(
+            {
+                "overall_recommendation": "review_failed_season_availability_capture",
+                "availability_capture_drivers": [
+                    {
+                        "metric_name": "modified_participation_rate",
+                        "review_signal": "reduced_modified_availability_flagging",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    guardrail_path.write_text(
+        json.dumps(
+            {
+                "overall_recommendation": "use_exposure_load_for_shadow_ranking_only",
+                "production_readiness": "not_ready_for_probability_or_pilot",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_exposure_load_context_decision_sprint_experiment(
+        exposure_load_shift_context_path=shift_context_path,
+        exposure_load_schedule_roster_path=schedule_path,
+        exposure_load_availability_capture_path=availability_path,
+        exposure_load_guardrail_policy_path=guardrail_path,
+        output_dir=tmp_path,
+        experiment_id="exposure_load_context_decision",
+    )
+
+    assert (result / "exposure_load_context_decision.csv").exists()
+    assert (result / "exposure_load_context_decision.json").exists()
+    assert (result / "exposure_load_context_decision_report.md").exists()
+    assert (result / "config.json").exists()
+
+    payload = json.loads((result / "exposure_load_context_decision.json").read_text())
+    assert payload["overall_recommendation"] == (
+        "keep_shadow_ranking_and_resolve_context_before_model_expansion"
+    )
+
+
+def _write_context_review_inputs(tmp_path):
+    events_path = tmp_path / "exposure_events.csv"
+    participations_path = tmp_path / "exposure_participations.csv"
+    shift_context_path = tmp_path / "exposure_load_shift_context.json"
+    pd.DataFrame(
+        [
+            {
+                "event_id": "fg1",
+                "event_type": "game",
+                "season_id": "2024-2025",
+                "date": "2024-09-01",
+                "exposure_category": "game",
+            },
+            {
+                "event_id": "cg1",
+                "event_type": "game",
+                "season_id": "2023-2024",
+                "date": "2023-09-01",
+                "exposure_category": "game",
+            },
+            {
+                "event_id": "cl1",
+                "event_type": "training",
+                "season_id": "2023-2024",
+                "date": "2023-09-02",
+                "exposure_category": "weight_room",
+            },
+        ]
+    ).to_csv(events_path, index=False)
+    pd.DataFrame(
+        [
+            {
+                "event_id": "fg1",
+                "athlete_id": "a1",
+                "athlete_match_status": "matched",
+                "season_id": "2024-2025",
+                "participation_category": "full",
+                "related_external_issue_id": "",
+                "duration_minutes": 180,
+                "rpe": "",
+                "workload_unit_amount": "",
+            },
+            {
+                "event_id": "cg1",
+                "athlete_id": "a1",
+                "athlete_match_status": "matched",
+                "season_id": "2023-2024",
+                "participation_category": "modified",
+                "related_external_issue_id": "issue-1",
+                "duration_minutes": 120,
+                "rpe": 5,
+                "workload_unit_amount": 600,
+            },
+        ]
+    ).to_csv(participations_path, index=False)
+    shift_context_path.write_text(
+        json.dumps(
+            {
+                "experiment_type": "exposure_load_shift_context_sprint",
+                "failure_seasons": ["2024-2025"],
+                "comparator_seasons": ["2023-2024"],
+                "driver_context_rows": [
+                    {
+                        "feature_name": "exposure_games_prior_count",
+                        "context_signal": "elevated_game_exposure_in_failed_season",
+                    },
+                    {
+                        "feature_name": "exposure_modified_participations_28d",
+                        "context_signal": "reduced_availability_flagging_in_failed_season",
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    return events_path, participations_path, shift_context_path
 
 
 def test_run_injury_history_forward_diagnostic_sprint_writes_diagnostic_artifacts(

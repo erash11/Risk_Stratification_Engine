@@ -71,6 +71,11 @@ from risk_stratification_engine.exposure_load_source_context_classification impo
     clean_source_context_rows,
     write_exposure_load_source_context_classification_report,
 )
+from risk_stratification_engine.exposure_load_source_resolution import (
+    build_exposure_load_source_resolution_policy,
+    clean_source_resolution_rows,
+    write_exposure_load_source_resolution_report,
+)
 from risk_stratification_engine.exposure_load_modeling import (
     build_exposure_load_model_comparison_summary,
     write_exposure_load_model_comparison_report,
@@ -2232,6 +2237,45 @@ def run_exposure_load_source_context_classification_sprint_experiment(
     )
     write_exposure_load_source_context_classification_report(
         experiment_dir / "exposure_load_source_context_classification_report.md",
+        summary,
+    )
+    return experiment_dir
+
+
+def run_exposure_load_source_resolution_sprint_experiment(
+    exposure_load_source_context_classification_path: str | Path,
+    output_dir: str | Path,
+    experiment_id: str,
+) -> Path:
+    experiment_dir = _experiment_path(output_dir, experiment_id)
+    source_context = _load_json_payload(exposure_load_source_context_classification_path)
+    summary = build_exposure_load_source_resolution_policy(
+        source_context_classification=source_context,
+    )
+    write_frame(
+        pd.DataFrame(clean_source_resolution_rows(summary["policy_rows"])),
+        experiment_dir / "exposure_load_source_resolution.csv",
+    )
+    write_frame(
+        pd.DataFrame(clean_source_resolution_rows(summary["resolution_actions"])),
+        experiment_dir / "exposure_load_source_resolution_actions.csv",
+    )
+    _write_json(
+        experiment_dir / "config.json",
+        {
+            "experiment_id": experiment_id,
+            "experiment_type": "exposure_load_source_resolution_sprint",
+            "exposure_load_source_context_classification_path": str(
+                exposure_load_source_context_classification_path
+            ),
+        },
+    )
+    _write_json(
+        experiment_dir / "exposure_load_source_resolution_policy.json",
+        summary,
+    )
+    write_exposure_load_source_resolution_report(
+        experiment_dir / "exposure_load_source_resolution_report.md",
         summary,
     )
     return experiment_dir

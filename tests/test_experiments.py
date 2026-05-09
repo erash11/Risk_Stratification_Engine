@@ -24,6 +24,7 @@ from risk_stratification_engine.experiments import (
     run_exposure_load_availability_capture_sprint_experiment,
     run_exposure_load_context_decision_sprint_experiment,
     run_exposure_load_source_context_classification_sprint_experiment,
+    run_exposure_load_source_resolution_sprint_experiment,
     run_injury_history_feature_sprint_experiment,
     run_injury_history_forward_diagnostic_sprint_experiment,
     run_injury_history_season_forward_validation_sprint_experiment,
@@ -1865,6 +1866,90 @@ def test_run_exposure_load_source_context_classification_sprint_writes_artifacts
     )
     assert payload["experiment_type"] == (
         "exposure_load_source_context_classification_sprint"
+    )
+
+
+def test_run_exposure_load_source_resolution_sprint_writes_artifacts(tmp_path):
+    source_context_path = tmp_path / "exposure_load_source_context_classification.json"
+    source_context_path.write_text(
+        json.dumps(
+            {
+                "experiment_type": (
+                    "exposure_load_source_context_classification_sprint"
+                ),
+                "overall_recommendation": (
+                    "treat_failed_season_as_schedule_roster_plus_capture_shift"
+                ),
+                "production_readiness": "not_ready_for_probability_or_pilot",
+                "failure_seasons": ["2024-2025"],
+                "comparator_seasons": ["2023-2024", "2025-2026"],
+                "source_context_classification_rows": [
+                    {
+                        "classification_domain": "managed_risk_support",
+                        "classification": "not_supported_by_source_flags",
+                        "confidence": "high",
+                        "evidence": "issue_linkage_absent",
+                    },
+                    {
+                        "classification_domain": "schedule_roster_context",
+                        "classification": "supported_schedule_roster_shift",
+                        "confidence": "high",
+                        "evidence": "review_failed_season_schedule_roster_shift",
+                    },
+                    {
+                        "classification_domain": "availability_capture_context",
+                        "classification": (
+                            "supported_capture_or_documentation_shift"
+                        ),
+                        "confidence": "high",
+                        "evidence": "review_failed_season_availability_capture",
+                    },
+                    {
+                        "classification_domain": "next_model_action",
+                        "classification": "do_not_expand_model_features",
+                        "confidence": "high",
+                        "evidence": (
+                            "keep_shadow_ranking_and_resolve_context_before_model_expansion"
+                        ),
+                    },
+                ],
+                "source_evidence_rows": [
+                    {
+                        "evidence_domain": "source_schedule",
+                        "review_signal": (
+                            "elevated_game_schedule; reduced_lift_schedule"
+                        ),
+                    },
+                    {
+                        "evidence_domain": "source_participation_flags",
+                        "review_signal": (
+                            "reduced_modified_availability_flagging; "
+                            "issue_linkage_absent"
+                        ),
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_exposure_load_source_resolution_sprint_experiment(
+        exposure_load_source_context_classification_path=source_context_path,
+        output_dir=tmp_path,
+        experiment_id="exposure_load_source_resolution",
+    )
+
+    assert (result / "exposure_load_source_resolution.csv").exists()
+    assert (result / "exposure_load_source_resolution_actions.csv").exists()
+    assert (result / "exposure_load_source_resolution_policy.json").exists()
+    assert (result / "exposure_load_source_resolution_report.md").exists()
+    assert (result / "config.json").exists()
+
+    payload = json.loads(
+        (result / "exposure_load_source_resolution_policy.json").read_text()
+    )
+    assert payload["overall_recommendation"] == (
+        "exclude_failed_season_from_probability_calibration_until_source_resolved"
     )
 
 

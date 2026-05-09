@@ -26,6 +26,7 @@ from risk_stratification_engine.experiments import (
     run_exposure_load_availability_capture_sprint_experiment,
     run_exposure_load_context_decision_sprint_experiment,
     run_exposure_load_source_context_classification_sprint_experiment,
+    run_exposure_load_source_resolution_sprint_experiment,
     run_forward_case_review_sprint_experiment,
     run_injury_history_feature_sprint_experiment,
     run_injury_history_forward_diagnostic_sprint_experiment,
@@ -76,6 +77,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--exposure-load-availability-capture", type=Path)
     parser.add_argument("--exposure-load-guardrail-policy", type=Path)
     parser.add_argument("--exposure-load-context-decision", type=Path)
+    parser.add_argument("--exposure-load-source-context-classification", type=Path)
     parser.add_argument("--season-forward-validation-path", type=Path)
     parser.add_argument("--output-dir", required=True, type=Path)
     parser.add_argument("--experiment-id", required=True)
@@ -128,6 +130,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--exposure-load-source-context-classification-sprint",
         action="store_true",
     )
+    parser.add_argument("--exposure-load-source-resolution-sprint", action="store_true")
     parser.add_argument("--stability-splits", type=int, default=5)
     return parser
 
@@ -409,6 +412,22 @@ def main(argv: list[str] | None = None) -> int:
             "Exposure load source context classification artifacts written to "
             f"{experiment_dir}"
         )
+        return 0
+
+    if args.exposure_load_source_resolution_sprint:
+        if args.exposure_load_source_context_classification is None:
+            parser.error(
+                "--exposure-load-source-resolution-sprint requires "
+                "--exposure-load-source-context-classification"
+            )
+        experiment_dir = run_exposure_load_source_resolution_sprint_experiment(
+            exposure_load_source_context_classification_path=(
+                args.exposure_load_source_context_classification
+            ),
+            output_dir=args.output_dir,
+            experiment_id=args.experiment_id,
+        )
+        print(f"Exposure load source resolution artifacts written to {experiment_dir}")
         return 0
 
     if args.from_live_sources:

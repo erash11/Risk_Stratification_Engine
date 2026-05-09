@@ -382,6 +382,28 @@ context as `supported_schedule_roster_shift`, availability context as
 `do_not_expand_model_features`. Exposure-load remains shadow-only until this
 source context is resolved.
 
+## Run Exposure Load Source Resolution Sprint
+
+```bash
+risk-engine \
+  --exposure-load-source-resolution-sprint \
+  --exposure-load-source-context-classification outputs/experiments/exposure_load_source_context_classification_v1/exposure_load_source_context_classification.json \
+  --output-dir outputs \
+  --experiment-id exposure_load_source_resolution_v1
+```
+
+This writes `exposure_load_source_resolution.csv`,
+`exposure_load_source_resolution_actions.csv`,
+`exposure_load_source_resolution_policy.json`, and
+`exposure_load_source_resolution_report.md`.
+
+The live `exposure_load_source_resolution_v1` run recommended
+`exclude_failed_season_from_probability_calibration_until_source_resolved`.
+The policy excludes the failed 2024-2025 season from probability calibration
+until source eligibility is resolved, blocks probability calibration and broader
+model expansion, defers minute-load expansion, and keeps exposure-load available
+only for shadow ranking with season-level monitoring.
+
 ## Run Live-Source Experiment
 
 When `config/paths.local.yaml` points to available local sources, the CLI can

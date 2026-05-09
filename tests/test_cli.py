@@ -947,6 +947,56 @@ def test_cli_runs_exposure_load_source_context_classification_from_artifacts(
     }
 
 
+def test_cli_runs_exposure_load_source_resolution_from_artifacts(
+    tmp_path,
+    monkeypatch,
+):
+    source_context_path = tmp_path / "exposure_load_source_context_classification.json"
+    source_context_path.write_text("artifact", encoding="utf-8")
+    calls = {}
+
+    def fake_run_exposure_load_source_resolution_sprint_experiment(
+        exposure_load_source_context_classification_path,
+        output_dir,
+        experiment_id,
+    ):
+        calls["source_resolution"] = {
+            "exposure_load_source_context_classification_path": (
+                exposure_load_source_context_classification_path
+            ),
+            "output_dir": output_dir,
+            "experiment_id": experiment_id,
+        }
+        result = output_dir / "experiments" / experiment_id
+        result.mkdir(parents=True)
+        return result
+
+    monkeypatch.setattr(
+        cli,
+        "run_exposure_load_source_resolution_sprint_experiment",
+        fake_run_exposure_load_source_resolution_sprint_experiment,
+    )
+
+    exit_code = main(
+        [
+            "--output-dir",
+            str(tmp_path),
+            "--experiment-id",
+            "exposure_load_source_resolution",
+            "--exposure-load-source-resolution-sprint",
+            "--exposure-load-source-context-classification",
+            str(source_context_path),
+        ]
+    )
+
+    assert exit_code == 0
+    assert calls["source_resolution"] == {
+        "exposure_load_source_context_classification_path": source_context_path,
+        "output_dir": tmp_path,
+        "experiment_id": "exposure_load_source_resolution",
+    }
+
+
 def test_cli_runs_window_sensitivity_experiment(tmp_path, monkeypatch):
     calls = {}
 

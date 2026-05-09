@@ -16,6 +16,7 @@ from risk_stratification_engine.experiments import (
     run_coverage_stratified_evaluation_experiment,
     run_forward_case_review_sprint_experiment,
     run_injury_history_feature_sprint_experiment,
+    run_injury_history_forward_diagnostic_sprint_experiment,
     run_injury_history_season_forward_validation_sprint_experiment,
     run_injury_outcome_policy_experiment,
     run_outcome_policy_model_comparison_experiment,
@@ -1295,6 +1296,57 @@ def test_run_injury_history_season_forward_validation_sprint_writes_forward_arti
     ).read_text()
     assert "Season-Forward Validation Sprint" in report
     assert "graph_plus_coverage_injury_history" in report
+
+
+def test_run_injury_history_forward_diagnostic_sprint_writes_diagnostic_artifacts(
+    tmp_path,
+):
+    measurements_path, injuries_path, detailed_path = _write_season_forward_fixture_inputs(
+        tmp_path
+    )
+
+    result = run_injury_history_forward_diagnostic_sprint_experiment(
+        measurements_path=measurements_path,
+        injuries_path=injuries_path,
+        detailed_injuries_path=detailed_path,
+        output_dir=tmp_path,
+        experiment_id="injury_history_forward_diagnostic",
+        graph_window_size=2,
+        model_variant="l2",
+    )
+
+    assert (result / "injury_history_features.csv").exists()
+    assert (result / "injury_history_season_forward_validation.csv").exists()
+    assert (result / "injury_history_calibration_diagnostics.csv").exists()
+    assert (result / "injury_history_forward_diagnostic_cases.csv").exists()
+    assert (result / "injury_history_forward_diagnostic.json").exists()
+    assert (result / "injury_history_forward_diagnostic_report.md").exists()
+    assert (result / "config.json").exists()
+
+    diagnostics = pd.read_csv(result / "injury_history_calibration_diagnostics.csv")
+    assert {
+        "test_season_id",
+        "horizon_days",
+        "diagnostic_label",
+        "delta_roc_auc",
+        "delta_brier_skill_score",
+        "delta_top_decile_lift",
+    }.issubset(diagnostics.columns)
+
+    cases = pd.read_csv(result / "injury_history_forward_diagnostic_cases.csv")
+    assert "feature_set" in cases.columns
+    assert set(cases["feature_set"]) == {"graph_plus_coverage_injury_history"}
+
+    payload = json.loads(
+        (result / "injury_history_forward_diagnostic.json").read_text()
+    )
+    assert payload["experiment_type"] == "injury_history_forward_diagnostic_sprint"
+    assert "calibration_diagnostic_summary" in payload
+    assert "case_diagnostic_summary" in payload
+
+    report = (result / "injury_history_forward_diagnostic_report.md").read_text()
+    assert "Injury History Forward Diagnostic Sprint" in report
+    assert "complete athlete-season trajectories" in report
 
 
 # ---------------------------------------------------------------------------

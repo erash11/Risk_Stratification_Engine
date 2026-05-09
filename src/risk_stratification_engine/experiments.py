@@ -37,6 +37,10 @@ from risk_stratification_engine.injury_history_features import (
     INJURY_HISTORY_FEATURE_COLUMNS,
     attach_injury_history_features,
 )
+from risk_stratification_engine.injury_history_forward_diagnostics import (
+    build_injury_history_forward_diagnostic_summary,
+    write_injury_history_forward_diagnostic_report,
+)
 from risk_stratification_engine.injury_history_modeling import (
     build_injury_history_model_comparison_summary,
     write_injury_history_model_comparison_report,
@@ -1298,6 +1302,104 @@ def run_injury_history_season_forward_validation_sprint_experiment(
     return experiment_dir
 
 
+def run_injury_history_forward_diagnostic_sprint_experiment(
+    measurements_path: str | Path,
+    injuries_path: str | Path,
+    detailed_injuries_path: str | Path,
+    output_dir: str | Path,
+    experiment_id: str,
+    graph_window_size: int = 4,
+    model_variant: str = "l2",
+) -> Path:
+    experiment_dir = _experiment_path(output_dir, experiment_id)
+    measurements = load_measurements(measurements_path)
+    canonical_injuries = load_injury_events(injuries_path)
+    detailed_injuries = pd.read_csv(detailed_injuries_path)
+    matrix = build_measurement_matrix(measurements)
+    graph_features = build_graph_snapshots(matrix, window_size=graph_window_size)
+    if graph_features.empty:
+        raise ValueError("no graph snapshots produced")
+    coverage_features = attach_coverage_source_features(graph_features, measurements)
+    injury_history_features = attach_injury_history_features(
+        coverage_features,
+        detailed_injuries,
+    )
+    rows = _season_forward_validation_rows(
+        measurements=measurements,
+        canonical_injuries=canonical_injuries,
+        detailed_injuries=detailed_injuries,
+        graph_window_size=graph_window_size,
+        model_variant=model_variant,
+        feature_sets=INJURY_HISTORY_MODEL_FEATURE_SETS,
+        prepared_features=injury_history_features,
+        alert_policy_feature_set_name="graph_plus_coverage_injury_history",
+        alert_policy_feature_columns=INJURY_HISTORY_MODEL_FEATURE_SETS[
+            "graph_plus_coverage_injury_history"
+        ],
+        attach_injury_history_to_alert_features=True,
+    )
+    cases = _forward_case_review_cases(
+        measurements=measurements,
+        canonical_injuries=canonical_injuries,
+        detailed_injuries=detailed_injuries,
+        model_variant=model_variant,
+        feature_set_name="graph_plus_coverage_injury_history",
+        feature_columns=INJURY_HISTORY_MODEL_FEATURE_SETS[
+            "graph_plus_coverage_injury_history"
+        ],
+        attach_injury_history_features_to_graph=True,
+    )
+    row_records = _json_records(rows)
+    case_records = _json_records(cases)
+    summary = build_injury_history_forward_diagnostic_summary(
+        row_records,
+        case_records,
+    )
+    summary.update(
+        {
+            "model_type": MODEL_TYPE,
+            "model_variant": model_variant,
+            "graph_window_size": graph_window_size,
+            "feature_sets": list(INJURY_HISTORY_MODEL_FEATURE_SETS),
+            "coverage_source_feature_columns": list(COVERAGE_SOURCE_FEATURE_COLUMNS),
+            "injury_history_feature_columns": list(INJURY_HISTORY_FEATURE_COLUMNS),
+            "channels": list(DEFAULT_SHADOW_MODE_CHANNELS),
+        }
+    )
+
+    write_frame(injury_history_features, experiment_dir / "injury_history_features.csv")
+    write_frame(rows, experiment_dir / "injury_history_season_forward_validation.csv")
+    write_frame(
+        pd.DataFrame(summary["calibration_diagnostics"]),
+        experiment_dir / "injury_history_calibration_diagnostics.csv",
+    )
+    write_frame(cases, experiment_dir / "injury_history_forward_diagnostic_cases.csv")
+    _write_json(
+        experiment_dir / "config.json",
+        {
+            "experiment_id": experiment_id,
+            "experiment_type": "injury_history_forward_diagnostic_sprint",
+            "measurements_path": str(measurements_path),
+            "injuries_path": str(injuries_path),
+            "detailed_injuries_path": str(detailed_injuries_path),
+            "graph_window_size": graph_window_size,
+            "model_variant": model_variant,
+            "feature_sets": list(INJURY_HISTORY_MODEL_FEATURE_SETS),
+            "injury_history_feature_columns": list(INJURY_HISTORY_FEATURE_COLUMNS),
+            "channels": list(DEFAULT_SHADOW_MODE_CHANNELS),
+            "source_validation_artifact": (
+                "injury_history_season_forward_validation.csv"
+            ),
+        },
+    )
+    _write_json(experiment_dir / "injury_history_forward_diagnostic.json", summary)
+    write_injury_history_forward_diagnostic_report(
+        experiment_dir / "injury_history_forward_diagnostic_report.md",
+        summary,
+    )
+    return experiment_dir
+
+
 def run_season_forward_validation_sprint_experiment(
     measurements_path: str | Path,
     injuries_path: str | Path,
@@ -2358,6 +2460,11 @@ def _forward_case_review_cases(
     canonical_injuries: pd.DataFrame,
     detailed_injuries: pd.DataFrame,
     model_variant: str,
+    feature_set_name: str = "graph_plus_coverage_source",
+    feature_columns: tuple[str, ...] = COVERAGE_SOURCE_MODEL_FEATURE_SETS[
+        "graph_plus_coverage_source"
+    ],
+    attach_injury_history_features_to_graph: bool = False,
 ) -> pd.DataFrame:
     matrix = build_measurement_matrix(measurements)
     season_ids = sorted(str(value) for value in matrix["season_id"].dropna().unique())
@@ -2368,8 +2475,6 @@ def _forward_case_review_cases(
         if channel["channel_name"] in FORWARD_CASE_REVIEW_TARGET_CHANNELS
     }
     rows: list[dict[str, object]] = []
-    feature_columns = COVERAGE_SOURCE_MODEL_FEATURE_SETS["graph_plus_coverage_source"]
-
     for channel_name in FORWARD_CASE_REVIEW_TARGET_CHANNELS:
         channel = target_channels[channel_name]
         window_size = int(channel["graph_window_size"])
@@ -2377,6 +2482,11 @@ def _forward_case_review_cases(
             build_graph_snapshots(matrix, window_size=window_size),
             measurements,
         )
+        if attach_injury_history_features_to_graph:
+            graph_features = attach_injury_history_features(
+                graph_features,
+                detailed_injuries,
+            )
         policy_injuries = build_policy_injury_events(
             canonical_injuries,
             detailed_injuries,
@@ -2410,6 +2520,7 @@ def _forward_case_review_cases(
                     test_timeline=test_timeline,
                     train_seasons=train_seasons,
                     test_season=test_season,
+                    feature_set_name=feature_set_name,
                 )
             )
     return pd.DataFrame(rows)
@@ -2421,6 +2532,7 @@ def _forward_case_review_rows_for_target(
     test_timeline: pd.DataFrame,
     train_seasons: list[str],
     test_season: str,
+    feature_set_name: str,
 ) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
     if test_timeline.empty:
@@ -2458,6 +2570,7 @@ def _forward_case_review_rows_for_target(
                     "channel_name": str(channel["channel_name"]),
                     "role": str(channel["role"]),
                     "policy_name": str(channel["policy_name"]),
+                    "feature_set": feature_set_name,
                     "threshold_policy": threshold_policy,
                     "selected_threshold_value": threshold_value,
                     "graph_window_size": int(channel["graph_window_size"]),

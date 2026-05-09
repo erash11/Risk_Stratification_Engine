@@ -17,6 +17,7 @@ from risk_stratification_engine.experiments import (
     run_coverage_stratified_evaluation_experiment,
     run_forward_case_review_sprint_experiment,
     run_injury_history_feature_sprint_experiment,
+    run_injury_history_forward_diagnostic_sprint_experiment,
     run_injury_history_season_forward_validation_sprint_experiment,
     run_injury_outcome_policy_experiment,
     run_model_robustness_experiment,
@@ -74,6 +75,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--injury-history-season-forward-validation",
         action="store_true",
     )
+    parser.add_argument("--injury-history-forward-diagnostic-sprint", action="store_true")
     parser.add_argument("--stability-splits", type=int, default=5)
     return parser
 
@@ -290,6 +292,30 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(
             "Injury history season-forward validation artifacts written to "
+            f"{experiment_dir}"
+        )
+        return 0
+    if args.injury_history_forward_diagnostic_sprint:
+        if detailed_injuries_path is None:
+            sibling = injuries_path.parent / "injury_events_detailed.csv"
+            if not sibling.exists():
+                parser.error(
+                    "--injury-history-forward-diagnostic-sprint requires "
+                    "live-source detailed injury events or a sibling "
+                    "injury_events_detailed.csv"
+                )
+            detailed_injuries_path = sibling
+        experiment_dir = run_injury_history_forward_diagnostic_sprint_experiment(
+            measurements_path=measurements_path,
+            injuries_path=injuries_path,
+            detailed_injuries_path=detailed_injuries_path,
+            output_dir=args.output_dir,
+            experiment_id=args.experiment_id,
+            graph_window_size=args.graph_window_size,
+            model_variant=args.model_variant,
+        )
+        print(
+            "Injury history forward diagnostic artifacts written to "
             f"{experiment_dir}"
         )
         return 0

@@ -25,6 +25,7 @@ from risk_stratification_engine.experiments import (
     run_exposure_load_context_decision_sprint_experiment,
     run_exposure_load_source_context_classification_sprint_experiment,
     run_exposure_load_source_eligible_calibration_sprint_experiment,
+    run_exposure_load_source_eligible_policy_sprint_experiment,
     run_exposure_load_source_resolution_sprint_experiment,
     run_injury_history_feature_sprint_experiment,
     run_injury_history_forward_diagnostic_sprint_experiment,
@@ -2053,6 +2054,110 @@ def _source_eligible_metric_row(
         "top_decile_lift": top_decile_lift,
         "mean_predicted_risk": 0.06,
         "test_positive_rate": 0.06,
+    }
+
+
+def test_run_exposure_load_source_eligible_policy_sprint_writes_artifacts(tmp_path):
+    validation_path = tmp_path / "exposure_load_season_forward_validation.csv"
+    calibration_path = tmp_path / "exposure_load_source_eligible_calibration.json"
+    pd.DataFrame(
+        [
+            _source_eligible_policy_alert_row(
+                "2023-2024",
+                "season_local_percentile",
+                capture=0.25,
+                burden=1.20,
+                threshold=0.05,
+            ),
+            _source_eligible_policy_alert_row(
+                "2023-2024",
+                "burden_capped_percentile",
+                capture=0.20,
+                burden=0.80,
+                threshold=0.025,
+            ),
+            _source_eligible_policy_alert_row(
+                "2024-2025",
+                "burden_capped_percentile",
+                capture=0.40,
+                burden=0.70,
+                threshold=0.05,
+            ),
+            _source_eligible_policy_alert_row(
+                "2025-2026",
+                "burden_capped_percentile",
+                capture=0.20,
+                burden=0.80,
+                threshold=0.025,
+            ),
+        ]
+    ).to_csv(validation_path, index=False)
+    calibration_path.write_text(
+        json.dumps(
+            {
+                "overall_recommendation": (
+                    "probability_research_can_resume_on_source_eligible_seasons"
+                ),
+                "production_readiness": "not_ready_for_probability_or_pilot",
+                "excluded_test_seasons": ["2024-2025"],
+                "calibration_rows": [
+                    {
+                        "calibration_scope": "source_eligible",
+                        "ranking_triage_gain_calibration_loss_count": 0,
+                        "calibration_supported_count": 2,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_exposure_load_source_eligible_policy_sprint_experiment(
+        season_forward_validation_path=validation_path,
+        exposure_load_source_eligible_calibration_path=calibration_path,
+        output_dir=tmp_path,
+        experiment_id="exposure_load_source_eligible_policy",
+    )
+
+    assert (result / "exposure_load_source_eligible_policy.csv").exists()
+    assert (result / "exposure_load_source_eligible_thresholds.csv").exists()
+    assert (result / "exposure_load_source_eligible_policy.json").exists()
+    assert (result / "exposure_load_source_eligible_policy_report.md").exists()
+    assert (result / "config.json").exists()
+
+    payload = json.loads(
+        (result / "exposure_load_source_eligible_policy.json").read_text()
+    )
+    assert payload["overall_recommendation"] == (
+        "advance_source_eligible_shadow_mode_threshold_research"
+    )
+
+
+def _source_eligible_policy_alert_row(
+    test_season_id: str,
+    threshold_policy: str,
+    capture: float,
+    burden: float,
+    threshold: float,
+) -> dict[str, object]:
+    return {
+        "row_type": "alert_policy",
+        "test_season_id": test_season_id,
+        "feature_set": "graph_plus_coverage_exposure_load",
+        "threshold_policy": threshold_policy,
+        "channel_name": "broad_30d",
+        "policy_name": "exclude_concussion",
+        "graph_window_size": 4,
+        "horizon_days": 30,
+        "role": "broad 30d early warning",
+        "selected_threshold_value": threshold,
+        "burden_cap_episodes_per_athlete_season": (
+            1.0 if threshold_policy == "burden_capped_percentile" else None
+        ),
+        "unique_event_capture_rate": capture,
+        "episodes_per_athlete_season": burden,
+        "unique_captured_event_count": 3,
+        "unique_observed_event_count": 12,
     }
 
 

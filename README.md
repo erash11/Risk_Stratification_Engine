@@ -428,6 +428,31 @@ calibration-loss rows, 6 calibration-supported rows, mean Brier skill delta
 +0.065, and mean prediction-gap delta -0.005. This reopens probability research
 only for source-eligible seasons; it is still not pilot or dashboard clearance.
 
+## Run Exposure Load Source-Eligible Policy Sprint
+
+```bash
+risk-engine \
+  --exposure-load-source-eligible-policy-sprint \
+  --season-forward-validation-path outputs/experiments/exposure_load_season_forward_validation_v1/exposure_load_season_forward_validation.csv \
+  --exposure-load-source-eligible-calibration outputs/experiments/exposure_load_source_eligible_calibration_v1/exposure_load_source_eligible_calibration.json \
+  --output-dir outputs \
+  --experiment-id exposure_load_source_eligible_policy_v1
+```
+
+This writes `exposure_load_source_eligible_policy.csv`,
+`exposure_load_source_eligible_thresholds.csv`,
+`exposure_load_source_eligible_policy.json`, and
+`exposure_load_source_eligible_policy_report.md`.
+
+The live `exposure_load_source_eligible_policy_v1` run recommended
+`advance_source_eligible_shadow_mode_threshold_research` with production
+readiness still `not_ready_for_probability_or_pilot`. It excludes 2024-2025 and
+freezes research shadow-mode candidates under a 1.0 episode per athlete-season
+burden cap: `broad_30d` mean capture 0.151 / burden 0.354, `severity_14d`
+0.129 / 0.453, `severity_7d` 0.050 / 0.335, and
+`subtype_lower_extremity_soft_tissue_30d` 0.186 / 0.774. This is model-readiness
+progress for prospective shadow monitoring, not pilot or dashboard clearance.
+
 ## Run Live-Source Experiment
 
 When `config/paths.local.yaml` points to available local sources, the CLI can

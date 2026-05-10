@@ -76,6 +76,11 @@ from risk_stratification_engine.exposure_load_source_eligible_calibration import
     clean_source_eligible_calibration_rows,
     write_exposure_load_source_eligible_calibration_report,
 )
+from risk_stratification_engine.exposure_load_source_eligible_policy import (
+    build_exposure_load_source_eligible_policy_package,
+    clean_source_eligible_policy_rows,
+    write_exposure_load_source_eligible_policy_report,
+)
 from risk_stratification_engine.exposure_load_source_resolution import (
     build_exposure_load_source_resolution_policy,
     clean_source_resolution_rows,
@@ -2332,6 +2337,51 @@ def run_exposure_load_source_eligible_calibration_sprint_experiment(
     )
     write_exposure_load_source_eligible_calibration_report(
         experiment_dir / "exposure_load_source_eligible_calibration_report.md",
+        summary,
+    )
+    return experiment_dir
+
+
+def run_exposure_load_source_eligible_policy_sprint_experiment(
+    season_forward_validation_path: str | Path,
+    exposure_load_source_eligible_calibration_path: str | Path,
+    output_dir: str | Path,
+    experiment_id: str,
+) -> Path:
+    experiment_dir = _experiment_path(output_dir, experiment_id)
+    validation_rows = pd.read_csv(season_forward_validation_path)
+    source_eligible_calibration = _load_json_payload(
+        exposure_load_source_eligible_calibration_path
+    )
+    summary = build_exposure_load_source_eligible_policy_package(
+        validation_rows=_json_records(validation_rows),
+        source_eligible_calibration=source_eligible_calibration,
+    )
+    write_frame(
+        pd.DataFrame(clean_source_eligible_policy_rows(summary["policy_rows"])),
+        experiment_dir / "exposure_load_source_eligible_policy.csv",
+    )
+    write_frame(
+        pd.DataFrame(clean_source_eligible_policy_rows(summary["threshold_rows"])),
+        experiment_dir / "exposure_load_source_eligible_thresholds.csv",
+    )
+    _write_json(
+        experiment_dir / "config.json",
+        {
+            "experiment_id": experiment_id,
+            "experiment_type": "exposure_load_source_eligible_policy_sprint",
+            "season_forward_validation_path": str(season_forward_validation_path),
+            "exposure_load_source_eligible_calibration_path": str(
+                exposure_load_source_eligible_calibration_path
+            ),
+        },
+    )
+    _write_json(
+        experiment_dir / "exposure_load_source_eligible_policy.json",
+        summary,
+    )
+    write_exposure_load_source_eligible_policy_report(
+        experiment_dir / "exposure_load_source_eligible_policy_report.md",
         summary,
     )
     return experiment_dir

@@ -123,6 +123,7 @@ Future work may add a dashboard performance tab inspired by the Malum/SPEAR mate
 - Checklist rows: 56.
 - Audit-trail seed rows: 8.
 - Packet markdown files: 8 under `review_packets/`.
+- Reviewer guide: `docs/shadow_collection_reviewer_guide.md`.
 
 **Interpretation:** The project now has the operating materials needed to collect retained-channel prospective shadow evidence without relying on ad hoc CSV editing. This sprint does not complete evidence rows and does not support probability calibration or dashboard clearance.
 

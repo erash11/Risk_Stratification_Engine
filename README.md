@@ -707,6 +707,9 @@ de-identified markdown file per packet under `review_packets/`. The live
 packets, 56 checklist rows, and 8 audit-trail seed rows without completing
 evidence or changing readiness status.
 
+For the exact reviewer workflow and user responsibilities, see
+`docs/shadow_collection_reviewer_guide.md`.
+
 ## Run Exposure Load Shadow Collection Summary Sprint
 
 After retained-channel prospective collection rows are filled, validate and

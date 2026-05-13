@@ -55,6 +55,44 @@ Fill these fields for every row in `exposure_load_shadow_adjudication_template.c
 | `action_taken` | One of `none`, `monitor`, `communicate`, `modify_load`, `clinical_review`, or `other`. |
 | `notes` | Optional short rationale. Use de-identified language. |
 
+Leave the generated context columns unchanged. These include fields such as
+`review_packet_id`, `channel_name`, `test_season_id`, event counts, burden, and
+`review_packet_status`. The reviewer only fills the blank adjudication fields.
+
+## Example Completed Row
+
+The template starts like this:
+
+```csv
+review_packet_id,channel_name,test_season_id,minimum_review_unit,required_evidence,episode_count,unique_observed_event_count,unique_captured_event_count,missed_event_count,episodes_per_athlete_season,review_packet_status,reviewer_id,review_date,alert_usefulness,outcome_confirmed,source_context_ok,action_taken,notes,adjudication_status
+broad_30d__2021-2022,broad_30d,2021-2022,complete source-eligible athlete-season,"frozen alert episodes, source eligibility, exposure capture status, outcome adjudication, and alert burden",8,0,0,0,0.05,ready_for_research_adjudication,,,,,,,,pending_review
+```
+
+An example completed row could look like this:
+
+```csv
+review_packet_id,channel_name,test_season_id,minimum_review_unit,required_evidence,episode_count,unique_observed_event_count,unique_captured_event_count,missed_event_count,episodes_per_athlete_season,review_packet_status,reviewer_id,review_date,alert_usefulness,outcome_confirmed,source_context_ok,action_taken,notes,adjudication_status
+broad_30d__2021-2022,broad_30d,2021-2022,complete source-eligible athlete-season,"frozen alert episodes, source eligibility, exposure capture status, outcome adjudication, and alert burden",8,0,0,0,0.05,ready_for_research_adjudication,ER1,2026-05-13,useful,true,true,monitor,"De-identified review: alert aligned with a plausible managed-risk period and would have supported closer monitoring.",pending_review
+```
+
+The same decision in plain language:
+
+| Field | Example value | Why |
+|---|---|---|
+| `reviewer_id` | `ER1` | Stable reviewer code, not a full name. |
+| `review_date` | `2026-05-13` | ISO date format. |
+| `alert_usefulness` | `useful` | The packet pointed to a coherent operational concern. |
+| `outcome_confirmed` | `true` | Review found a matching injury, limitation, clinical context, or managed-risk case. |
+| `source_context_ok` | `true` | The packet was not explained away by source gaps or roster/capture shifts. |
+| `action_taken` | `monitor` | A reasonable staff-facing response would have been closer monitoring. |
+| `notes` | Short de-identified rationale | Explains the call without naming the athlete. |
+
+If the same packet had weak context, a conservative completion could instead be:
+
+```csv
+broad_30d__2021-2022,broad_30d,2021-2022,complete source-eligible athlete-season,"frozen alert episodes, source eligibility, exposure capture status, outcome adjudication, and alert burden",8,0,0,0,0.05,ready_for_research_adjudication,ER1,2026-05-13,unclear,false,false,none,"De-identified review: source context was insufficient, so the alert should not support escalation.",pending_review
+```
+
 ## How To Adjudicate Each Row
 
 Use the row context from the template and any approved internal review sources.

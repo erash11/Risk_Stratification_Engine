@@ -1625,6 +1625,56 @@ def test_cli_runs_exposure_load_shadow_collection_template_from_monitoring_plan(
     }
 
 
+def test_cli_runs_exposure_load_shadow_collection_summary_from_collection_csv(
+    tmp_path,
+    monkeypatch,
+):
+    collection_path = tmp_path / "exposure_load_shadow_collection_template.csv"
+    collection_path.write_text("artifact", encoding="utf-8")
+    calls = {}
+
+    def fake_run_exposure_load_shadow_collection_summary_sprint_experiment(
+        exposure_load_shadow_collection_path,
+        output_dir,
+        experiment_id,
+    ):
+        calls["shadow_collection_summary"] = {
+            "exposure_load_shadow_collection_path": (
+                exposure_load_shadow_collection_path
+            ),
+            "output_dir": output_dir,
+            "experiment_id": experiment_id,
+        }
+        result = output_dir / "experiments" / experiment_id
+        result.mkdir(parents=True)
+        return result
+
+    monkeypatch.setattr(
+        cli,
+        "run_exposure_load_shadow_collection_summary_sprint_experiment",
+        fake_run_exposure_load_shadow_collection_summary_sprint_experiment,
+    )
+
+    exit_code = main(
+        [
+            "--output-dir",
+            str(tmp_path),
+            "--experiment-id",
+            "exposure_load_shadow_collection_summary",
+            "--exposure-load-shadow-collection-summary-sprint",
+            "--exposure-load-shadow-collection",
+            str(collection_path),
+        ]
+    )
+
+    assert exit_code == 0
+    assert calls["shadow_collection_summary"] == {
+        "exposure_load_shadow_collection_path": collection_path,
+        "output_dir": tmp_path,
+        "experiment_id": "exposure_load_shadow_collection_summary",
+    }
+
+
 def test_cli_runs_window_sensitivity_experiment(tmp_path, monkeypatch):
     calls = {}
 

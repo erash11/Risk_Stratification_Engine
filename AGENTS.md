@@ -74,6 +74,7 @@ Future work may add a dashboard performance tab inspired by the Malum/SPEAR mate
 - Exposure-load shadow adjudication decision sprints are available through `risk-engine --exposure-load-shadow-adjudication-decision-sprint --exposure-load-shadow-adjudication-summary <exposure_load_shadow_adjudication_summary.json> --output-dir outputs --experiment-id <id>`. They write `exposure_load_shadow_adjudication_channel_decisions.csv`, `exposure_load_shadow_adjudication_decision.json`, and `exposure_load_shadow_adjudication_decision_report.md`; the sprint converts completed adjudication evidence into channel-level continue/pause/revise decisions while keeping product readiness blocked.
 - Exposure-load shadow monitoring plan sprints are available through `risk-engine --exposure-load-shadow-monitoring-plan-sprint --exposure-load-shadow-adjudication-decision <exposure_load_shadow_adjudication_decision.json> --output-dir outputs --experiment-id <id>`. They write `exposure_load_shadow_monitoring_plan.csv`, `exposure_load_shadow_monitoring_paused_channels.csv`, `exposure_load_shadow_monitoring_evidence_gates.csv`, `exposure_load_shadow_monitoring_plan.json`, and `exposure_load_shadow_monitoring_plan_report.md`; the sprint turns retained-channel decisions into a prospective shadow collection plan and explicit calibration/pilot gates.
 - Exposure-load shadow collection template sprints are available through `risk-engine --exposure-load-shadow-collection-template-sprint --exposure-load-shadow-monitoring-plan <exposure_load_shadow_monitoring_plan.json> --output-dir outputs --experiment-id <id>`. They write `exposure_load_shadow_collection_schema.csv`, `exposure_load_shadow_collection_template.csv`, `exposure_load_shadow_collection_completion.csv`, `exposure_load_shadow_collection_template.json`, and `exposure_load_shadow_collection_template_report.md`; the sprint creates pending prospective collection rows for retained channels only.
+- Exposure-load shadow collection summary sprints are available through `risk-engine --exposure-load-shadow-collection-summary-sprint --exposure-load-shadow-collection <exposure_load_shadow_collection_template.csv> --output-dir outputs --experiment-id <id>`. They write `exposure_load_shadow_collection_validation.csv`, `exposure_load_shadow_collection_channel_summary.csv`, `exposure_load_shadow_collection_summary.json`, and `exposure_load_shadow_collection_summary_report.md`; the sprint validates prospective retained-channel collection rows, summarizes source-eligible useful/actionable evidence by channel, and keeps calibration, pilot, dashboard, probability-facing, and autonomous-intervention readiness blocked while required collection rows remain pending or invalid.
 - As of 2026-04-27, `run_research_experiment(...)` trains a discrete-time logistic baseline at the 7, 14, and 30 day horizons over 13 graph snapshot-time features: `time_index`, `node_count`, `edge_count`, `mean_abs_correlation`, `edge_density`, `delta_edge_count`, `delta_mean_abs_correlation`, `delta_edge_density`, `graph_instability`, `z_mean_abs_correlation`, `z_edge_density`, `z_edge_count`, and `z_graph_instability`.
 - The temporal delta features (`delta_*`) are computed per athlete-season in chronological order and are zero at each athlete's first snapshot; they capture change from one snapshot to the next. `edge_density` normalizes edge count by the maximum possible edges for the observed node count. `graph_instability` is the rolling population standard deviation of `mean_abs_correlation` over the most recent three snapshots, zero when fewer than two snapshots are available.
 - The intra-individual z-score features compare each athlete-season snapshot against that athlete-season's own strictly prior rolling baseline using the graph `window_size`. They require at least two prior snapshots, use population standard deviation, fall back to `0.0` when the prior standard deviation is zero, and are clipped to `[-10.0, 10.0]`.
@@ -106,6 +107,27 @@ Future work may add a dashboard performance tab inspired by the Malum/SPEAR mate
 - Window/model robustness (`window_model_robustness_v1` run, windows 2/4/7, 5 rotating splits, 349 athletes): no single window/variant dominates all operating goals. Window 7 + L2 won calibration at 7d/14d, window 4 + L2 won 30d calibration, window 2 regularized variants won triage lift at all horizons, and ranking split by horizon: window 2 baseline at 7d AUROC 0.731, window 4 L2 at 14d AUROC 0.729, and window 7 L1 at 30d AUROC 0.729. This supports using L2 as the calibration-oriented production candidate while keeping window 2 as a high-alert triage setting and window 7 under review for 30d ranking.
 
 ## Latest Completed Step
+
+**Exposure-load shadow collection summary sprint** - implemented and verified on 2026-05-13.
+
+**What changed:** Added `build_exposure_load_shadow_collection_summary(...)`, `write_exposure_load_shadow_collection_summary_report(...)`, `run_exposure_load_shadow_collection_summary_sprint_experiment(...)`, and the `--exposure-load-shadow-collection-summary-sprint` CLI mode. The sprint consumes the retained-channel collection CSV, validates required prospective evidence fields, summarizes complete source-eligible useful/actionable packets by channel, and explicitly keeps calibration and product readiness blocked unless the collection gate is satisfied.
+
+**Verification:** New TDD tests first failed because the collection-summary module function, runner, and CLI dispatch did not exist. After implementation, focused collection-summary tests passed. The live command `risk-engine --exposure-load-shadow-collection-summary-sprint --exposure-load-shadow-collection outputs/experiments/exposure_load_shadow_collection_template_v1/exposure_load_shadow_collection_template.csv --output-dir outputs --experiment-id exposure_load_shadow_collection_summary_v1` completed.
+
+**Live results (`exposure_load_shadow_collection_summary_v1`):**
+- Overall recommendation: `complete_shadow_collection_before_calibration_readiness_review`.
+- Production readiness: `not_ready_for_probability_or_pilot`.
+- Calibration readiness: `not_ready_for_calibration_claims`.
+- Total rows: 8.
+- Complete valid rows: 0.
+- Pending or invalid rows: 8.
+- Complete source-eligible rows: 0.
+- Useful/source-trustworthy/actionable rows: 0.
+- Channel gates: `broad_30d` and `severity_14d` both remain `continue_collection`.
+
+**Interpretation:** The new validator confirms the current collection template is not yet evidence-complete. The next real progress step is still to fill the 8 retained-channel prospective rows with source-eligible review evidence, then rerun the collection summary before any calibration-readiness review.
+
+## Previous Completed Step
 
 **Exposure-load shadow collection template sprint** - implemented and verified on 2026-05-13.
 

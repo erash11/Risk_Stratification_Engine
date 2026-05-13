@@ -107,7 +107,9 @@ from risk_stratification_engine.exposure_load_shadow_monitoring import (
 )
 from risk_stratification_engine.exposure_load_shadow_collection import (
     build_exposure_load_shadow_collection_template,
+    build_exposure_load_shadow_collection_summary,
     clean_shadow_collection_rows,
+    write_exposure_load_shadow_collection_summary_report,
     write_exposure_load_shadow_collection_template_report,
 )
 from risk_stratification_engine.exposure_load_shadow_adjudication import (
@@ -2859,6 +2861,45 @@ def run_exposure_load_shadow_collection_template_sprint_experiment(
     write_exposure_load_shadow_collection_template_report(
         experiment_dir / "exposure_load_shadow_collection_template_report.md",
         template,
+    )
+    return experiment_dir
+
+
+def run_exposure_load_shadow_collection_summary_sprint_experiment(
+    exposure_load_shadow_collection_path: str | Path,
+    output_dir: str | Path,
+    experiment_id: str,
+) -> Path:
+    experiment_dir = _experiment_path(output_dir, experiment_id)
+    collection_rows = pd.read_csv(exposure_load_shadow_collection_path)
+    summary = build_exposure_load_shadow_collection_summary(
+        _json_records(collection_rows)
+    )
+    write_frame(
+        pd.DataFrame(clean_shadow_collection_rows(summary["validation_rows"])),
+        experiment_dir / "exposure_load_shadow_collection_validation.csv",
+    )
+    write_frame(
+        pd.DataFrame(clean_shadow_collection_rows(summary["channel_summary_rows"])),
+        experiment_dir / "exposure_load_shadow_collection_channel_summary.csv",
+    )
+    _write_json(
+        experiment_dir / "config.json",
+        {
+            "experiment_id": experiment_id,
+            "experiment_type": "exposure_load_shadow_collection_summary",
+            "exposure_load_shadow_collection_path": str(
+                exposure_load_shadow_collection_path
+            ),
+        },
+    )
+    _write_json(
+        experiment_dir / "exposure_load_shadow_collection_summary.json",
+        summary,
+    )
+    write_exposure_load_shadow_collection_summary_report(
+        experiment_dir / "exposure_load_shadow_collection_summary_report.md",
+        summary,
     )
     return experiment_dir
 

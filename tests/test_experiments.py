@@ -34,6 +34,7 @@ from risk_stratification_engine.experiments import (
     run_exposure_load_shadow_adjudication_sprint_experiment,
     run_exposure_load_shadow_readiness_register_sprint_experiment,
     run_exposure_load_shadow_collection_template_sprint_experiment,
+    run_exposure_load_shadow_collection_summary_sprint_experiment,
     run_exposure_load_shadow_monitoring_plan_sprint_experiment,
     run_exposure_load_shadow_replay_sprint_experiment,
     run_exposure_load_shadow_review_protocol_sprint_experiment,
@@ -2768,6 +2769,59 @@ def test_run_exposure_load_shadow_collection_template_sprint_writes_artifacts(
     )
     assert payload["retained_channels"] == ["broad_30d"]
     assert len(payload["collection_template_rows"]) == 4
+
+
+def test_run_exposure_load_shadow_collection_summary_sprint_writes_artifacts(
+    tmp_path,
+):
+    collection_path = tmp_path / "exposure_load_shadow_collection_template.csv"
+    collection_path.write_text(
+        "\n".join(
+            [
+                (
+                    "collection_packet_id,channel_name,packet_sequence,"
+                    "collection_season_id,packet_start_date,packet_end_date,"
+                    "source_eligible,episode_count,unique_observed_event_count,"
+                    "unique_captured_event_count,alert_usefulness,outcome_confirmed,"
+                    "source_context_ok,action_taken,reviewer_id,review_date,notes,"
+                    "collection_status"
+                ),
+                (
+                    "broad_30d__prospective_001,broad_30d,1,2026-2027,"
+                    "2026-08-01,2026-12-01,true,3,1,1,useful,true,true,"
+                    "monitor,ER1,2026-12-15,Prospective packet,complete"
+                ),
+                (
+                    "broad_30d__prospective_002,broad_30d,2,,,,,,,,,,,,,,,"
+                    "pending_collection"
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = run_exposure_load_shadow_collection_summary_sprint_experiment(
+        exposure_load_shadow_collection_path=collection_path,
+        output_dir=tmp_path,
+        experiment_id="exposure_load_shadow_collection_summary",
+    )
+
+    assert (result / "exposure_load_shadow_collection_validation.csv").exists()
+    assert (result / "exposure_load_shadow_collection_channel_summary.csv").exists()
+    assert (result / "exposure_load_shadow_collection_summary.json").exists()
+    assert (result / "exposure_load_shadow_collection_summary_report.md").exists()
+    assert (result / "config.json").exists()
+    payload = json.loads(
+        (result / "exposure_load_shadow_collection_summary.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert payload["overall_recommendation"] == (
+        "complete_shadow_collection_before_calibration_readiness_review"
+    )
+    assert payload["production_readiness"] == "not_ready_for_probability_or_pilot"
+    assert payload["calibration_readiness"] == "not_ready_for_calibration_claims"
 
 
 def _write_context_review_inputs(tmp_path):

@@ -683,6 +683,29 @@ This writes `exposure_load_shadow_collection_schema.csv`,
 collection rows: 4 for `broad_30d` and 4 for `severity_14d`. All rows start
 pending required fields; `severity_7d` remains excluded until revised.
 
+## Run Exposure Load Shadow Collection Summary Sprint
+
+After retained-channel prospective collection rows are filled, validate and
+summarize them with:
+
+```bash
+risk-engine \
+  --exposure-load-shadow-collection-summary-sprint \
+  --exposure-load-shadow-collection outputs/experiments/exposure_load_shadow_collection_template_v1/exposure_load_shadow_collection_template.csv \
+  --output-dir outputs \
+  --experiment-id exposure_load_shadow_collection_summary_v1
+```
+
+This writes `exposure_load_shadow_collection_validation.csv`,
+`exposure_load_shadow_collection_channel_summary.csv`,
+`exposure_load_shadow_collection_summary.json`, and
+`exposure_load_shadow_collection_summary_report.md`. The live
+`exposure_load_shadow_collection_summary_v1` run against the current pending
+template reported 8 pending/invalid rows, 0 complete valid rows, and
+`not_ready_for_calibration_claims`; probability, pilot, and dashboard readiness
+remain blocked until the retained-channel collection evidence is complete and
+summarized.
+
 ## Run Live-Source Experiment
 
 When `config/paths.local.yaml` points to available local sources, the CLI can

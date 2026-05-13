@@ -106,9 +106,12 @@ from risk_stratification_engine.exposure_load_shadow_monitoring import (
     write_exposure_load_shadow_monitoring_plan_report,
 )
 from risk_stratification_engine.exposure_load_shadow_collection import (
+    build_exposure_load_shadow_collection_packet_workflow,
     build_exposure_load_shadow_collection_template,
     build_exposure_load_shadow_collection_summary,
     clean_shadow_collection_rows,
+    write_exposure_load_shadow_collection_packet_workflow_report,
+    write_exposure_load_shadow_collection_reviewer_instructions,
     write_exposure_load_shadow_collection_summary_report,
     write_exposure_load_shadow_collection_template_report,
 )
@@ -2900,6 +2903,59 @@ def run_exposure_load_shadow_collection_summary_sprint_experiment(
     write_exposure_load_shadow_collection_summary_report(
         experiment_dir / "exposure_load_shadow_collection_summary_report.md",
         summary,
+    )
+    return experiment_dir
+
+
+def run_exposure_load_shadow_collection_packet_workflow_sprint_experiment(
+    exposure_load_shadow_collection_path: str | Path,
+    output_dir: str | Path,
+    experiment_id: str,
+) -> Path:
+    experiment_dir = _experiment_path(output_dir, experiment_id)
+    collection_rows = pd.read_csv(exposure_load_shadow_collection_path)
+    workflow = build_exposure_load_shadow_collection_packet_workflow(
+        _json_records(collection_rows)
+    )
+    write_frame(
+        pd.DataFrame(clean_shadow_collection_rows(workflow["packet_manifest_rows"])),
+        experiment_dir / "exposure_load_shadow_collection_packet_manifest.csv",
+    )
+    write_frame(
+        pd.DataFrame(clean_shadow_collection_rows(workflow["packet_checklist_rows"])),
+        experiment_dir / "exposure_load_shadow_collection_packet_checklist.csv",
+    )
+    write_frame(
+        pd.DataFrame(
+            clean_shadow_collection_rows(workflow["packet_audit_trail_rows"])
+        ),
+        experiment_dir / "exposure_load_shadow_collection_packet_audit_trail.csv",
+    )
+    for document in workflow["packet_documents"]:
+        packet_path = experiment_dir / str(document["packet_filename"])
+        packet_path.parent.mkdir(parents=True, exist_ok=True)
+        packet_path.write_text(str(document["content"]), encoding="utf-8")
+    _write_json(
+        experiment_dir / "config.json",
+        {
+            "experiment_id": experiment_id,
+            "experiment_type": "exposure_load_shadow_collection_packet_workflow",
+            "exposure_load_shadow_collection_path": str(
+                exposure_load_shadow_collection_path
+            ),
+        },
+    )
+    _write_json(
+        experiment_dir / "exposure_load_shadow_collection_packet_workflow.json",
+        workflow,
+    )
+    write_exposure_load_shadow_collection_reviewer_instructions(
+        experiment_dir / "exposure_load_shadow_collection_reviewer_instructions.md",
+        workflow,
+    )
+    write_exposure_load_shadow_collection_packet_workflow_report(
+        experiment_dir / "exposure_load_shadow_collection_packet_workflow_report.md",
+        workflow,
     )
     return experiment_dir
 

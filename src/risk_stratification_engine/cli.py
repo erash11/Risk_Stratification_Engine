@@ -34,6 +34,7 @@ from risk_stratification_engine.experiments import (
     run_exposure_load_shadow_adjudication_summary_sprint_experiment,
     run_exposure_load_shadow_adjudication_sprint_experiment,
     run_exposure_load_shadow_channel_lock_sprint_experiment,
+    run_exposure_load_shadow_collection_packet_workflow_sprint_experiment,
     run_exposure_load_shadow_collection_template_sprint_experiment,
     run_exposure_load_shadow_collection_summary_sprint_experiment,
     run_exposure_load_shadow_monitoring_plan_sprint_experiment,
@@ -200,6 +201,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--exposure-load-shadow-collection-summary-sprint",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--exposure-load-shadow-collection-packet-workflow-sprint",
         action="store_true",
     )
     parser.add_argument("--stability-splits", type=int, default=5)
@@ -797,6 +802,27 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(
             "Exposure load shadow collection summary artifacts written to "
+            f"{experiment_dir}"
+        )
+        return 0
+
+    if args.exposure_load_shadow_collection_packet_workflow_sprint:
+        if args.exposure_load_shadow_collection is None:
+            parser.error(
+                "--exposure-load-shadow-collection-packet-workflow-sprint requires "
+                "--exposure-load-shadow-collection"
+            )
+        experiment_dir = (
+            run_exposure_load_shadow_collection_packet_workflow_sprint_experiment(
+                exposure_load_shadow_collection_path=(
+                    args.exposure_load_shadow_collection
+                ),
+                output_dir=args.output_dir,
+                experiment_id=args.experiment_id,
+            )
+        )
+        print(
+            "Exposure load shadow collection packet workflow artifacts written to "
             f"{experiment_dir}"
         )
         return 0

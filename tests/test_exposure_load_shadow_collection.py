@@ -1,9 +1,12 @@
 import json
 
 from risk_stratification_engine.exposure_load_shadow_collection import (
+    build_exposure_load_shadow_collection_packet_workflow,
     build_exposure_load_shadow_collection_template,
     build_exposure_load_shadow_collection_summary,
     clean_shadow_collection_rows,
+    write_exposure_load_shadow_collection_packet_workflow_report,
+    write_exposure_load_shadow_collection_reviewer_instructions,
     write_exposure_load_shadow_collection_summary_report,
     write_exposure_load_shadow_collection_template_report,
 )
@@ -173,6 +176,96 @@ def test_shadow_collection_summary_validates_prospective_rows_and_gates_calibrat
     assert "not probability calibration or dashboard clearance" in report
 
     json.dumps(summary, allow_nan=False)
+
+
+def test_shadow_collection_packet_workflow_creates_reviewer_materials_without_claiming_readiness(
+    tmp_path,
+):
+    workflow = build_exposure_load_shadow_collection_packet_workflow(
+        [
+            {
+                "collection_packet_id": "broad_30d__prospective_001",
+                "channel_name": "broad_30d",
+                "packet_sequence": 1,
+                "collection_unit": "complete source-eligible athlete-season",
+                "evidence_gate": "prospective_shadow_review_before_calibration",
+                "source_rule": "stop if source eligibility fails or alert burden exceeds policy cap",
+                "collection_status": "pending_collection",
+            },
+            {
+                "collection_packet_id": "severity_14d__prospective_001",
+                "channel_name": "severity_14d",
+                "packet_sequence": 1,
+                "collection_unit": "complete source-eligible athlete-season",
+                "evidence_gate": "prospective_shadow_review_before_calibration",
+                "source_rule": "stop if source eligibility fails or alert burden exceeds policy cap",
+                "collection_status": "pending_collection",
+            },
+        ]
+    )
+
+    assert workflow["experiment_type"] == (
+        "exposure_load_shadow_collection_packet_workflow_sprint"
+    )
+    assert workflow["overall_recommendation"] == (
+        "prepare_retained_channel_reviewer_packets"
+    )
+    assert workflow["production_readiness"] == "not_ready_for_probability_or_pilot"
+    assert workflow["calibration_readiness"] == "not_ready_for_calibration_claims"
+    assert workflow["packet_count"] == 2
+
+    manifest_rows = workflow["packet_manifest_rows"]
+    assert manifest_rows[0]["collection_packet_id"] == "broad_30d__prospective_001"
+    assert manifest_rows[0]["packet_filename"] == (
+        "review_packets/broad_30d__prospective_001.md"
+    )
+    assert manifest_rows[0]["packet_status"] == (
+        "ready_for_reviewer_evidence_collection"
+    )
+
+    checklist_items = {
+        row["checklist_item"]
+        for row in workflow["packet_checklist_rows"]
+        if row["collection_packet_id"] == "broad_30d__prospective_001"
+    }
+    assert {
+        "confirm_source_eligibility",
+        "record_alert_usefulness",
+        "record_action_taken",
+        "preserve_deidentified_notes",
+    }.issubset(checklist_items)
+
+    audit_rows = workflow["packet_audit_trail_rows"]
+    assert audit_rows[0]["audit_event"] == "packet_created_for_review"
+    assert audit_rows[0]["evidence_status"] == "not_collected"
+
+    packet_documents = workflow["packet_documents"]
+    assert packet_documents[0]["packet_filename"] == (
+        "review_packets/broad_30d__prospective_001.md"
+    )
+    assert "Collection Packet: broad_30d__prospective_001" in packet_documents[0]["content"]
+    assert "probability calibration or dashboard clearance" in packet_documents[0]["content"]
+    assert "source_eligible" in packet_documents[0]["content"]
+
+    instructions_path = tmp_path / "instructions.md"
+    write_exposure_load_shadow_collection_reviewer_instructions(
+        instructions_path,
+        workflow,
+    )
+    instructions = instructions_path.read_text(encoding="utf-8")
+    assert "Reviewer Instructions" in instructions
+    assert "Do not enter identifiable athlete information" in instructions
+
+    report_path = tmp_path / "packet_workflow.md"
+    write_exposure_load_shadow_collection_packet_workflow_report(
+        report_path,
+        workflow,
+    )
+    report = report_path.read_text(encoding="utf-8")
+    assert "Shadow Collection Packet Workflow Sprint" in report
+    assert "Reviewer packet count: 2" in report
+
+    json.dumps(workflow, allow_nan=False)
 
 
 def _monitoring_plan() -> dict[str, object]:

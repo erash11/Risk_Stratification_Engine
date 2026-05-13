@@ -33,6 +33,7 @@ from risk_stratification_engine.experiments import (
     run_exposure_load_shadow_adjudication_summary_sprint_experiment,
     run_exposure_load_shadow_adjudication_sprint_experiment,
     run_exposure_load_shadow_readiness_register_sprint_experiment,
+    run_exposure_load_shadow_collection_packet_workflow_sprint_experiment,
     run_exposure_load_shadow_collection_template_sprint_experiment,
     run_exposure_load_shadow_collection_summary_sprint_experiment,
     run_exposure_load_shadow_monitoring_plan_sprint_experiment,
@@ -2822,6 +2823,55 @@ def test_run_exposure_load_shadow_collection_summary_sprint_writes_artifacts(
     )
     assert payload["production_readiness"] == "not_ready_for_probability_or_pilot"
     assert payload["calibration_readiness"] == "not_ready_for_calibration_claims"
+
+
+def test_run_exposure_load_shadow_collection_packet_workflow_sprint_writes_artifacts(
+    tmp_path,
+):
+    collection_path = tmp_path / "exposure_load_shadow_collection_template.csv"
+    collection_path.write_text(
+        "\n".join(
+            [
+                (
+                    "collection_packet_id,channel_name,packet_sequence,"
+                    "collection_unit,evidence_gate,source_rule,collection_status"
+                ),
+                (
+                    "broad_30d__prospective_001,broad_30d,1,"
+                    "complete source-eligible athlete-season,"
+                    "prospective_shadow_review_before_calibration,"
+                    "stop if source eligibility fails or alert burden exceeds policy cap,"
+                    "pending_collection"
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = run_exposure_load_shadow_collection_packet_workflow_sprint_experiment(
+        exposure_load_shadow_collection_path=collection_path,
+        output_dir=tmp_path,
+        experiment_id="exposure_load_shadow_collection_packet_workflow",
+    )
+
+    assert (result / "exposure_load_shadow_collection_packet_manifest.csv").exists()
+    assert (result / "exposure_load_shadow_collection_packet_checklist.csv").exists()
+    assert (result / "exposure_load_shadow_collection_packet_audit_trail.csv").exists()
+    assert (result / "exposure_load_shadow_collection_reviewer_instructions.md").exists()
+    assert (result / "exposure_load_shadow_collection_packet_workflow.json").exists()
+    assert (result / "exposure_load_shadow_collection_packet_workflow_report.md").exists()
+    assert (result / "review_packets" / "broad_30d__prospective_001.md").exists()
+    payload = json.loads(
+        (result / "exposure_load_shadow_collection_packet_workflow.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert payload["overall_recommendation"] == (
+        "prepare_retained_channel_reviewer_packets"
+    )
+    assert payload["packet_count"] == 1
+    assert payload["production_readiness"] == "not_ready_for_probability_or_pilot"
 
 
 def _write_context_review_inputs(tmp_path):

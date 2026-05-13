@@ -683,6 +683,30 @@ This writes `exposure_load_shadow_collection_schema.csv`,
 collection rows: 4 for `broad_30d` and 4 for `severity_14d`. All rows start
 pending required fields; `severity_7d` remains excluded until revised.
 
+## Run Exposure Load Shadow Collection Packet Workflow Sprint
+
+Before reviewer evidence is entered, generate reviewer packet materials and an
+audit-trail seed with:
+
+```bash
+risk-engine \
+  --exposure-load-shadow-collection-packet-workflow-sprint \
+  --exposure-load-shadow-collection outputs/experiments/exposure_load_shadow_collection_template_v1/exposure_load_shadow_collection_template.csv \
+  --output-dir outputs \
+  --experiment-id exposure_load_shadow_collection_packet_workflow_v1
+```
+
+This writes `exposure_load_shadow_collection_packet_manifest.csv`,
+`exposure_load_shadow_collection_packet_checklist.csv`,
+`exposure_load_shadow_collection_packet_audit_trail.csv`,
+`exposure_load_shadow_collection_reviewer_instructions.md`,
+`exposure_load_shadow_collection_packet_workflow.json`,
+`exposure_load_shadow_collection_packet_workflow_report.md`, and one
+de-identified markdown file per packet under `review_packets/`. The live
+`exposure_load_shadow_collection_packet_workflow_v1` run created 8 reviewer
+packets, 56 checklist rows, and 8 audit-trail seed rows without completing
+evidence or changing readiness status.
+
 ## Run Exposure Load Shadow Collection Summary Sprint
 
 After retained-channel prospective collection rows are filled, validate and

@@ -226,6 +226,128 @@ def write_exposure_load_shadow_collection_summary_report(
     path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
 
 
+def build_exposure_load_shadow_collection_packet_workflow(
+    collection_rows: list[dict[str, object]],
+) -> dict[str, object]:
+    rows = [
+        _clean_row(row)
+        for row in collection_rows
+        if not _is_blank(row.get("collection_packet_id"))
+    ]
+    packet_manifest_rows = [_packet_manifest_row(row) for row in rows]
+    packet_checklist_rows = [
+        checklist_row
+        for row in packet_manifest_rows
+        for checklist_row in _packet_checklist_rows(row)
+    ]
+    packet_audit_trail_rows = [
+        _packet_audit_trail_row(row) for row in packet_manifest_rows
+    ]
+    packet_documents = [
+        {
+            "collection_packet_id": row["collection_packet_id"],
+            "packet_filename": row["packet_filename"],
+            "content": _packet_document(row),
+        }
+        for row in packet_manifest_rows
+    ]
+    return {
+        "experiment_type": (
+            "exposure_load_shadow_collection_packet_workflow_sprint"
+        ),
+        "overall_recommendation": _packet_workflow_recommendation(
+            packet_manifest_rows
+        ),
+        "production_readiness": PRODUCTION_BLOCKED,
+        "calibration_readiness": "not_ready_for_calibration_claims",
+        "packet_count": len(packet_manifest_rows),
+        "packet_manifest_rows": packet_manifest_rows,
+        "packet_checklist_rows": packet_checklist_rows,
+        "packet_audit_trail_rows": packet_audit_trail_rows,
+        "packet_documents": packet_documents,
+        "review_boundary": (
+            "reviewer packet workflow only; not probability calibration or dashboard clearance"
+        ),
+        "deidentification_rule": (
+            "use collection packet IDs and de-identified reviewer notes only; "
+            "do not enter identifiable athlete information"
+        ),
+    }
+
+
+def write_exposure_load_shadow_collection_reviewer_instructions(
+    path: Path,
+    workflow: dict[str, object],
+) -> None:
+    lines = [
+        "# Exposure Load Shadow Collection Reviewer Instructions",
+        "",
+        f"Recommendation: {workflow['overall_recommendation']}",
+        f"Production readiness: {workflow['production_readiness']}",
+        f"Calibration readiness: {workflow['calibration_readiness']}",
+        "",
+        "## Boundary",
+        "",
+        str(workflow["review_boundary"]),
+        "",
+        "Do not enter identifiable athlete information in packet files, notes, or CSV fields.",
+        "",
+        "## Review Steps",
+        "",
+        "1. Open the packet markdown file listed in the manifest.",
+        "2. Confirm the collection unit and source rule before reviewing evidence.",
+        "3. Record only de-identified season/window, eligibility, alert, outcome, and action values in the collection CSV.",
+        "4. Use `source_eligible=false` when the packet fails the source rule, then document the de-identified reason in notes.",
+        "5. Leave probability, calibration, pilot, dashboard, and intervention claims out of the review.",
+        "",
+        "## Required CSV Fields",
+        "",
+    ]
+    for field in REQUIRED_COLLECTION_FIELDS:
+        lines.append(f"- `{field}`")
+    lines.extend(
+        [
+            "",
+            "Optional but recommended fields: `outcome_confirmed`, "
+            "`source_context_ok`, `action_taken`, and de-identified `notes`.",
+        ]
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+
+
+def write_exposure_load_shadow_collection_packet_workflow_report(
+    path: Path,
+    workflow: dict[str, object],
+) -> None:
+    lines = [
+        "# Exposure Load Shadow Collection Packet Workflow Sprint",
+        "",
+        f"Recommendation: {workflow['overall_recommendation']}",
+        f"Production readiness: {workflow['production_readiness']}",
+        f"Calibration readiness: {workflow['calibration_readiness']}",
+        f"Review boundary: {workflow['review_boundary']}",
+        "",
+        "## Reviewer Packet Workflow",
+        "",
+        f"- Reviewer packet count: {workflow['packet_count']}",
+        f"- Manifest rows: {len(workflow['packet_manifest_rows'])}",
+        f"- Checklist rows: {len(workflow['packet_checklist_rows'])}",
+        f"- Audit trail seed rows: {len(workflow['packet_audit_trail_rows'])}",
+        "",
+        "## Interpretation",
+        "",
+        (
+            "This sprint prepares reviewer packet materials and audit-trail "
+            "seeds for retained-channel prospective shadow collection. It does "
+            "not complete the evidence rows and does not support probability "
+            "calibration or dashboard clearance."
+        ),
+    ]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+
+
 def clean_shadow_collection_rows(
     rows: list[dict[str, object]],
 ) -> list[dict[str, object]]:
@@ -520,6 +642,155 @@ def _schema_rows() -> list[dict[str, object]]:
         _schema_row("review_date", "date", True, "YYYY-MM-DD"),
         _schema_row("notes", "string", False, ""),
     ]
+
+
+def _packet_manifest_row(row: dict[str, object]) -> dict[str, object]:
+    collection_packet_id = str(row.get("collection_packet_id") or "unknown")
+    return {
+        "collection_packet_id": collection_packet_id,
+        "channel_name": row.get("channel_name"),
+        "packet_sequence": row.get("packet_sequence"),
+        "packet_filename": f"review_packets/{collection_packet_id}.md",
+        "collection_unit": row.get("collection_unit"),
+        "evidence_gate": row.get("evidence_gate"),
+        "source_rule": row.get("source_rule"),
+        "collection_status": row.get("collection_status"),
+        "packet_status": "ready_for_reviewer_evidence_collection",
+        "required_output": (
+            "complete the matching collection CSV row with prospective "
+            "source-eligible review evidence"
+        ),
+    }
+
+
+def _packet_checklist_rows(
+    manifest_row: dict[str, object],
+) -> list[dict[str, object]]:
+    checklist = [
+        (
+            "confirm_source_eligibility",
+            "Confirm source eligibility under the packet source rule.",
+            True,
+        ),
+        (
+            "record_packet_window",
+            "Record de-identified season, packet start date, and packet end date.",
+            True,
+        ),
+        (
+            "record_alert_episode_counts",
+            "Record alert episode count and observed/captured event counts.",
+            True,
+        ),
+        (
+            "record_alert_usefulness",
+            "Classify alert usefulness as useful, noisy, misleading, or unclear.",
+            True,
+        ),
+        (
+            "record_source_context_ok",
+            "Record whether source context is trustworthy for this packet.",
+            False,
+        ),
+        (
+            "record_action_taken",
+            "Record de-identified action category, including none when no action occurred.",
+            False,
+        ),
+        (
+            "preserve_deidentified_notes",
+            "Write concise notes without identifiable athlete information.",
+            False,
+        ),
+    ]
+    return [
+        {
+            "collection_packet_id": manifest_row["collection_packet_id"],
+            "channel_name": manifest_row["channel_name"],
+            "checklist_order": index,
+            "checklist_item": item,
+            "completion_rule": rule,
+            "required_for_completion": required,
+        }
+        for index, (item, rule, required) in enumerate(checklist, start=1)
+    ]
+
+
+def _packet_audit_trail_row(
+    manifest_row: dict[str, object],
+) -> dict[str, object]:
+    return {
+        "collection_packet_id": manifest_row["collection_packet_id"],
+        "channel_name": manifest_row["channel_name"],
+        "audit_event": "packet_created_for_review",
+        "evidence_status": "not_collected",
+        "source_evidence_attached": False,
+        "reviewer_id": "",
+        "review_date": "",
+        "audit_notes": (
+            "Seed row; update after reviewer evidence is collected in the "
+            "collection template."
+        ),
+    }
+
+
+def _packet_document(manifest_row: dict[str, object]) -> str:
+    collection_packet_id = manifest_row["collection_packet_id"]
+    lines = [
+        f"# Collection Packet: {collection_packet_id}",
+        "",
+        f"Channel: {manifest_row['channel_name']}",
+        f"Packet sequence: {manifest_row['packet_sequence']}",
+        f"Collection unit: {manifest_row['collection_unit']}",
+        f"Evidence gate: {manifest_row['evidence_gate']}",
+        f"Source rule: {manifest_row['source_rule']}",
+        "",
+        "## Review Boundary",
+        "",
+        (
+            "This packet supports prospective shadow collection only. It is not "
+            "probability calibration or dashboard clearance."
+        ),
+        "",
+        "## Evidence To Record In Collection CSV",
+        "",
+        "- `collection_season_id`: de-identified season label",
+        "- `packet_start_date`: YYYY-MM-DD",
+        "- `packet_end_date`: YYYY-MM-DD",
+        "- `source_eligible`: true or false",
+        "- `episode_count`: non-negative integer",
+        "- `unique_observed_event_count`: non-negative integer",
+        "- `unique_captured_event_count`: non-negative integer",
+        "- `alert_usefulness`: useful, noisy, misleading, or unclear",
+        "- `outcome_confirmed`: true or false when available",
+        "- `source_context_ok`: true or false when available",
+        "- `action_taken`: none, monitor, communicate, modify_load, clinical_review, or other",
+        "- `reviewer_id`: reviewer code, not a full name if not needed",
+        "- `review_date`: YYYY-MM-DD",
+        "- `notes`: de-identified notes only",
+        "",
+        "## Checklist",
+        "",
+    ]
+    for row in _packet_checklist_rows(manifest_row):
+        lines.append(f"- [ ] {row['completion_rule']}")
+    lines.extend(
+        [
+            "",
+            "## De-identification",
+            "",
+            "Do not enter identifiable athlete information in this packet.",
+        ]
+    )
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _packet_workflow_recommendation(
+    packet_manifest_rows: list[dict[str, object]],
+) -> str:
+    if packet_manifest_rows:
+        return "prepare_retained_channel_reviewer_packets"
+    return "revise_collection_template_before_packet_workflow"
 
 
 def _schema_row(

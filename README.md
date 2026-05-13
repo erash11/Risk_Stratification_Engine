@@ -589,6 +589,9 @@ reviewer fields: `reviewer_id`, `review_date`, `alert_usefulness`,
 logical stopping point for current-data preparation: the next progress requires
 actual reviewer/adjudication values from prospective collection.
 
+See `docs/shadow_adjudication_guide.md` for the manual review workflow, field
+definitions, and conservative decision rules for completing the template.
+
 ## Run Live-Source Experiment
 
 When `config/paths.local.yaml` points to available local sources, the CLI can

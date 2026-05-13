@@ -105,6 +105,11 @@ from risk_stratification_engine.exposure_load_shadow_monitoring import (
     clean_shadow_monitoring_rows,
     write_exposure_load_shadow_monitoring_plan_report,
 )
+from risk_stratification_engine.exposure_load_shadow_collection import (
+    build_exposure_load_shadow_collection_template,
+    clean_shadow_collection_rows,
+    write_exposure_load_shadow_collection_template_report,
+)
 from risk_stratification_engine.exposure_load_shadow_adjudication import (
     build_exposure_load_shadow_adjudication_decision_package,
     build_exposure_load_shadow_adjudication_package,
@@ -2809,6 +2814,51 @@ def run_exposure_load_shadow_monitoring_plan_sprint_experiment(
     write_exposure_load_shadow_monitoring_plan_report(
         experiment_dir / "exposure_load_shadow_monitoring_plan_report.md",
         plan,
+    )
+    return experiment_dir
+
+
+def run_exposure_load_shadow_collection_template_sprint_experiment(
+    exposure_load_shadow_monitoring_plan_path: str | Path,
+    output_dir: str | Path,
+    experiment_id: str,
+) -> Path:
+    experiment_dir = _experiment_path(output_dir, experiment_id)
+    monitoring_plan = _load_json_payload(exposure_load_shadow_monitoring_plan_path)
+    template = build_exposure_load_shadow_collection_template(monitoring_plan)
+    write_frame(
+        pd.DataFrame(clean_shadow_collection_rows(template["schema_rows"])),
+        experiment_dir / "exposure_load_shadow_collection_schema.csv",
+    )
+    write_frame(
+        pd.DataFrame(
+            clean_shadow_collection_rows(template["collection_template_rows"])
+        ),
+        experiment_dir / "exposure_load_shadow_collection_template.csv",
+    )
+    write_frame(
+        pd.DataFrame(
+            clean_shadow_collection_rows(template["completion_check_rows"])
+        ),
+        experiment_dir / "exposure_load_shadow_collection_completion.csv",
+    )
+    _write_json(
+        experiment_dir / "config.json",
+        {
+            "experiment_id": experiment_id,
+            "experiment_type": "exposure_load_shadow_collection_template",
+            "exposure_load_shadow_monitoring_plan_path": str(
+                exposure_load_shadow_monitoring_plan_path
+            ),
+        },
+    )
+    _write_json(
+        experiment_dir / "exposure_load_shadow_collection_template.json",
+        template,
+    )
+    write_exposure_load_shadow_collection_template_report(
+        experiment_dir / "exposure_load_shadow_collection_template_report.md",
+        template,
     )
     return experiment_dir
 

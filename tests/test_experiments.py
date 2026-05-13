@@ -33,6 +33,7 @@ from risk_stratification_engine.experiments import (
     run_exposure_load_shadow_adjudication_summary_sprint_experiment,
     run_exposure_load_shadow_adjudication_sprint_experiment,
     run_exposure_load_shadow_readiness_register_sprint_experiment,
+    run_exposure_load_shadow_collection_template_sprint_experiment,
     run_exposure_load_shadow_monitoring_plan_sprint_experiment,
     run_exposure_load_shadow_replay_sprint_experiment,
     run_exposure_load_shadow_review_protocol_sprint_experiment,
@@ -2698,6 +2699,75 @@ def test_run_exposure_load_shadow_monitoring_plan_sprint_writes_artifacts(
     )
     assert payload["retained_channels"] == ["broad_30d"]
     assert payload["paused_or_revision_channels"] == ["severity_7d"]
+
+
+def test_run_exposure_load_shadow_collection_template_sprint_writes_artifacts(
+    tmp_path,
+):
+    monitoring_plan_path = tmp_path / "exposure_load_shadow_monitoring_plan.json"
+    monitoring_plan_path.write_text(
+        json.dumps(
+            {
+                "experiment_type": "exposure_load_shadow_monitoring_plan_sprint",
+                "overall_recommendation": "launch_retained_channel_shadow_monitoring",
+                "production_readiness": "not_ready_for_probability_or_pilot",
+                "retained_channels": ["broad_30d"],
+                "paused_or_revision_channels": ["severity_7d"],
+                "retained_channel_rows": [
+                    {
+                        "channel_name": "broad_30d",
+                        "monitoring_status": "continue_shadow_monitoring",
+                        "collection_unit": "complete source-eligible athlete-season",
+                        "minimum_new_review_packets": 4,
+                        "review_cadence": (
+                            "review after each complete source-eligible season"
+                        ),
+                        "evidence_gate": (
+                            "prospective_shadow_review_before_calibration"
+                        ),
+                        "source_rule": (
+                            "stop if source eligibility fails or alert burden "
+                            "exceeds policy cap"
+                        ),
+                    }
+                ],
+                "paused_channel_rows": [
+                    {
+                        "channel_name": "severity_7d",
+                        "monitoring_status": "pause_or_revise",
+                        "required_action": "revise_threshold_or_channel_definition",
+                        "reason": (
+                            "completed packets did not show useful, "
+                            "source-trustworthy, actionable evidence"
+                        ),
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_exposure_load_shadow_collection_template_sprint_experiment(
+        exposure_load_shadow_monitoring_plan_path=monitoring_plan_path,
+        output_dir=tmp_path,
+        experiment_id="exposure_load_shadow_collection_template",
+    )
+
+    assert (result / "exposure_load_shadow_collection_schema.csv").exists()
+    assert (result / "exposure_load_shadow_collection_template.csv").exists()
+    assert (result / "exposure_load_shadow_collection_completion.csv").exists()
+    assert (result / "exposure_load_shadow_collection_template.json").exists()
+    assert (result / "exposure_load_shadow_collection_template_report.md").exists()
+    assert (result / "config.json").exists()
+
+    payload = json.loads(
+        (result / "exposure_load_shadow_collection_template.json").read_text()
+    )
+    assert payload["overall_recommendation"] == (
+        "collect_retained_channel_shadow_packets"
+    )
+    assert payload["retained_channels"] == ["broad_30d"]
+    assert len(payload["collection_template_rows"]) == 4
 
 
 def _write_context_review_inputs(tmp_path):

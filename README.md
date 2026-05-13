@@ -661,6 +661,28 @@ source-eligible review packets for `broad_30d` and `severity_14d`; keep
 `severity_7d` paused for threshold/channel revision; keep probability
 calibration and pilot/dashboard readiness blocked.
 
+## Run Exposure Load Shadow Collection Template Sprint
+
+After the retained-channel monitoring plan exists, create the prospective
+collection template with:
+
+```bash
+risk-engine \
+  --exposure-load-shadow-collection-template-sprint \
+  --exposure-load-shadow-monitoring-plan outputs/experiments/exposure_load_shadow_monitoring_plan_v1/exposure_load_shadow_monitoring_plan.json \
+  --output-dir outputs \
+  --experiment-id exposure_load_shadow_collection_template_v1
+```
+
+This writes `exposure_load_shadow_collection_schema.csv`,
+`exposure_load_shadow_collection_template.csv`,
+`exposure_load_shadow_collection_completion.csv`,
+`exposure_load_shadow_collection_template.json`, and
+`exposure_load_shadow_collection_template_report.md`. The live
+`exposure_load_shadow_collection_template_v1` run created 8 prospective
+collection rows: 4 for `broad_30d` and 4 for `severity_14d`. All rows start
+pending required fields; `severity_7d` remains excluded until revised.
+
 ## Run Live-Source Experiment
 
 When `config/paths.local.yaml` points to available local sources, the CLI can

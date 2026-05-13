@@ -73,6 +73,7 @@ Future work may add a dashboard performance tab inspired by the Malum/SPEAR mate
 - Exposure-load shadow adjudication summary sprints are available through `risk-engine --exposure-load-shadow-adjudication-summary-sprint --exposure-load-shadow-adjudication <completed_adjudication.csv> --output-dir outputs --experiment-id <id>`. They write `exposure_load_shadow_adjudication_validation.csv`, `exposure_load_shadow_adjudication_channel_summary.csv`, `exposure_load_shadow_adjudication_summary.json`, and `exposure_load_shadow_adjudication_summary_report.md`; the sprint validates reviewer completion, summarizes useful/source-trustworthy/actionable packets by channel, and remains blocked until reviewer fields are complete.
 - Exposure-load shadow adjudication decision sprints are available through `risk-engine --exposure-load-shadow-adjudication-decision-sprint --exposure-load-shadow-adjudication-summary <exposure_load_shadow_adjudication_summary.json> --output-dir outputs --experiment-id <id>`. They write `exposure_load_shadow_adjudication_channel_decisions.csv`, `exposure_load_shadow_adjudication_decision.json`, and `exposure_load_shadow_adjudication_decision_report.md`; the sprint converts completed adjudication evidence into channel-level continue/pause/revise decisions while keeping product readiness blocked.
 - Exposure-load shadow monitoring plan sprints are available through `risk-engine --exposure-load-shadow-monitoring-plan-sprint --exposure-load-shadow-adjudication-decision <exposure_load_shadow_adjudication_decision.json> --output-dir outputs --experiment-id <id>`. They write `exposure_load_shadow_monitoring_plan.csv`, `exposure_load_shadow_monitoring_paused_channels.csv`, `exposure_load_shadow_monitoring_evidence_gates.csv`, `exposure_load_shadow_monitoring_plan.json`, and `exposure_load_shadow_monitoring_plan_report.md`; the sprint turns retained-channel decisions into a prospective shadow collection plan and explicit calibration/pilot gates.
+- Exposure-load shadow collection template sprints are available through `risk-engine --exposure-load-shadow-collection-template-sprint --exposure-load-shadow-monitoring-plan <exposure_load_shadow_monitoring_plan.json> --output-dir outputs --experiment-id <id>`. They write `exposure_load_shadow_collection_schema.csv`, `exposure_load_shadow_collection_template.csv`, `exposure_load_shadow_collection_completion.csv`, `exposure_load_shadow_collection_template.json`, and `exposure_load_shadow_collection_template_report.md`; the sprint creates pending prospective collection rows for retained channels only.
 - As of 2026-04-27, `run_research_experiment(...)` trains a discrete-time logistic baseline at the 7, 14, and 30 day horizons over 13 graph snapshot-time features: `time_index`, `node_count`, `edge_count`, `mean_abs_correlation`, `edge_density`, `delta_edge_count`, `delta_mean_abs_correlation`, `delta_edge_density`, `graph_instability`, `z_mean_abs_correlation`, `z_edge_density`, `z_edge_count`, and `z_graph_instability`.
 - The temporal delta features (`delta_*`) are computed per athlete-season in chronological order and are zero at each athlete's first snapshot; they capture change from one snapshot to the next. `edge_density` normalizes edge count by the maximum possible edges for the observed node count. `graph_instability` is the rolling population standard deviation of `mean_abs_correlation` over the most recent three snapshots, zero when fewer than two snapshots are available.
 - The intra-individual z-score features compare each athlete-season snapshot against that athlete-season's own strictly prior rolling baseline using the graph `window_size`. They require at least two prior snapshots, use population standard deviation, fall back to `0.0` when the prior standard deviation is zero, and are clipped to `[-10.0, 10.0]`.
@@ -105,6 +106,24 @@ Future work may add a dashboard performance tab inspired by the Malum/SPEAR mate
 - Window/model robustness (`window_model_robustness_v1` run, windows 2/4/7, 5 rotating splits, 349 athletes): no single window/variant dominates all operating goals. Window 7 + L2 won calibration at 7d/14d, window 4 + L2 won 30d calibration, window 2 regularized variants won triage lift at all horizons, and ranking split by horizon: window 2 baseline at 7d AUROC 0.731, window 4 L2 at 14d AUROC 0.729, and window 7 L1 at 30d AUROC 0.729. This supports using L2 as the calibration-oriented production candidate while keeping window 2 as a high-alert triage setting and window 7 under review for 30d ranking.
 
 ## Latest Completed Step
+
+**Exposure-load shadow collection template sprint** - implemented and verified on 2026-05-13.
+
+**What changed:** Added `exposure_load_shadow_collection.py`, `run_exposure_load_shadow_collection_template_sprint_experiment(...)`, and the `--exposure-load-shadow-collection-template-sprint` CLI mode. The sprint consumes the retained-channel monitoring plan and writes a prospective collection schema, template, and completion checks.
+
+**Verification:** New TDD tests first failed because the collection module, runner, and CLI dispatch did not exist. After implementation, focused collection-template tests passed. The live command `risk-engine --exposure-load-shadow-collection-template-sprint --exposure-load-shadow-monitoring-plan outputs/experiments/exposure_load_shadow_monitoring_plan_v1/exposure_load_shadow_monitoring_plan.json --output-dir outputs --experiment-id exposure_load_shadow_collection_template_v1` completed.
+
+**Live results (`exposure_load_shadow_collection_template_v1`):**
+- Overall recommendation: `collect_retained_channel_shadow_packets`.
+- Production readiness: `not_ready_for_probability_or_pilot`.
+- Retained channels: `broad_30d`, `severity_14d`.
+- Paused/revision channels: `severity_7d`.
+- Collection rows: 8.
+- Pending required-field rows: 8.
+
+**Interpretation:** The next progressive step is now operationalized as a fillable collection template. Real progress toward calibration readiness requires completing these new retained-channel packet rows with prospective source-eligible evidence; no probability-facing or dashboard work should resume before those rows are complete and summarized.
+
+## Previous Completed Step
 
 **Exposure-load shadow monitoring plan sprint** - implemented and verified on 2026-05-13.
 

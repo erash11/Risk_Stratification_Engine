@@ -72,6 +72,7 @@ Future work may add a dashboard performance tab inspired by the Malum/SPEAR mate
 - Exposure-load shadow adjudication package sprints are available through `risk-engine --exposure-load-shadow-adjudication-sprint --exposure-load-shadow-replay <exposure_load_shadow_replay.json> --output-dir outputs --experiment-id <id>`. They write `exposure_load_shadow_adjudication_schema.csv`, `exposure_load_shadow_adjudication_template.csv`, `exposure_load_shadow_adjudication_completion.csv`, `exposure_load_shadow_adjudication.json`, and `exposure_load_shadow_adjudication_report.md`; the sprint converts replay review packets into prospective reviewer collection rows with required usefulness, outcome, source-context, action, and notes fields while keeping product readiness blocked.
 - Exposure-load shadow adjudication summary sprints are available through `risk-engine --exposure-load-shadow-adjudication-summary-sprint --exposure-load-shadow-adjudication <completed_adjudication.csv> --output-dir outputs --experiment-id <id>`. They write `exposure_load_shadow_adjudication_validation.csv`, `exposure_load_shadow_adjudication_channel_summary.csv`, `exposure_load_shadow_adjudication_summary.json`, and `exposure_load_shadow_adjudication_summary_report.md`; the sprint validates reviewer completion, summarizes useful/source-trustworthy/actionable packets by channel, and remains blocked until reviewer fields are complete.
 - Exposure-load shadow adjudication decision sprints are available through `risk-engine --exposure-load-shadow-adjudication-decision-sprint --exposure-load-shadow-adjudication-summary <exposure_load_shadow_adjudication_summary.json> --output-dir outputs --experiment-id <id>`. They write `exposure_load_shadow_adjudication_channel_decisions.csv`, `exposure_load_shadow_adjudication_decision.json`, and `exposure_load_shadow_adjudication_decision_report.md`; the sprint converts completed adjudication evidence into channel-level continue/pause/revise decisions while keeping product readiness blocked.
+- Exposure-load shadow monitoring plan sprints are available through `risk-engine --exposure-load-shadow-monitoring-plan-sprint --exposure-load-shadow-adjudication-decision <exposure_load_shadow_adjudication_decision.json> --output-dir outputs --experiment-id <id>`. They write `exposure_load_shadow_monitoring_plan.csv`, `exposure_load_shadow_monitoring_paused_channels.csv`, `exposure_load_shadow_monitoring_evidence_gates.csv`, `exposure_load_shadow_monitoring_plan.json`, and `exposure_load_shadow_monitoring_plan_report.md`; the sprint turns retained-channel decisions into a prospective shadow collection plan and explicit calibration/pilot gates.
 - As of 2026-04-27, `run_research_experiment(...)` trains a discrete-time logistic baseline at the 7, 14, and 30 day horizons over 13 graph snapshot-time features: `time_index`, `node_count`, `edge_count`, `mean_abs_correlation`, `edge_density`, `delta_edge_count`, `delta_mean_abs_correlation`, `delta_edge_density`, `graph_instability`, `z_mean_abs_correlation`, `z_edge_density`, `z_edge_count`, and `z_graph_instability`.
 - The temporal delta features (`delta_*`) are computed per athlete-season in chronological order and are zero at each athlete's first snapshot; they capture change from one snapshot to the next. `edge_density` normalizes edge count by the maximum possible edges for the observed node count. `graph_instability` is the rolling population standard deviation of `mean_abs_correlation` over the most recent three snapshots, zero when fewer than two snapshots are available.
 - The intra-individual z-score features compare each athlete-season snapshot against that athlete-season's own strictly prior rolling baseline using the graph `window_size`. They require at least two prior snapshots, use population standard deviation, fall back to `0.0` when the prior standard deviation is zero, and are clipped to `[-10.0, 10.0]`.
@@ -104,6 +105,24 @@ Future work may add a dashboard performance tab inspired by the Malum/SPEAR mate
 - Window/model robustness (`window_model_robustness_v1` run, windows 2/4/7, 5 rotating splits, 349 athletes): no single window/variant dominates all operating goals. Window 7 + L2 won calibration at 7d/14d, window 4 + L2 won 30d calibration, window 2 regularized variants won triage lift at all horizons, and ranking split by horizon: window 2 baseline at 7d AUROC 0.731, window 4 L2 at 14d AUROC 0.729, and window 7 L1 at 30d AUROC 0.729. This supports using L2 as the calibration-oriented production candidate while keeping window 2 as a high-alert triage setting and window 7 under review for 30d ranking.
 
 ## Latest Completed Step
+
+**Exposure-load shadow monitoring plan sprint** - implemented and verified on 2026-05-13.
+
+**What changed:** Added `exposure_load_shadow_monitoring.py`, `run_exposure_load_shadow_monitoring_plan_sprint_experiment(...)`, and the `--exposure-load-shadow-monitoring-plan-sprint` CLI mode. The sprint consumes the completed adjudication decision JSON and writes retained-channel monitoring, paused-channel revision, and evidence-gate artifacts.
+
+**Verification:** New TDD tests first failed because the monitoring module, runner, and CLI dispatch did not exist. After implementation, focused monitoring-plan tests passed. The live command `risk-engine --exposure-load-shadow-monitoring-plan-sprint --exposure-load-shadow-adjudication-decision outputs/experiments/exposure_load_shadow_adjudication_decision_v1/exposure_load_shadow_adjudication_decision.json --output-dir outputs --experiment-id exposure_load_shadow_monitoring_plan_v1` completed.
+
+**Live results (`exposure_load_shadow_monitoring_plan_v1`):**
+- Overall recommendation: `launch_retained_channel_shadow_monitoring`.
+- Production readiness: `not_ready_for_probability_or_pilot`.
+- Retained channels: `broad_30d`, `severity_14d`.
+- Paused/revision channel: `severity_7d`.
+- Evidence gate: collect at least 4 new complete source-eligible review packets for retained channels before revisiting calibration.
+- Probability calibration and pilot/dashboard readiness remain blocked.
+
+**Interpretation:** This is the next major milestone package after adjudication: retained-channel prospective shadow monitoring is now specified. The next real evidence step is collecting new review packets for `broad_30d` and `severity_14d`; do not resume probability-facing or dashboard work until those gates are satisfied.
+
+## Previous Completed Step
 
 **Exposure-load shadow adjudication decision sprint** - implemented and verified on 2026-05-13.
 

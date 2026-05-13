@@ -33,6 +33,7 @@ from risk_stratification_engine.experiments import (
     run_exposure_load_shadow_adjudication_summary_sprint_experiment,
     run_exposure_load_shadow_adjudication_sprint_experiment,
     run_exposure_load_shadow_readiness_register_sprint_experiment,
+    run_exposure_load_shadow_monitoring_plan_sprint_experiment,
     run_exposure_load_shadow_replay_sprint_experiment,
     run_exposure_load_shadow_review_protocol_sprint_experiment,
     run_injury_history_feature_sprint_experiment,
@@ -2630,6 +2631,72 @@ def test_run_exposure_load_shadow_adjudication_decision_sprint_writes_artifacts(
         "continue_shadow_monitoring_with_channel_revisions"
     )
     assert payload["continued_shadow_channels"] == ["broad_30d"]
+    assert payload["paused_or_revision_channels"] == ["severity_7d"]
+
+
+def test_run_exposure_load_shadow_monitoring_plan_sprint_writes_artifacts(
+    tmp_path,
+):
+    decision_path = tmp_path / "exposure_load_shadow_adjudication_decision.json"
+    decision_path.write_text(
+        json.dumps(
+            {
+                "experiment_type": "exposure_load_shadow_adjudication_decision_sprint",
+                "overall_recommendation": (
+                    "continue_shadow_monitoring_with_channel_revisions"
+                ),
+                "production_readiness": "not_ready_for_probability_or_pilot",
+                "continued_shadow_channels": ["broad_30d"],
+                "paused_or_revision_channels": ["severity_7d"],
+                "channel_decision_rows": [
+                    {
+                        "channel_name": "broad_30d",
+                        "complete_valid_rows": 4,
+                        "useful_source_ok_actionable_rows": 2,
+                        "channel_decision": "continue_shadow_monitoring",
+                        "decision_rationale": (
+                            "multiple completed packets were useful, "
+                            "source-trustworthy, and actionable"
+                        ),
+                    },
+                    {
+                        "channel_name": "severity_7d",
+                        "complete_valid_rows": 4,
+                        "useful_source_ok_actionable_rows": 0,
+                        "channel_decision": "pause_or_revise_before_more_collection",
+                        "decision_rationale": (
+                            "completed packets did not show useful, "
+                            "source-trustworthy, actionable evidence"
+                        ),
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_exposure_load_shadow_monitoring_plan_sprint_experiment(
+        exposure_load_shadow_adjudication_decision_path=decision_path,
+        output_dir=tmp_path,
+        experiment_id="exposure_load_shadow_monitoring_plan",
+    )
+
+    assert (result / "exposure_load_shadow_monitoring_plan.csv").exists()
+    assert (
+        result / "exposure_load_shadow_monitoring_paused_channels.csv"
+    ).exists()
+    assert (result / "exposure_load_shadow_monitoring_evidence_gates.csv").exists()
+    assert (result / "exposure_load_shadow_monitoring_plan.json").exists()
+    assert (result / "exposure_load_shadow_monitoring_plan_report.md").exists()
+    assert (result / "config.json").exists()
+
+    payload = json.loads(
+        (result / "exposure_load_shadow_monitoring_plan.json").read_text()
+    )
+    assert payload["overall_recommendation"] == (
+        "launch_retained_channel_shadow_monitoring"
+    )
+    assert payload["retained_channels"] == ["broad_30d"]
     assert payload["paused_or_revision_channels"] == ["severity_7d"]
 
 

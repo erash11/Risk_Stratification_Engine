@@ -100,6 +100,11 @@ from risk_stratification_engine.exposure_load_shadow_launch import (
     write_exposure_load_shadow_readiness_register_report,
     write_exposure_load_shadow_review_protocol_report,
 )
+from risk_stratification_engine.exposure_load_shadow_monitoring import (
+    build_exposure_load_shadow_monitoring_plan,
+    clean_shadow_monitoring_rows,
+    write_exposure_load_shadow_monitoring_plan_report,
+)
 from risk_stratification_engine.exposure_load_shadow_adjudication import (
     build_exposure_load_shadow_adjudication_decision_package,
     build_exposure_load_shadow_adjudication_package,
@@ -2761,6 +2766,49 @@ def run_exposure_load_shadow_adjudication_decision_sprint_experiment(
     write_exposure_load_shadow_adjudication_decision_report(
         experiment_dir / "exposure_load_shadow_adjudication_decision_report.md",
         decision,
+    )
+    return experiment_dir
+
+
+def run_exposure_load_shadow_monitoring_plan_sprint_experiment(
+    exposure_load_shadow_adjudication_decision_path: str | Path,
+    output_dir: str | Path,
+    experiment_id: str,
+) -> Path:
+    experiment_dir = _experiment_path(output_dir, experiment_id)
+    adjudication_decision = _load_json_payload(
+        exposure_load_shadow_adjudication_decision_path
+    )
+    plan = build_exposure_load_shadow_monitoring_plan(adjudication_decision)
+    write_frame(
+        pd.DataFrame(clean_shadow_monitoring_rows(plan["retained_channel_rows"])),
+        experiment_dir / "exposure_load_shadow_monitoring_plan.csv",
+    )
+    write_frame(
+        pd.DataFrame(clean_shadow_monitoring_rows(plan["paused_channel_rows"])),
+        experiment_dir / "exposure_load_shadow_monitoring_paused_channels.csv",
+    )
+    write_frame(
+        pd.DataFrame(clean_shadow_monitoring_rows(plan["evidence_gate_rows"])),
+        experiment_dir / "exposure_load_shadow_monitoring_evidence_gates.csv",
+    )
+    _write_json(
+        experiment_dir / "config.json",
+        {
+            "experiment_id": experiment_id,
+            "experiment_type": "exposure_load_shadow_monitoring_plan",
+            "exposure_load_shadow_adjudication_decision_path": str(
+                exposure_load_shadow_adjudication_decision_path
+            ),
+        },
+    )
+    _write_json(
+        experiment_dir / "exposure_load_shadow_monitoring_plan.json",
+        plan,
+    )
+    write_exposure_load_shadow_monitoring_plan_report(
+        experiment_dir / "exposure_load_shadow_monitoring_plan_report.md",
+        plan,
     )
     return experiment_dir
 

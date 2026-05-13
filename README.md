@@ -638,6 +638,29 @@ This writes `exposure_load_shadow_adjudication_channel_decisions.csv`,
 `severity_14d` shadow monitoring, pause or revise `severity_7d`, and keep
 probability calibration, pilot, and dashboard readiness blocked.
 
+## Run Exposure Load Shadow Monitoring Plan Sprint
+
+After channel decisions exist, create the retained-channel monitoring plan with:
+
+```bash
+risk-engine \
+  --exposure-load-shadow-monitoring-plan-sprint \
+  --exposure-load-shadow-adjudication-decision outputs/experiments/exposure_load_shadow_adjudication_decision_v1/exposure_load_shadow_adjudication_decision.json \
+  --output-dir outputs \
+  --experiment-id exposure_load_shadow_monitoring_plan_v1
+```
+
+This writes `exposure_load_shadow_monitoring_plan.csv`,
+`exposure_load_shadow_monitoring_paused_channels.csv`,
+`exposure_load_shadow_monitoring_evidence_gates.csv`,
+`exposure_load_shadow_monitoring_plan.json`, and
+`exposure_load_shadow_monitoring_plan_report.md`. The live
+`exposure_load_shadow_monitoring_plan_v1` run recommended
+`launch_retained_channel_shadow_monitoring`: collect at least 4 new complete
+source-eligible review packets for `broad_30d` and `severity_14d`; keep
+`severity_7d` paused for threshold/channel revision; keep probability
+calibration and pilot/dashboard readiness blocked.
+
 ## Run Live-Source Experiment
 
 When `config/paths.local.yaml` points to available local sources, the CLI can

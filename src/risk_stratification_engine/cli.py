@@ -32,6 +32,7 @@ from risk_stratification_engine.experiments import (
     run_exposure_load_source_resolution_sprint_experiment,
     run_exposure_load_shadow_channel_lock_sprint_experiment,
     run_exposure_load_shadow_readiness_register_sprint_experiment,
+    run_exposure_load_shadow_replay_sprint_experiment,
     run_exposure_load_shadow_review_protocol_sprint_experiment,
     run_forward_case_review_sprint_experiment,
     run_injury_history_feature_sprint_experiment,
@@ -164,6 +165,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--exposure-load-shadow-readiness-register-sprint",
         action="store_true",
     )
+    parser.add_argument("--exposure-load-shadow-replay-sprint", action="store_true")
     parser.add_argument("--stability-splits", type=int, default=5)
     return parser
 
@@ -611,6 +613,36 @@ def main(argv: list[str] | None = None) -> int:
             "Exposure load shadow readiness register artifacts written to "
             f"{experiment_dir}"
         )
+        return 0
+
+    if args.exposure_load_shadow_replay_sprint:
+        required_paths = {
+            "--season-forward-validation-path": args.season_forward_validation_path,
+            "--exposure-load-shadow-channel-lock": (
+                args.exposure_load_shadow_channel_lock
+            ),
+            "--exposure-load-shadow-review-protocol": (
+                args.exposure_load_shadow_review_protocol
+            ),
+        }
+        missing = [flag for flag, path in required_paths.items() if path is None]
+        if missing:
+            parser.error(
+                "--exposure-load-shadow-replay-sprint requires "
+                + ", ".join(missing)
+            )
+        experiment_dir = run_exposure_load_shadow_replay_sprint_experiment(
+            season_forward_validation_path=args.season_forward_validation_path,
+            exposure_load_shadow_channel_lock_path=(
+                args.exposure_load_shadow_channel_lock
+            ),
+            exposure_load_shadow_review_protocol_path=(
+                args.exposure_load_shadow_review_protocol
+            ),
+            output_dir=args.output_dir,
+            experiment_id=args.experiment_id,
+        )
+        print(f"Exposure load shadow replay artifacts written to {experiment_dir}")
         return 0
 
     if args.from_live_sources:

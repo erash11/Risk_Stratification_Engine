@@ -529,6 +529,37 @@ needs burden guardrail review. The readiness register recommends
 collection must precede calibration updates, pilot escalation, dashboard work,
 or autonomous intervention.
 
+## Run Exposure Load Historical Shadow Replay Sprint
+
+```bash
+risk-engine \
+  --exposure-load-shadow-replay-sprint \
+  --season-forward-validation-path outputs/experiments/exposure_load_season_forward_validation_v1/exposure_load_season_forward_validation.csv \
+  --exposure-load-shadow-channel-lock outputs/experiments/exposure_load_shadow_channel_lock_v1/exposure_load_shadow_channel_lock.json \
+  --exposure-load-shadow-review-protocol outputs/experiments/exposure_load_shadow_review_protocol_v1/exposure_load_shadow_review_protocol.json \
+  --output-dir outputs \
+  --experiment-id exposure_load_shadow_replay_v1
+```
+
+This writes `exposure_load_shadow_replay_log.csv`,
+`exposure_load_shadow_review_packets.csv`,
+`exposure_load_shadow_stop_rules.csv`, `exposure_load_shadow_replay.json`, and
+`exposure_load_shadow_replay_report.md`. The sprint replays the locked channels
+against the completed season-forward validation rows, marks source-ineligible
+seasons and burden stop-rule rows, and generates review packets for historical
+source-eligible channel-season rows. This is the current-data bridge into
+prospective outcome collection; it does not prove prospective performance.
+
+The live `exposure_load_shadow_replay_v1` run recommended
+`historical_shadow_replay_ready_for_prospective_collection`. It produced 15
+historical replay rows, 12 source-eligible review packets, 3 source-ineligible
+stop rows, and 0 burden-stop rows. Review packets were evenly distributed across
+the locked channels: 4 each for `broad_30d`, `severity_14d`, and `severity_7d`.
+This is the strongest endpoint available from the current historical data: it
+prepares the prospective collection workflow but does not itself establish
+prospective performance, real-time usefulness, probability calibration readiness,
+or pilot/dashboard readiness.
+
 ## Run Live-Source Experiment
 
 When `config/paths.local.yaml` points to available local sources, the CLI can

@@ -1311,6 +1311,72 @@ def test_cli_runs_exposure_load_shadow_launch_chain_from_artifacts(
     }
 
 
+def test_cli_runs_exposure_load_shadow_replay_from_artifacts(
+    tmp_path,
+    monkeypatch,
+):
+    validation_path = tmp_path / "exposure_load_season_forward_validation.csv"
+    channel_lock_path = tmp_path / "exposure_load_shadow_channel_lock.json"
+    protocol_path = tmp_path / "exposure_load_shadow_review_protocol.json"
+    validation_path.write_text("artifact", encoding="utf-8")
+    channel_lock_path.write_text("artifact", encoding="utf-8")
+    protocol_path.write_text("artifact", encoding="utf-8")
+    calls = {}
+
+    def fake_run_exposure_load_shadow_replay_sprint_experiment(
+        season_forward_validation_path,
+        exposure_load_shadow_channel_lock_path,
+        exposure_load_shadow_review_protocol_path,
+        output_dir,
+        experiment_id,
+    ):
+        calls["shadow_replay"] = {
+            "season_forward_validation_path": season_forward_validation_path,
+            "exposure_load_shadow_channel_lock_path": (
+                exposure_load_shadow_channel_lock_path
+            ),
+            "exposure_load_shadow_review_protocol_path": (
+                exposure_load_shadow_review_protocol_path
+            ),
+            "output_dir": output_dir,
+            "experiment_id": experiment_id,
+        }
+        result = output_dir / "experiments" / experiment_id
+        result.mkdir(parents=True)
+        return result
+
+    monkeypatch.setattr(
+        cli,
+        "run_exposure_load_shadow_replay_sprint_experiment",
+        fake_run_exposure_load_shadow_replay_sprint_experiment,
+    )
+
+    exit_code = main(
+        [
+            "--output-dir",
+            str(tmp_path),
+            "--experiment-id",
+            "exposure_load_shadow_replay",
+            "--exposure-load-shadow-replay-sprint",
+            "--season-forward-validation-path",
+            str(validation_path),
+            "--exposure-load-shadow-channel-lock",
+            str(channel_lock_path),
+            "--exposure-load-shadow-review-protocol",
+            str(protocol_path),
+        ]
+    )
+
+    assert exit_code == 0
+    assert calls["shadow_replay"] == {
+        "season_forward_validation_path": validation_path,
+        "exposure_load_shadow_channel_lock_path": channel_lock_path,
+        "exposure_load_shadow_review_protocol_path": protocol_path,
+        "output_dir": tmp_path,
+        "experiment_id": "exposure_load_shadow_replay",
+    }
+
+
 def test_cli_runs_window_sensitivity_experiment(tmp_path, monkeypatch):
     calls = {}
 

@@ -100,6 +100,11 @@ from risk_stratification_engine.exposure_load_shadow_launch import (
     write_exposure_load_shadow_readiness_register_report,
     write_exposure_load_shadow_review_protocol_report,
 )
+from risk_stratification_engine.exposure_load_shadow_replay import (
+    build_exposure_load_shadow_replay_package,
+    clean_shadow_replay_rows,
+    write_exposure_load_shadow_replay_report,
+)
 from risk_stratification_engine.exposure_load_modeling import (
     build_exposure_load_model_comparison_summary,
     write_exposure_load_model_comparison_report,
@@ -2567,6 +2572,58 @@ def run_exposure_load_shadow_readiness_register_sprint_experiment(
     )
     write_exposure_load_shadow_readiness_register_report(
         experiment_dir / "exposure_load_shadow_readiness_register_report.md",
+        summary,
+    )
+    return experiment_dir
+
+
+def run_exposure_load_shadow_replay_sprint_experiment(
+    season_forward_validation_path: str | Path,
+    exposure_load_shadow_channel_lock_path: str | Path,
+    exposure_load_shadow_review_protocol_path: str | Path,
+    output_dir: str | Path,
+    experiment_id: str,
+) -> Path:
+    experiment_dir = _experiment_path(output_dir, experiment_id)
+    validation_rows = pd.read_csv(season_forward_validation_path)
+    shadow_channel_lock = _load_json_payload(exposure_load_shadow_channel_lock_path)
+    shadow_review_protocol = _load_json_payload(
+        exposure_load_shadow_review_protocol_path
+    )
+    summary = build_exposure_load_shadow_replay_package(
+        validation_rows=_json_records(validation_rows),
+        shadow_channel_lock=shadow_channel_lock,
+        shadow_review_protocol=shadow_review_protocol,
+    )
+    write_frame(
+        pd.DataFrame(clean_shadow_replay_rows(summary["replay_rows"])),
+        experiment_dir / "exposure_load_shadow_replay_log.csv",
+    )
+    write_frame(
+        pd.DataFrame(clean_shadow_replay_rows(summary["review_packet_rows"])),
+        experiment_dir / "exposure_load_shadow_review_packets.csv",
+    )
+    write_frame(
+        pd.DataFrame(clean_shadow_replay_rows(summary["stop_rule_rows"])),
+        experiment_dir / "exposure_load_shadow_stop_rules.csv",
+    )
+    _write_json(
+        experiment_dir / "config.json",
+        {
+            "experiment_id": experiment_id,
+            "experiment_type": "exposure_load_shadow_replay_sprint",
+            "season_forward_validation_path": str(season_forward_validation_path),
+            "exposure_load_shadow_channel_lock_path": str(
+                exposure_load_shadow_channel_lock_path
+            ),
+            "exposure_load_shadow_review_protocol_path": str(
+                exposure_load_shadow_review_protocol_path
+            ),
+        },
+    )
+    _write_json(experiment_dir / "exposure_load_shadow_replay.json", summary)
+    write_exposure_load_shadow_replay_report(
+        experiment_dir / "exposure_load_shadow_replay_report.md",
         summary,
     )
     return experiment_dir

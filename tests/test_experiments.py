@@ -30,6 +30,7 @@ from risk_stratification_engine.experiments import (
     run_exposure_load_source_resolution_sprint_experiment,
     run_exposure_load_shadow_channel_lock_sprint_experiment,
     run_exposure_load_shadow_readiness_register_sprint_experiment,
+    run_exposure_load_shadow_replay_sprint_experiment,
     run_exposure_load_shadow_review_protocol_sprint_experiment,
     run_injury_history_feature_sprint_experiment,
     run_injury_history_forward_diagnostic_sprint_experiment,
@@ -2363,6 +2364,93 @@ def _source_eligible_shadow_monitoring_payload() -> dict[str, object]:
             },
         ],
     }
+
+
+def test_run_exposure_load_shadow_replay_sprint_writes_artifacts(tmp_path):
+    validation_path = tmp_path / "exposure_load_season_forward_validation.csv"
+    channel_lock_path = tmp_path / "exposure_load_shadow_channel_lock.json"
+    protocol_path = tmp_path / "exposure_load_shadow_review_protocol.json"
+    pd.DataFrame(
+        [
+            _source_eligible_policy_alert_row(
+                "2023-2024",
+                "burden_capped_percentile",
+                capture=0.20,
+                burden=0.80,
+                threshold=0.025,
+            ),
+            _source_eligible_policy_alert_row(
+                "2024-2025",
+                "burden_capped_percentile",
+                capture=0.40,
+                burden=0.70,
+                threshold=0.05,
+            ),
+        ]
+    ).to_csv(validation_path, index=False)
+    channel_lock_path.write_text(
+        json.dumps(
+            {
+                "experiment_type": "exposure_load_shadow_channel_lock_sprint",
+                "production_readiness": "not_ready_for_probability_or_pilot",
+                "excluded_test_seasons": ["2024-2025"],
+                "locked_channels": [
+                    {
+                        "channel_name": "broad_30d",
+                        "policy_name": "exclude_concussion",
+                        "horizon_days": 30,
+                        "threshold_policy": "burden_capped_percentile",
+                        "lock_status": "locked_for_research_shadow_review",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    protocol_path.write_text(
+        json.dumps(
+            {
+                "experiment_type": "exposure_load_shadow_review_protocol_sprint",
+                "protocol_rows": [
+                    {
+                        "channel_name": "broad_30d",
+                        "policy_name": "exclude_concussion",
+                        "horizon_days": 30,
+                        "threshold_policy": "burden_capped_percentile",
+                        "minimum_review_unit": (
+                            "complete source-eligible athlete-season"
+                        ),
+                        "required_evidence": "frozen alerts and adjudicated outcomes",
+                        "stop_rule": (
+                            "pause channel if prospective burden exceeds 1.0 "
+                            "episodes per athlete-season or source eligibility fails"
+                        ),
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_exposure_load_shadow_replay_sprint_experiment(
+        season_forward_validation_path=validation_path,
+        exposure_load_shadow_channel_lock_path=channel_lock_path,
+        exposure_load_shadow_review_protocol_path=protocol_path,
+        output_dir=tmp_path,
+        experiment_id="exposure_load_shadow_replay",
+    )
+
+    assert (result / "exposure_load_shadow_replay_log.csv").exists()
+    assert (result / "exposure_load_shadow_review_packets.csv").exists()
+    assert (result / "exposure_load_shadow_stop_rules.csv").exists()
+    assert (result / "exposure_load_shadow_replay.json").exists()
+    assert (result / "exposure_load_shadow_replay_report.md").exists()
+    assert (result / "config.json").exists()
+
+    payload = json.loads((result / "exposure_load_shadow_replay.json").read_text())
+    assert payload["overall_recommendation"] == (
+        "historical_shadow_replay_ready_for_prospective_collection"
+    )
 
 
 def _write_context_review_inputs(tmp_path):

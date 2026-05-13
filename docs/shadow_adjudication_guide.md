@@ -163,8 +163,20 @@ more prospective review data.
 
 ## What To Do After The Template Is Filled
 
-Once the template is complete, the next sprint should ingest the filled
-adjudication file and produce an adjudication summary:
+Once the template is complete, run the adjudication summary sprint:
+
+```bash
+risk-engine \
+  --exposure-load-shadow-adjudication-summary-sprint \
+  --exposure-load-shadow-adjudication outputs/experiments/exposure_load_shadow_adjudication_v1/exposure_load_shadow_adjudication_template.csv \
+  --output-dir outputs \
+  --experiment-id exposure_load_shadow_adjudication_summary_v1
+```
+
+Use the path to your completed adjudication CSV if you save a copy under a
+different name.
+
+The sprint ingests the filled adjudication file and produces:
 
 - packet-level completion status
 - usefulness counts by channel and horizon
@@ -173,8 +185,17 @@ adjudication file and produce an adjudication summary:
 - reviewer-note audit fields
 - recommendation for continued shadow monitoring or rollback
 
-That sprint is the next real milestone after manual review. It cannot be
-completed honestly until the required fields are filled.
+The output files are:
+
+- `exposure_load_shadow_adjudication_validation.csv`
+- `exposure_load_shadow_adjudication_channel_summary.csv`
+- `exposure_load_shadow_adjudication_summary.json`
+- `exposure_load_shadow_adjudication_summary_report.md`
+
+This sprint can run before the packet is complete as a validation check, but it
+will return `complete_adjudication_required_before_operational_summary` until
+all required fields are complete and valid. It cannot produce real operational
+usefulness evidence until the required fields are filled.
 
 ## Current Boundary
 

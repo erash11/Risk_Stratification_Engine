@@ -2,8 +2,10 @@ import json
 
 from risk_stratification_engine.exposure_load_shadow_adjudication import (
     build_exposure_load_shadow_adjudication_package,
+    build_exposure_load_shadow_adjudication_summary,
     clean_shadow_adjudication_rows,
     write_exposure_load_shadow_adjudication_report,
+    write_exposure_load_shadow_adjudication_summary_report,
 )
 
 
@@ -46,6 +48,84 @@ def test_shadow_adjudication_package_creates_schema_template_and_checks(tmp_path
 
     json.dumps(summary, allow_nan=False)
     json.dumps(clean_shadow_adjudication_rows(summary["schema_rows"]), allow_nan=False)
+
+
+def test_shadow_adjudication_summary_validates_completion_and_actionability(
+    tmp_path,
+):
+    summary = build_exposure_load_shadow_adjudication_summary(
+        [
+            {
+                "review_packet_id": "broad_30d__2023-2024",
+                "channel_name": "broad_30d",
+                "test_season_id": "2023-2024",
+                "reviewer_id": "ER1",
+                "review_date": "2026-05-13",
+                "alert_usefulness": "useful",
+                "outcome_confirmed": "true",
+                "source_context_ok": "true",
+                "action_taken": "monitor",
+                "notes": "De-identified useful managed-risk signal.",
+            },
+            {
+                "review_packet_id": "severity_14d__2023-2024",
+                "channel_name": "severity_14d",
+                "test_season_id": "2023-2024",
+                "reviewer_id": "ER1",
+                "review_date": "2026-05-13",
+                "alert_usefulness": "noisy",
+                "outcome_confirmed": "false",
+                "source_context_ok": "true",
+                "action_taken": "none",
+                "notes": "De-identified noisy packet.",
+            },
+            {
+                "review_packet_id": "severity_7d__2023-2024",
+                "channel_name": "severity_7d",
+                "test_season_id": "2023-2024",
+                "reviewer_id": "",
+                "review_date": "bad-date",
+                "alert_usefulness": "maybe",
+                "outcome_confirmed": "",
+                "source_context_ok": "true",
+                "action_taken": "none",
+                "notes": "",
+            },
+        ]
+    )
+
+    assert summary["experiment_type"] == "exposure_load_shadow_adjudication_summary"
+    assert summary["overall_recommendation"] == (
+        "complete_adjudication_required_before_operational_summary"
+    )
+    assert summary["production_readiness"] == "not_ready_for_probability_or_pilot"
+    assert summary["total_rows"] == 3
+    assert summary["complete_valid_rows"] == 2
+    assert summary["pending_or_invalid_rows"] == 1
+    assert summary["useful_source_ok_actionable_rows"] == 1
+
+    validation_rows = summary["validation_rows"]
+    assert validation_rows[0]["completion_status"] == "complete_valid"
+    assert validation_rows[2]["completion_status"] == "pending_or_invalid"
+    assert validation_rows[2]["missing_required_fields"] == (
+        "reviewer_id,outcome_confirmed"
+    )
+    assert validation_rows[2]["invalid_fields"] == "review_date,alert_usefulness"
+
+    channel_rows = summary["channel_summary_rows"]
+    assert {
+        row["channel_name"]: row["useful_source_ok_actionable_rows"]
+        for row in channel_rows
+    } == {"broad_30d": 1, "severity_14d": 0}
+
+    report_path = tmp_path / "adjudication_summary.md"
+    write_exposure_load_shadow_adjudication_summary_report(report_path, summary)
+    report = report_path.read_text(encoding="utf-8")
+    assert "Shadow Adjudication Summary Sprint" in report
+    assert "Complete valid rows: 2" in report
+    assert "not probability calibration or dashboard clearance" in report
+
+    json.dumps(summary, allow_nan=False)
 
 
 def _shadow_replay() -> dict[str, object]:

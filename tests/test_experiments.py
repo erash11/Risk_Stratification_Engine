@@ -29,6 +29,7 @@ from risk_stratification_engine.experiments import (
     run_exposure_load_source_eligible_shadow_monitoring_sprint_experiment,
     run_exposure_load_source_resolution_sprint_experiment,
     run_exposure_load_shadow_channel_lock_sprint_experiment,
+    run_exposure_load_shadow_adjudication_summary_sprint_experiment,
     run_exposure_load_shadow_adjudication_sprint_experiment,
     run_exposure_load_shadow_readiness_register_sprint_experiment,
     run_exposure_load_shadow_replay_sprint_experiment,
@@ -2504,6 +2505,68 @@ def test_run_exposure_load_shadow_adjudication_sprint_writes_artifacts(tmp_path)
     assert payload["overall_recommendation"] == (
         "adjudication_template_ready_for_prospective_collection"
     )
+
+
+def test_run_exposure_load_shadow_adjudication_summary_sprint_writes_artifacts(
+    tmp_path,
+):
+    adjudication_path = tmp_path / "completed_adjudication.csv"
+    pd.DataFrame(
+        [
+            {
+                "review_packet_id": "broad_30d__2023-2024",
+                "channel_name": "broad_30d",
+                "test_season_id": "2023-2024",
+                "reviewer_id": "ER1",
+                "review_date": "2026-05-13",
+                "alert_usefulness": "useful",
+                "outcome_confirmed": "true",
+                "source_context_ok": "true",
+                "action_taken": "monitor",
+                "notes": "De-identified useful managed-risk signal.",
+            },
+            {
+                "review_packet_id": "severity_14d__2023-2024",
+                "channel_name": "severity_14d",
+                "test_season_id": "2023-2024",
+                "reviewer_id": "ER1",
+                "review_date": "2026-05-13",
+                "alert_usefulness": "noisy",
+                "outcome_confirmed": "false",
+                "source_context_ok": "true",
+                "action_taken": "none",
+                "notes": "De-identified noisy packet.",
+            },
+        ]
+    ).to_csv(adjudication_path, index=False)
+
+    result = run_exposure_load_shadow_adjudication_summary_sprint_experiment(
+        exposure_load_shadow_adjudication_path=adjudication_path,
+        output_dir=tmp_path,
+        experiment_id="exposure_load_shadow_adjudication_summary",
+    )
+
+    assert (
+        result / "exposure_load_shadow_adjudication_validation.csv"
+    ).exists()
+    assert (
+        result / "exposure_load_shadow_adjudication_channel_summary.csv"
+    ).exists()
+    assert (
+        result / "exposure_load_shadow_adjudication_summary.json"
+    ).exists()
+    assert (
+        result / "exposure_load_shadow_adjudication_summary_report.md"
+    ).exists()
+    assert (result / "config.json").exists()
+
+    payload = json.loads(
+        (result / "exposure_load_shadow_adjudication_summary.json").read_text()
+    )
+    assert payload["overall_recommendation"] == (
+        "continue_shadow_monitoring_adjudication_collection"
+    )
+    assert payload["useful_source_ok_actionable_rows"] == 1
 
 
 def _write_context_review_inputs(tmp_path):

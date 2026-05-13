@@ -102,8 +102,10 @@ from risk_stratification_engine.exposure_load_shadow_launch import (
 )
 from risk_stratification_engine.exposure_load_shadow_adjudication import (
     build_exposure_load_shadow_adjudication_package,
+    build_exposure_load_shadow_adjudication_summary,
     clean_shadow_adjudication_rows,
     write_exposure_load_shadow_adjudication_report,
+    write_exposure_load_shadow_adjudication_summary_report,
 )
 from risk_stratification_engine.exposure_load_shadow_replay import (
     build_exposure_load_shadow_replay_package,
@@ -2674,6 +2676,49 @@ def run_exposure_load_shadow_adjudication_sprint_experiment(
     )
     write_exposure_load_shadow_adjudication_report(
         experiment_dir / "exposure_load_shadow_adjudication_report.md",
+        summary,
+    )
+    return experiment_dir
+
+
+def run_exposure_load_shadow_adjudication_summary_sprint_experiment(
+    exposure_load_shadow_adjudication_path: str | Path,
+    output_dir: str | Path,
+    experiment_id: str,
+) -> Path:
+    experiment_dir = _experiment_path(output_dir, experiment_id)
+    adjudication_rows = pd.read_csv(exposure_load_shadow_adjudication_path)
+    summary = build_exposure_load_shadow_adjudication_summary(
+        _json_records(adjudication_rows)
+    )
+    write_frame(
+        pd.DataFrame(
+            clean_shadow_adjudication_rows(summary["validation_rows"])
+        ),
+        experiment_dir / "exposure_load_shadow_adjudication_validation.csv",
+    )
+    write_frame(
+        pd.DataFrame(
+            clean_shadow_adjudication_rows(summary["channel_summary_rows"])
+        ),
+        experiment_dir / "exposure_load_shadow_adjudication_channel_summary.csv",
+    )
+    _write_json(
+        experiment_dir / "config.json",
+        {
+            "experiment_id": experiment_id,
+            "experiment_type": "exposure_load_shadow_adjudication_summary",
+            "exposure_load_shadow_adjudication_path": str(
+                exposure_load_shadow_adjudication_path
+            ),
+        },
+    )
+    _write_json(
+        experiment_dir / "exposure_load_shadow_adjudication_summary.json",
+        summary,
+    )
+    write_exposure_load_shadow_adjudication_summary_report(
+        experiment_dir / "exposure_load_shadow_adjudication_summary_report.md",
         summary,
     )
     return experiment_dir

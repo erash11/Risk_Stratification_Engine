@@ -30,6 +30,7 @@ from risk_stratification_engine.experiments import (
     run_exposure_load_source_eligible_policy_sprint_experiment,
     run_exposure_load_source_eligible_shadow_monitoring_sprint_experiment,
     run_exposure_load_source_resolution_sprint_experiment,
+    run_exposure_load_shadow_adjudication_summary_sprint_experiment,
     run_exposure_load_shadow_adjudication_sprint_experiment,
     run_exposure_load_shadow_channel_lock_sprint_experiment,
     run_exposure_load_shadow_readiness_register_sprint_experiment,
@@ -92,6 +93,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--exposure-load-shadow-channel-lock", type=Path)
     parser.add_argument("--exposure-load-shadow-review-protocol", type=Path)
     parser.add_argument("--exposure-load-shadow-replay", type=Path)
+    parser.add_argument("--exposure-load-shadow-adjudication", type=Path)
     parser.add_argument("--exposure-load-source-resolution-policy", type=Path)
     parser.add_argument("--season-forward-validation-path", type=Path)
     parser.add_argument("--output-dir", required=True, type=Path)
@@ -170,6 +172,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--exposure-load-shadow-replay-sprint", action="store_true")
     parser.add_argument(
         "--exposure-load-shadow-adjudication-sprint",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--exposure-load-shadow-adjudication-summary-sprint",
         action="store_true",
     )
     parser.add_argument("--stability-splits", type=int, default=5)
@@ -664,6 +670,27 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(
             "Exposure load shadow adjudication artifacts written to "
+            f"{experiment_dir}"
+        )
+        return 0
+
+    if args.exposure_load_shadow_adjudication_summary_sprint:
+        if args.exposure_load_shadow_adjudication is None:
+            parser.error(
+                "--exposure-load-shadow-adjudication-summary-sprint requires "
+                "--exposure-load-shadow-adjudication"
+            )
+        experiment_dir = (
+            run_exposure_load_shadow_adjudication_summary_sprint_experiment(
+                exposure_load_shadow_adjudication_path=(
+                    args.exposure_load_shadow_adjudication
+                ),
+                output_dir=args.output_dir,
+                experiment_id=args.experiment_id,
+            )
+        )
+        print(
+            "Exposure load shadow adjudication summary artifacts written to "
             f"{experiment_dir}"
         )
         return 0

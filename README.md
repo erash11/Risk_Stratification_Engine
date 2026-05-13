@@ -592,6 +592,31 @@ actual reviewer/adjudication values from prospective collection.
 See `docs/shadow_adjudication_guide.md` for the manual review workflow, field
 definitions, and conservative decision rules for completing the template.
 
+## Run Exposure Load Shadow Adjudication Summary Sprint
+
+After the adjudication template has been filled, validate and summarize it with:
+
+```bash
+risk-engine \
+  --exposure-load-shadow-adjudication-summary-sprint \
+  --exposure-load-shadow-adjudication outputs/experiments/exposure_load_shadow_adjudication_v1/exposure_load_shadow_adjudication_template.csv \
+  --output-dir outputs \
+  --experiment-id exposure_load_shadow_adjudication_summary_v1
+```
+
+This writes `exposure_load_shadow_adjudication_validation.csv`,
+`exposure_load_shadow_adjudication_channel_summary.csv`,
+`exposure_load_shadow_adjudication_summary.json`, and
+`exposure_load_shadow_adjudication_summary_report.md`. The sprint validates
+missing and invalid reviewer fields, counts completed rows, summarizes useful,
+source-trustworthy, and actionable packets by channel, and keeps product
+readiness blocked.
+
+The current unfilled template was checked with
+`exposure_load_shadow_adjudication_summary_pending_v1`; it correctly reported
+12 total rows, 0 complete valid rows, 12 pending or invalid rows, and
+`complete_adjudication_required_before_operational_summary`.
+
 ## Run Live-Source Experiment
 
 When `config/paths.local.yaml` points to available local sources, the CLI can

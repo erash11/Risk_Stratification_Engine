@@ -15,6 +15,15 @@ REQUIRED_ADJUDICATION_FIELDS = (
     "source_context_ok",
     "action_taken",
 )
+ALLOWED_ALERT_USEFULNESS = ("useful", "noisy", "misleading", "unclear")
+ALLOWED_ACTIONS = (
+    "none",
+    "monitor",
+    "communicate",
+    "modify_load",
+    "clinical_review",
+    "other",
+)
 
 
 def build_exposure_load_shadow_adjudication_package(
@@ -106,6 +115,96 @@ def write_exposure_load_shadow_adjudication_report(
     path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
 
 
+def build_exposure_load_shadow_adjudication_summary(
+    adjudication_rows: list[dict[str, object]],
+) -> dict[str, object]:
+    rows = [_clean_row(row) for row in adjudication_rows]
+    validation_rows = [_validation_row(row) for row in rows]
+    complete_packet_ids = {
+        row["review_packet_id"]
+        for row in validation_rows
+        if row["completion_status"] == "complete_valid"
+    }
+    complete_rows = [
+        row for row in rows if row.get("review_packet_id") in complete_packet_ids
+    ]
+    channel_summary_rows = _channel_summary_rows(complete_rows)
+    useful_source_ok_actionable_rows = sum(
+        int(row["useful_source_ok_actionable_rows"])
+        for row in channel_summary_rows
+    )
+    pending_or_invalid_rows = len(rows) - len(complete_rows)
+    return {
+        "experiment_type": "exposure_load_shadow_adjudication_summary",
+        "overall_recommendation": _summary_recommendation(
+            pending_or_invalid_rows,
+            useful_source_ok_actionable_rows,
+        ),
+        "production_readiness": PRODUCTION_BLOCKED,
+        "total_rows": len(rows),
+        "complete_valid_rows": len(complete_rows),
+        "pending_or_invalid_rows": pending_or_invalid_rows,
+        "useful_source_ok_actionable_rows": useful_source_ok_actionable_rows,
+        "validation_rows": validation_rows,
+        "channel_summary_rows": channel_summary_rows,
+        "interpretation_boundary": (
+            "adjudication summary for shadow monitoring only; not probability calibration or dashboard clearance"
+        ),
+    }
+
+
+def write_exposure_load_shadow_adjudication_summary_report(
+    path: Path,
+    summary: dict[str, object],
+) -> None:
+    lines = [
+        "# Exposure Load Shadow Adjudication Summary Sprint",
+        "",
+        f"Recommendation: {summary['overall_recommendation']}",
+        f"Production readiness: {summary['production_readiness']}",
+        f"Interpretation boundary: {summary['interpretation_boundary']}",
+        "",
+        "## Completion",
+        "",
+        f"- Total rows: {summary['total_rows']}",
+        f"- Complete valid rows: {summary['complete_valid_rows']}",
+        f"- Pending or invalid rows: {summary['pending_or_invalid_rows']}",
+        (
+            "- Useful, source-trustworthy, actionable rows: "
+            f"{summary['useful_source_ok_actionable_rows']}"
+        ),
+        "",
+        "## Channel Summary",
+        "",
+        "| Channel | Rows | Useful | Source OK | Actionable | Useful/source OK/actionable |",
+        "|---|---:|---:|---:|---:|---:|",
+    ]
+    for row in summary.get("channel_summary_rows", []):
+        lines.append(
+            "| "
+            f"{row['channel_name']} | "
+            f"{row['complete_valid_rows']} | "
+            f"{row['useful_rows']} | "
+            f"{row['source_context_ok_rows']} | "
+            f"{row['actionable_rows']} | "
+            f"{row['useful_source_ok_actionable_rows']} |"
+        )
+    lines.extend(
+        [
+            "",
+            "## Interpretation",
+            "",
+            (
+                "This summary can identify whether completed shadow packets look "
+                "useful, source-trustworthy, and actionable. It is not probability "
+                "calibration or dashboard clearance."
+            ),
+        ]
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+
+
 def clean_shadow_adjudication_rows(
     rows: list[dict[str, object]],
 ) -> list[dict[str, object]]:
@@ -133,6 +232,125 @@ def _schema_rows() -> list[dict[str, object]]:
         ),
         _schema_row("notes", "string", False, ""),
     ]
+
+
+def _validation_row(row: dict[str, object]) -> dict[str, object]:
+    missing = [
+        field
+        for field in REQUIRED_ADJUDICATION_FIELDS
+        if _is_blank(row.get(field))
+    ]
+    invalid = _invalid_fields(row, missing)
+    return {
+        "review_packet_id": row.get("review_packet_id"),
+        "channel_name": row.get("channel_name"),
+        "test_season_id": row.get("test_season_id"),
+        "missing_required_fields": ",".join(missing),
+        "missing_required_field_count": len(missing),
+        "invalid_fields": ",".join(invalid),
+        "invalid_field_count": len(invalid),
+        "completion_status": (
+            "complete_valid"
+            if not missing and not invalid
+            else "pending_or_invalid"
+        ),
+    }
+
+
+def _invalid_fields(
+    row: dict[str, object],
+    missing: list[str],
+) -> list[str]:
+    missing_fields = set(missing)
+    invalid: list[str] = []
+    if "review_date" not in missing_fields and not _is_valid_iso_date(
+        row.get("review_date")
+    ):
+        invalid.append("review_date")
+    if "alert_usefulness" not in missing_fields and _normalized(
+        row.get("alert_usefulness")
+    ) not in ALLOWED_ALERT_USEFULNESS:
+        invalid.append("alert_usefulness")
+    if "outcome_confirmed" not in missing_fields and _parse_bool_text(
+        row.get("outcome_confirmed")
+    ) is None:
+        invalid.append("outcome_confirmed")
+    if "source_context_ok" not in missing_fields and _parse_bool_text(
+        row.get("source_context_ok")
+    ) is None:
+        invalid.append("source_context_ok")
+    if "action_taken" not in missing_fields and _normalized(
+        row.get("action_taken")
+    ) not in ALLOWED_ACTIONS:
+        invalid.append("action_taken")
+    return invalid
+
+
+def _channel_summary_rows(
+    complete_rows: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    channel_names = sorted(
+        {
+            str(row.get("channel_name") or "unknown")
+            for row in complete_rows
+        }
+    )
+    return [
+        _channel_summary_row(
+            channel_name,
+            [
+                row
+                for row in complete_rows
+                if str(row.get("channel_name") or "unknown") == channel_name
+            ],
+        )
+        for channel_name in channel_names
+    ]
+
+
+def _channel_summary_row(
+    channel_name: str,
+    rows: list[dict[str, object]],
+) -> dict[str, object]:
+    useful_rows = [
+        row
+        for row in rows
+        if _normalized(row.get("alert_usefulness")) == "useful"
+    ]
+    source_ok_rows = [
+        row for row in rows if _parse_bool_text(row.get("source_context_ok")) is True
+    ]
+    actionable_rows = [
+        row
+        for row in rows
+        if _normalized(row.get("action_taken")) not in {"", "none"}
+    ]
+    useful_source_ok_actionable = [
+        row
+        for row in rows
+        if _normalized(row.get("alert_usefulness")) == "useful"
+        and _parse_bool_text(row.get("source_context_ok")) is True
+        and _normalized(row.get("action_taken")) not in {"", "none"}
+    ]
+    return {
+        "channel_name": channel_name,
+        "complete_valid_rows": len(rows),
+        "useful_rows": len(useful_rows),
+        "source_context_ok_rows": len(source_ok_rows),
+        "actionable_rows": len(actionable_rows),
+        "useful_source_ok_actionable_rows": len(useful_source_ok_actionable),
+    }
+
+
+def _summary_recommendation(
+    pending_or_invalid_rows: int,
+    useful_source_ok_actionable_rows: int,
+) -> str:
+    if pending_or_invalid_rows:
+        return "complete_adjudication_required_before_operational_summary"
+    if useful_source_ok_actionable_rows:
+        return "continue_shadow_monitoring_adjudication_collection"
+    return "rollback_or_revise_shadow_alert_package_before_more_collection"
 
 
 def _schema_row(
@@ -200,6 +418,38 @@ def _overall_recommendation(
     if adjudication_template_rows:
         return "adjudication_template_ready_for_prospective_collection"
     return "complete_replay_packets_before_adjudication_collection"
+
+
+def _is_blank(value: object) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, bool):
+        return False
+    if not isinstance(value, str) and pd.isna(value):
+        return True
+    return str(value).strip() == ""
+
+
+def _normalized(value: object) -> str:
+    if value is None:
+        return ""
+    return str(value).strip().lower()
+
+
+def _parse_bool_text(value: object) -> bool | None:
+    normalized = _normalized(value)
+    if normalized in {"true", "1", "yes"}:
+        return True
+    if normalized in {"false", "0", "no"}:
+        return False
+    return None
+
+
+def _is_valid_iso_date(value: object) -> bool:
+    if _is_blank(value):
+        return False
+    parsed = pd.to_datetime(str(value), format="%Y-%m-%d", errors="coerce")
+    return not pd.isna(parsed)
 
 
 def _clean_row(row: dict[str, object]) -> dict[str, object]:

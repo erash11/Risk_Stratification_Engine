@@ -101,9 +101,11 @@ from risk_stratification_engine.exposure_load_shadow_launch import (
     write_exposure_load_shadow_review_protocol_report,
 )
 from risk_stratification_engine.exposure_load_shadow_adjudication import (
+    build_exposure_load_shadow_adjudication_decision_package,
     build_exposure_load_shadow_adjudication_package,
     build_exposure_load_shadow_adjudication_summary,
     clean_shadow_adjudication_rows,
+    write_exposure_load_shadow_adjudication_decision_report,
     write_exposure_load_shadow_adjudication_report,
     write_exposure_load_shadow_adjudication_summary_report,
 )
@@ -2720,6 +2722,45 @@ def run_exposure_load_shadow_adjudication_summary_sprint_experiment(
     write_exposure_load_shadow_adjudication_summary_report(
         experiment_dir / "exposure_load_shadow_adjudication_summary_report.md",
         summary,
+    )
+    return experiment_dir
+
+
+def run_exposure_load_shadow_adjudication_decision_sprint_experiment(
+    exposure_load_shadow_adjudication_summary_path: str | Path,
+    output_dir: str | Path,
+    experiment_id: str,
+) -> Path:
+    experiment_dir = _experiment_path(output_dir, experiment_id)
+    adjudication_summary = _load_json_payload(
+        exposure_load_shadow_adjudication_summary_path
+    )
+    decision = build_exposure_load_shadow_adjudication_decision_package(
+        adjudication_summary
+    )
+    write_frame(
+        pd.DataFrame(
+            clean_shadow_adjudication_rows(decision["channel_decision_rows"])
+        ),
+        experiment_dir / "exposure_load_shadow_adjudication_channel_decisions.csv",
+    )
+    _write_json(
+        experiment_dir / "config.json",
+        {
+            "experiment_id": experiment_id,
+            "experiment_type": "exposure_load_shadow_adjudication_decision",
+            "exposure_load_shadow_adjudication_summary_path": str(
+                exposure_load_shadow_adjudication_summary_path
+            ),
+        },
+    )
+    _write_json(
+        experiment_dir / "exposure_load_shadow_adjudication_decision.json",
+        decision,
+    )
+    write_exposure_load_shadow_adjudication_decision_report(
+        experiment_dir / "exposure_load_shadow_adjudication_decision_report.md",
+        decision,
     )
     return experiment_dir
 

@@ -153,6 +153,95 @@ def build_exposure_load_shadow_adjudication_summary(
     }
 
 
+def build_exposure_load_shadow_adjudication_decision_package(
+    adjudication_summary: dict[str, object],
+) -> dict[str, object]:
+    channel_decision_rows = [
+        _channel_decision_row(row)
+        for row in adjudication_summary.get("channel_summary_rows", [])
+        if isinstance(row, dict)
+    ]
+    continued_channels = [
+        row["channel_name"]
+        for row in channel_decision_rows
+        if row["channel_decision"] == "continue_shadow_monitoring"
+    ]
+    paused_channels = [
+        row["channel_name"]
+        for row in channel_decision_rows
+        if row["channel_decision"] == "pause_or_revise_before_more_collection"
+    ]
+    limited_channels = [
+        row["channel_name"]
+        for row in channel_decision_rows
+        if row["channel_decision"] == "continue_limited_evidence_collection"
+    ]
+    pending_or_invalid_rows = int(
+        adjudication_summary.get("pending_or_invalid_rows", 0) or 0
+    )
+    return {
+        "experiment_type": "exposure_load_shadow_adjudication_decision_sprint",
+        "overall_recommendation": _decision_recommendation(
+            pending_or_invalid_rows,
+            continued_channels,
+            paused_channels,
+            limited_channels,
+        ),
+        "production_readiness": PRODUCTION_BLOCKED,
+        "continued_shadow_channels": continued_channels,
+        "paused_or_revision_channels": paused_channels,
+        "limited_evidence_channels": limited_channels,
+        "channel_decision_rows": channel_decision_rows,
+        "decision_boundary": (
+            "shadow monitoring decision only; not probability calibration or dashboard clearance"
+        ),
+        "next_step": (
+            "continue shadow collection for retained channels and revise paused channels before probability-facing work"
+        ),
+    }
+
+
+def write_exposure_load_shadow_adjudication_decision_report(
+    path: Path,
+    decision: dict[str, object],
+) -> None:
+    lines = [
+        "# Exposure Load Shadow Adjudication Decision Sprint",
+        "",
+        f"Recommendation: {decision['overall_recommendation']}",
+        f"Production readiness: {decision['production_readiness']}",
+        f"Decision boundary: {decision['decision_boundary']}",
+        "",
+        "## Channel Decisions",
+        "",
+        "| Channel | Decision | Complete rows | Useful/actionable rows | Rationale |",
+        "|---|---|---:|---:|---|",
+    ]
+    for row in decision.get("channel_decision_rows", []):
+        lines.append(
+            "| "
+            f"{row['channel_name']} | "
+            f"{row['channel_decision']} | "
+            f"{row['complete_valid_rows']} | "
+            f"{row['useful_source_ok_actionable_rows']} | "
+            f"{row['decision_rationale']} |"
+        )
+    lines.extend(
+        [
+            "",
+            "## Interpretation",
+            "",
+            (
+                "This package converts completed adjudication evidence into "
+                "shadow-monitoring channel decisions. It is not probability "
+                "calibration or dashboard clearance."
+            ),
+        ]
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+
+
 def write_exposure_load_shadow_adjudication_summary_report(
     path: Path,
     summary: dict[str, object],
@@ -340,6 +429,68 @@ def _channel_summary_row(
         "actionable_rows": len(actionable_rows),
         "useful_source_ok_actionable_rows": len(useful_source_ok_actionable),
     }
+
+
+def _channel_decision_row(row: dict[str, object]) -> dict[str, object]:
+    complete_valid_rows = int(row.get("complete_valid_rows", 0) or 0)
+    useful_actionable = int(
+        row.get("useful_source_ok_actionable_rows", 0) or 0
+    )
+    channel_decision = _channel_decision(complete_valid_rows, useful_actionable)
+    return {
+        "channel_name": str(row.get("channel_name") or "unknown"),
+        "complete_valid_rows": complete_valid_rows,
+        "useful_rows": int(row.get("useful_rows", 0) or 0),
+        "source_context_ok_rows": int(row.get("source_context_ok_rows", 0) or 0),
+        "actionable_rows": int(row.get("actionable_rows", 0) or 0),
+        "useful_source_ok_actionable_rows": useful_actionable,
+        "channel_decision": channel_decision,
+        "decision_rationale": _channel_decision_rationale(
+            complete_valid_rows,
+            useful_actionable,
+        ),
+    }
+
+
+def _channel_decision(
+    complete_valid_rows: int,
+    useful_actionable: int,
+) -> str:
+    if useful_actionable >= 2:
+        return "continue_shadow_monitoring"
+    if useful_actionable == 1:
+        return "continue_limited_evidence_collection"
+    if complete_valid_rows > 0:
+        return "pause_or_revise_before_more_collection"
+    return "complete_adjudication_before_channel_decision"
+
+
+def _channel_decision_rationale(
+    complete_valid_rows: int,
+    useful_actionable: int,
+) -> str:
+    if useful_actionable >= 2:
+        return "multiple completed packets were useful, source-trustworthy, and actionable"
+    if useful_actionable == 1:
+        return "only one completed packet was useful, source-trustworthy, and actionable"
+    if complete_valid_rows > 0:
+        return "completed packets did not show useful, source-trustworthy, actionable evidence"
+    return "no complete valid adjudication rows are available"
+
+
+def _decision_recommendation(
+    pending_or_invalid_rows: int,
+    continued_channels: list[str],
+    paused_channels: list[str],
+    limited_channels: list[str],
+) -> str:
+    if pending_or_invalid_rows:
+        return "complete_adjudication_before_channel_decisions"
+    if continued_channels and (paused_channels or limited_channels):
+        return "continue_shadow_monitoring_with_channel_revisions"
+    if continued_channels:
+        return "continue_shadow_monitoring_all_reviewed_channels"
+    return "pause_shadow_package_and_revise_before_more_collection"
 
 
 def _summary_recommendation(

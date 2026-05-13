@@ -1,9 +1,11 @@
 import json
 
 from risk_stratification_engine.exposure_load_shadow_adjudication import (
+    build_exposure_load_shadow_adjudication_decision_package,
     build_exposure_load_shadow_adjudication_package,
     build_exposure_load_shadow_adjudication_summary,
     clean_shadow_adjudication_rows,
+    write_exposure_load_shadow_adjudication_decision_report,
     write_exposure_load_shadow_adjudication_report,
     write_exposure_load_shadow_adjudication_summary_report,
 )
@@ -126,6 +128,76 @@ def test_shadow_adjudication_summary_validates_completion_and_actionability(
     assert "not probability calibration or dashboard clearance" in report
 
     json.dumps(summary, allow_nan=False)
+
+
+def test_shadow_adjudication_decision_package_selects_channels_and_blocks_product(
+    tmp_path,
+):
+    decision = build_exposure_load_shadow_adjudication_decision_package(
+        {
+            "experiment_type": "exposure_load_shadow_adjudication_summary",
+            "production_readiness": "not_ready_for_probability_or_pilot",
+            "total_rows": 12,
+            "complete_valid_rows": 12,
+            "pending_or_invalid_rows": 0,
+            "useful_source_ok_actionable_rows": 4,
+            "channel_summary_rows": [
+                {
+                    "channel_name": "broad_30d",
+                    "complete_valid_rows": 4,
+                    "useful_rows": 2,
+                    "source_context_ok_rows": 4,
+                    "actionable_rows": 2,
+                    "useful_source_ok_actionable_rows": 2,
+                },
+                {
+                    "channel_name": "severity_14d",
+                    "complete_valid_rows": 4,
+                    "useful_rows": 2,
+                    "source_context_ok_rows": 4,
+                    "actionable_rows": 2,
+                    "useful_source_ok_actionable_rows": 2,
+                },
+                {
+                    "channel_name": "severity_7d",
+                    "complete_valid_rows": 4,
+                    "useful_rows": 0,
+                    "source_context_ok_rows": 4,
+                    "actionable_rows": 0,
+                    "useful_source_ok_actionable_rows": 0,
+                },
+            ],
+        }
+    )
+
+    assert decision["experiment_type"] == (
+        "exposure_load_shadow_adjudication_decision_sprint"
+    )
+    assert decision["overall_recommendation"] == (
+        "continue_shadow_monitoring_with_channel_revisions"
+    )
+    assert decision["production_readiness"] == "not_ready_for_probability_or_pilot"
+    assert decision["continued_shadow_channels"] == ["broad_30d", "severity_14d"]
+    assert decision["paused_or_revision_channels"] == ["severity_7d"]
+
+    channel_decisions = {
+        row["channel_name"]: row["channel_decision"]
+        for row in decision["channel_decision_rows"]
+    }
+    assert channel_decisions == {
+        "broad_30d": "continue_shadow_monitoring",
+        "severity_14d": "continue_shadow_monitoring",
+        "severity_7d": "pause_or_revise_before_more_collection",
+    }
+
+    report_path = tmp_path / "decision.md"
+    write_exposure_load_shadow_adjudication_decision_report(report_path, decision)
+    report = report_path.read_text(encoding="utf-8")
+    assert "Shadow Adjudication Decision Sprint" in report
+    assert "continue_shadow_monitoring_with_channel_revisions" in report
+    assert "not probability calibration or dashboard clearance" in report
+
+    json.dumps(decision, allow_nan=False)
 
 
 def _shadow_replay() -> dict[str, object]:

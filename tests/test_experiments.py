@@ -29,6 +29,7 @@ from risk_stratification_engine.experiments import (
     run_exposure_load_source_eligible_shadow_monitoring_sprint_experiment,
     run_exposure_load_source_resolution_sprint_experiment,
     run_exposure_load_shadow_channel_lock_sprint_experiment,
+    run_exposure_load_shadow_adjudication_decision_sprint_experiment,
     run_exposure_load_shadow_adjudication_summary_sprint_experiment,
     run_exposure_load_shadow_adjudication_sprint_experiment,
     run_exposure_load_shadow_readiness_register_sprint_experiment,
@@ -2567,6 +2568,69 @@ def test_run_exposure_load_shadow_adjudication_summary_sprint_writes_artifacts(
         "continue_shadow_monitoring_adjudication_collection"
     )
     assert payload["useful_source_ok_actionable_rows"] == 1
+
+
+def test_run_exposure_load_shadow_adjudication_decision_sprint_writes_artifacts(
+    tmp_path,
+):
+    summary_path = tmp_path / "exposure_load_shadow_adjudication_summary.json"
+    summary_path.write_text(
+        json.dumps(
+            {
+                "experiment_type": "exposure_load_shadow_adjudication_summary",
+                "production_readiness": "not_ready_for_probability_or_pilot",
+                "total_rows": 12,
+                "complete_valid_rows": 12,
+                "pending_or_invalid_rows": 0,
+                "useful_source_ok_actionable_rows": 4,
+                "channel_summary_rows": [
+                    {
+                        "channel_name": "broad_30d",
+                        "complete_valid_rows": 4,
+                        "useful_rows": 2,
+                        "source_context_ok_rows": 4,
+                        "actionable_rows": 2,
+                        "useful_source_ok_actionable_rows": 2,
+                    },
+                    {
+                        "channel_name": "severity_7d",
+                        "complete_valid_rows": 4,
+                        "useful_rows": 0,
+                        "source_context_ok_rows": 4,
+                        "actionable_rows": 0,
+                        "useful_source_ok_actionable_rows": 0,
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_exposure_load_shadow_adjudication_decision_sprint_experiment(
+        exposure_load_shadow_adjudication_summary_path=summary_path,
+        output_dir=tmp_path,
+        experiment_id="exposure_load_shadow_adjudication_decision",
+    )
+
+    assert (
+        result / "exposure_load_shadow_adjudication_channel_decisions.csv"
+    ).exists()
+    assert (
+        result / "exposure_load_shadow_adjudication_decision.json"
+    ).exists()
+    assert (
+        result / "exposure_load_shadow_adjudication_decision_report.md"
+    ).exists()
+    assert (result / "config.json").exists()
+
+    payload = json.loads(
+        (result / "exposure_load_shadow_adjudication_decision.json").read_text()
+    )
+    assert payload["overall_recommendation"] == (
+        "continue_shadow_monitoring_with_channel_revisions"
+    )
+    assert payload["continued_shadow_channels"] == ["broad_30d"]
+    assert payload["paused_or_revision_channels"] == ["severity_7d"]
 
 
 def _write_context_review_inputs(tmp_path):

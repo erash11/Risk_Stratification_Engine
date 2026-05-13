@@ -617,6 +617,27 @@ The current unfilled template was checked with
 12 total rows, 0 complete valid rows, 12 pending or invalid rows, and
 `complete_adjudication_required_before_operational_summary`.
 
+## Run Exposure Load Shadow Adjudication Decision Sprint
+
+After the completed adjudication summary exists, convert it into channel-level
+shadow-monitoring decisions with:
+
+```bash
+risk-engine \
+  --exposure-load-shadow-adjudication-decision-sprint \
+  --exposure-load-shadow-adjudication-summary outputs/experiments/exposure_load_shadow_adjudication_summary_csv_review_v1/exposure_load_shadow_adjudication_summary.json \
+  --output-dir outputs \
+  --experiment-id exposure_load_shadow_adjudication_decision_v1
+```
+
+This writes `exposure_load_shadow_adjudication_channel_decisions.csv`,
+`exposure_load_shadow_adjudication_decision.json`, and
+`exposure_load_shadow_adjudication_decision_report.md`. The live
+`exposure_load_shadow_adjudication_decision_v1` run recommended
+`continue_shadow_monitoring_with_channel_revisions`: continue `broad_30d` and
+`severity_14d` shadow monitoring, pause or revise `severity_7d`, and keep
+probability calibration, pilot, and dashboard readiness blocked.
+
 ## Run Live-Source Experiment
 
 When `config/paths.local.yaml` points to available local sources, the CLI can

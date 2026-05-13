@@ -560,6 +560,35 @@ prepares the prospective collection workflow but does not itself establish
 prospective performance, real-time usefulness, probability calibration readiness,
 or pilot/dashboard readiness.
 
+## Run Exposure Load Shadow Adjudication Package Sprint
+
+```bash
+risk-engine \
+  --exposure-load-shadow-adjudication-sprint \
+  --exposure-load-shadow-replay outputs/experiments/exposure_load_shadow_replay_v1/exposure_load_shadow_replay.json \
+  --output-dir outputs \
+  --experiment-id exposure_load_shadow_adjudication_v1
+```
+
+This writes `exposure_load_shadow_adjudication_schema.csv`,
+`exposure_load_shadow_adjudication_template.csv`,
+`exposure_load_shadow_adjudication_completion.csv`,
+`exposure_load_shadow_adjudication.json`, and
+`exposure_load_shadow_adjudication_report.md`. The sprint turns the replay
+review packets into a prospective collection template with required reviewer,
+date, usefulness, outcome, source-context, action, and notes fields. This is
+collection infrastructure only; completing the template with prospective
+reviewer data is the next evidence step.
+
+The live `exposure_load_shadow_adjudication_v1` run recommended
+`adjudication_template_ready_for_prospective_collection`. It produced 12
+prospective collection rows from the historical review packets, 8 schema fields,
+and completion checks showing all 12 rows still pending the six required
+reviewer fields: `reviewer_id`, `review_date`, `alert_usefulness`,
+`outcome_confirmed`, `source_context_ok`, and `action_taken`. This is the
+logical stopping point for current-data preparation: the next progress requires
+actual reviewer/adjudication values from prospective collection.
+
 ## Run Live-Source Experiment
 
 When `config/paths.local.yaml` points to available local sources, the CLI can

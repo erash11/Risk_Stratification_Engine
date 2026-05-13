@@ -100,6 +100,11 @@ from risk_stratification_engine.exposure_load_shadow_launch import (
     write_exposure_load_shadow_readiness_register_report,
     write_exposure_load_shadow_review_protocol_report,
 )
+from risk_stratification_engine.exposure_load_shadow_adjudication import (
+    build_exposure_load_shadow_adjudication_package,
+    clean_shadow_adjudication_rows,
+    write_exposure_load_shadow_adjudication_report,
+)
 from risk_stratification_engine.exposure_load_shadow_replay import (
     build_exposure_load_shadow_replay_package,
     clean_shadow_replay_rows,
@@ -2624,6 +2629,51 @@ def run_exposure_load_shadow_replay_sprint_experiment(
     _write_json(experiment_dir / "exposure_load_shadow_replay.json", summary)
     write_exposure_load_shadow_replay_report(
         experiment_dir / "exposure_load_shadow_replay_report.md",
+        summary,
+    )
+    return experiment_dir
+
+
+def run_exposure_load_shadow_adjudication_sprint_experiment(
+    exposure_load_shadow_replay_path: str | Path,
+    output_dir: str | Path,
+    experiment_id: str,
+) -> Path:
+    experiment_dir = _experiment_path(output_dir, experiment_id)
+    shadow_replay = _load_json_payload(exposure_load_shadow_replay_path)
+    summary = build_exposure_load_shadow_adjudication_package(shadow_replay)
+    write_frame(
+        pd.DataFrame(clean_shadow_adjudication_rows(summary["schema_rows"])),
+        experiment_dir / "exposure_load_shadow_adjudication_schema.csv",
+    )
+    write_frame(
+        pd.DataFrame(
+            clean_shadow_adjudication_rows(summary["adjudication_template_rows"])
+        ),
+        experiment_dir / "exposure_load_shadow_adjudication_template.csv",
+    )
+    write_frame(
+        pd.DataFrame(
+            clean_shadow_adjudication_rows(summary["completion_check_rows"])
+        ),
+        experiment_dir / "exposure_load_shadow_adjudication_completion.csv",
+    )
+    _write_json(
+        experiment_dir / "config.json",
+        {
+            "experiment_id": experiment_id,
+            "experiment_type": "exposure_load_shadow_adjudication_sprint",
+            "exposure_load_shadow_replay_path": str(
+                exposure_load_shadow_replay_path
+            ),
+        },
+    )
+    _write_json(
+        experiment_dir / "exposure_load_shadow_adjudication.json",
+        summary,
+    )
+    write_exposure_load_shadow_adjudication_report(
+        experiment_dir / "exposure_load_shadow_adjudication_report.md",
         summary,
     )
     return experiment_dir

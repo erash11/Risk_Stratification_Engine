@@ -29,6 +29,7 @@ from risk_stratification_engine.experiments import (
     run_exposure_load_source_eligible_shadow_monitoring_sprint_experiment,
     run_exposure_load_source_resolution_sprint_experiment,
     run_exposure_load_shadow_channel_lock_sprint_experiment,
+    run_exposure_load_shadow_adjudication_sprint_experiment,
     run_exposure_load_shadow_readiness_register_sprint_experiment,
     run_exposure_load_shadow_replay_sprint_experiment,
     run_exposure_load_shadow_review_protocol_sprint_experiment,
@@ -2450,6 +2451,58 @@ def test_run_exposure_load_shadow_replay_sprint_writes_artifacts(tmp_path):
     payload = json.loads((result / "exposure_load_shadow_replay.json").read_text())
     assert payload["overall_recommendation"] == (
         "historical_shadow_replay_ready_for_prospective_collection"
+    )
+
+
+def test_run_exposure_load_shadow_adjudication_sprint_writes_artifacts(tmp_path):
+    replay_path = tmp_path / "exposure_load_shadow_replay.json"
+    replay_path.write_text(
+        json.dumps(
+            {
+                "experiment_type": "exposure_load_shadow_replay_sprint",
+                "production_readiness": "not_ready_for_probability_or_pilot",
+                "review_packet_rows": [
+                    {
+                        "review_packet_id": "broad_30d__2023-2024",
+                        "channel_name": "broad_30d",
+                        "test_season_id": "2023-2024",
+                        "minimum_review_unit": (
+                            "complete source-eligible athlete-season"
+                        ),
+                        "required_evidence": (
+                            "frozen alerts and adjudicated outcomes"
+                        ),
+                        "episode_count": 109,
+                        "unique_observed_event_count": 85,
+                        "unique_captured_event_count": 20,
+                        "missed_event_count": 65,
+                        "episodes_per_athlete_season": 0.685535,
+                        "review_packet_status": "ready_for_research_adjudication",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_exposure_load_shadow_adjudication_sprint_experiment(
+        exposure_load_shadow_replay_path=replay_path,
+        output_dir=tmp_path,
+        experiment_id="exposure_load_shadow_adjudication",
+    )
+
+    assert (result / "exposure_load_shadow_adjudication_schema.csv").exists()
+    assert (result / "exposure_load_shadow_adjudication_template.csv").exists()
+    assert (result / "exposure_load_shadow_adjudication_completion.csv").exists()
+    assert (result / "exposure_load_shadow_adjudication.json").exists()
+    assert (result / "exposure_load_shadow_adjudication_report.md").exists()
+    assert (result / "config.json").exists()
+
+    payload = json.loads(
+        (result / "exposure_load_shadow_adjudication.json").read_text()
+    )
+    assert payload["overall_recommendation"] == (
+        "adjudication_template_ready_for_prospective_collection"
     )
 
 

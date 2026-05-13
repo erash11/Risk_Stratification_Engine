@@ -1377,6 +1377,54 @@ def test_cli_runs_exposure_load_shadow_replay_from_artifacts(
     }
 
 
+def test_cli_runs_exposure_load_shadow_adjudication_from_replay_artifact(
+    tmp_path,
+    monkeypatch,
+):
+    replay_path = tmp_path / "exposure_load_shadow_replay.json"
+    replay_path.write_text("artifact", encoding="utf-8")
+    calls = {}
+
+    def fake_run_exposure_load_shadow_adjudication_sprint_experiment(
+        exposure_load_shadow_replay_path,
+        output_dir,
+        experiment_id,
+    ):
+        calls["shadow_adjudication"] = {
+            "exposure_load_shadow_replay_path": exposure_load_shadow_replay_path,
+            "output_dir": output_dir,
+            "experiment_id": experiment_id,
+        }
+        result = output_dir / "experiments" / experiment_id
+        result.mkdir(parents=True)
+        return result
+
+    monkeypatch.setattr(
+        cli,
+        "run_exposure_load_shadow_adjudication_sprint_experiment",
+        fake_run_exposure_load_shadow_adjudication_sprint_experiment,
+    )
+
+    exit_code = main(
+        [
+            "--output-dir",
+            str(tmp_path),
+            "--experiment-id",
+            "exposure_load_shadow_adjudication",
+            "--exposure-load-shadow-adjudication-sprint",
+            "--exposure-load-shadow-replay",
+            str(replay_path),
+        ]
+    )
+
+    assert exit_code == 0
+    assert calls["shadow_adjudication"] == {
+        "exposure_load_shadow_replay_path": replay_path,
+        "output_dir": tmp_path,
+        "experiment_id": "exposure_load_shadow_adjudication",
+    }
+
+
 def test_cli_runs_window_sensitivity_experiment(tmp_path, monkeypatch):
     calls = {}
 

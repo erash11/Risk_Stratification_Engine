@@ -1168,6 +1168,149 @@ def test_cli_runs_exposure_load_source_eligible_shadow_monitoring_from_artifacts
     }
 
 
+def test_cli_runs_exposure_load_shadow_launch_chain_from_artifacts(
+    tmp_path,
+    monkeypatch,
+):
+    monitoring_path = tmp_path / "exposure_load_source_eligible_shadow_monitoring.json"
+    channel_lock_path = tmp_path / "exposure_load_shadow_channel_lock.json"
+    protocol_path = tmp_path / "exposure_load_shadow_review_protocol.json"
+    monitoring_path.write_text("artifact", encoding="utf-8")
+    channel_lock_path.write_text("artifact", encoding="utf-8")
+    protocol_path.write_text("artifact", encoding="utf-8")
+    calls = {}
+
+    def fake_channel_lock(
+        exposure_load_source_eligible_shadow_monitoring_path,
+        output_dir,
+        experiment_id,
+    ):
+        calls["channel_lock"] = {
+            "exposure_load_source_eligible_shadow_monitoring_path": (
+                exposure_load_source_eligible_shadow_monitoring_path
+            ),
+            "output_dir": output_dir,
+            "experiment_id": experiment_id,
+        }
+        result = output_dir / "experiments" / experiment_id
+        result.mkdir(parents=True)
+        return result
+
+    def fake_review_protocol(
+        exposure_load_shadow_channel_lock_path,
+        output_dir,
+        experiment_id,
+    ):
+        calls["review_protocol"] = {
+            "exposure_load_shadow_channel_lock_path": (
+                exposure_load_shadow_channel_lock_path
+            ),
+            "output_dir": output_dir,
+            "experiment_id": experiment_id,
+        }
+        result = output_dir / "experiments" / experiment_id
+        result.mkdir(parents=True)
+        return result
+
+    def fake_readiness_register(
+        exposure_load_shadow_channel_lock_path,
+        exposure_load_shadow_review_protocol_path,
+        output_dir,
+        experiment_id,
+    ):
+        calls["readiness_register"] = {
+            "exposure_load_shadow_channel_lock_path": (
+                exposure_load_shadow_channel_lock_path
+            ),
+            "exposure_load_shadow_review_protocol_path": (
+                exposure_load_shadow_review_protocol_path
+            ),
+            "output_dir": output_dir,
+            "experiment_id": experiment_id,
+        }
+        result = output_dir / "experiments" / experiment_id
+        result.mkdir(parents=True)
+        return result
+
+    monkeypatch.setattr(
+        cli,
+        "run_exposure_load_shadow_channel_lock_sprint_experiment",
+        fake_channel_lock,
+    )
+    monkeypatch.setattr(
+        cli,
+        "run_exposure_load_shadow_review_protocol_sprint_experiment",
+        fake_review_protocol,
+    )
+    monkeypatch.setattr(
+        cli,
+        "run_exposure_load_shadow_readiness_register_sprint_experiment",
+        fake_readiness_register,
+    )
+
+    assert (
+        main(
+            [
+                "--output-dir",
+                str(tmp_path),
+                "--experiment-id",
+                "exposure_load_shadow_channel_lock",
+                "--exposure-load-shadow-channel-lock-sprint",
+                "--exposure-load-source-eligible-shadow-monitoring",
+                str(monitoring_path),
+            ]
+        )
+        == 0
+    )
+    assert (
+        main(
+            [
+                "--output-dir",
+                str(tmp_path),
+                "--experiment-id",
+                "exposure_load_shadow_review_protocol",
+                "--exposure-load-shadow-review-protocol-sprint",
+                "--exposure-load-shadow-channel-lock",
+                str(channel_lock_path),
+            ]
+        )
+        == 0
+    )
+    assert (
+        main(
+            [
+                "--output-dir",
+                str(tmp_path),
+                "--experiment-id",
+                "exposure_load_shadow_readiness_register",
+                "--exposure-load-shadow-readiness-register-sprint",
+                "--exposure-load-shadow-channel-lock",
+                str(channel_lock_path),
+                "--exposure-load-shadow-review-protocol",
+                str(protocol_path),
+            ]
+        )
+        == 0
+    )
+
+    assert calls["channel_lock"] == {
+        "exposure_load_source_eligible_shadow_monitoring_path": monitoring_path,
+        "output_dir": tmp_path,
+        "experiment_id": "exposure_load_shadow_channel_lock",
+    }
+    assert calls["review_protocol"] == {
+        "exposure_load_shadow_channel_lock_path": channel_lock_path,
+        "output_dir": tmp_path,
+        "experiment_id": "exposure_load_shadow_review_protocol",
+    }
+    assert calls["readiness_register"] == {
+        "exposure_load_shadow_channel_lock_path": channel_lock_path,
+        "exposure_load_shadow_review_protocol_path": protocol_path,
+        "output_dir": tmp_path,
+        "experiment_id": "exposure_load_shadow_readiness_register",
+    }
+
+
 def test_cli_runs_window_sensitivity_experiment(tmp_path, monkeypatch):
     calls = {}
 

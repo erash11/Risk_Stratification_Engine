@@ -30,6 +30,9 @@ from risk_stratification_engine.experiments import (
     run_exposure_load_source_eligible_policy_sprint_experiment,
     run_exposure_load_source_eligible_shadow_monitoring_sprint_experiment,
     run_exposure_load_source_resolution_sprint_experiment,
+    run_exposure_load_shadow_channel_lock_sprint_experiment,
+    run_exposure_load_shadow_readiness_register_sprint_experiment,
+    run_exposure_load_shadow_review_protocol_sprint_experiment,
     run_forward_case_review_sprint_experiment,
     run_injury_history_feature_sprint_experiment,
     run_injury_history_forward_diagnostic_sprint_experiment,
@@ -83,6 +86,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--exposure-load-source-context-classification", type=Path)
     parser.add_argument("--exposure-load-source-eligible-calibration", type=Path)
     parser.add_argument("--exposure-load-source-eligible-policy", type=Path)
+    parser.add_argument("--exposure-load-source-eligible-shadow-monitoring", type=Path)
+    parser.add_argument("--exposure-load-shadow-channel-lock", type=Path)
+    parser.add_argument("--exposure-load-shadow-review-protocol", type=Path)
     parser.add_argument("--exposure-load-source-resolution-policy", type=Path)
     parser.add_argument("--season-forward-validation-path", type=Path)
     parser.add_argument("--output-dir", required=True, type=Path)
@@ -147,6 +153,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--exposure-load-source-eligible-shadow-monitoring-sprint",
+        action="store_true",
+    )
+    parser.add_argument("--exposure-load-shadow-channel-lock-sprint", action="store_true")
+    parser.add_argument(
+        "--exposure-load-shadow-review-protocol-sprint",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--exposure-load-shadow-readiness-register-sprint",
         action="store_true",
     )
     parser.add_argument("--stability-splits", type=int, default=5)
@@ -531,6 +546,70 @@ def main(argv: list[str] | None = None) -> int:
         print(
             "Exposure load source-eligible shadow monitoring artifacts written "
             f"to {experiment_dir}"
+        )
+        return 0
+
+    if args.exposure_load_shadow_channel_lock_sprint:
+        if args.exposure_load_source_eligible_shadow_monitoring is None:
+            parser.error(
+                "--exposure-load-shadow-channel-lock-sprint requires "
+                "--exposure-load-source-eligible-shadow-monitoring"
+            )
+        experiment_dir = run_exposure_load_shadow_channel_lock_sprint_experiment(
+            exposure_load_source_eligible_shadow_monitoring_path=(
+                args.exposure_load_source_eligible_shadow_monitoring
+            ),
+            output_dir=args.output_dir,
+            experiment_id=args.experiment_id,
+        )
+        print(f"Exposure load shadow channel lock artifacts written to {experiment_dir}")
+        return 0
+
+    if args.exposure_load_shadow_review_protocol_sprint:
+        if args.exposure_load_shadow_channel_lock is None:
+            parser.error(
+                "--exposure-load-shadow-review-protocol-sprint requires "
+                "--exposure-load-shadow-channel-lock"
+            )
+        experiment_dir = run_exposure_load_shadow_review_protocol_sprint_experiment(
+            exposure_load_shadow_channel_lock_path=args.exposure_load_shadow_channel_lock,
+            output_dir=args.output_dir,
+            experiment_id=args.experiment_id,
+        )
+        print(
+            "Exposure load shadow review protocol artifacts written to "
+            f"{experiment_dir}"
+        )
+        return 0
+
+    if args.exposure_load_shadow_readiness_register_sprint:
+        required_paths = {
+            "--exposure-load-shadow-channel-lock": (
+                args.exposure_load_shadow_channel_lock
+            ),
+            "--exposure-load-shadow-review-protocol": (
+                args.exposure_load_shadow_review_protocol
+            ),
+        }
+        missing = [flag for flag, path in required_paths.items() if path is None]
+        if missing:
+            parser.error(
+                "--exposure-load-shadow-readiness-register-sprint requires "
+                + ", ".join(missing)
+            )
+        experiment_dir = run_exposure_load_shadow_readiness_register_sprint_experiment(
+            exposure_load_shadow_channel_lock_path=(
+                args.exposure_load_shadow_channel_lock
+            ),
+            exposure_load_shadow_review_protocol_path=(
+                args.exposure_load_shadow_review_protocol
+            ),
+            output_dir=args.output_dir,
+            experiment_id=args.experiment_id,
+        )
+        print(
+            "Exposure load shadow readiness register artifacts written to "
+            f"{experiment_dir}"
         )
         return 0
 

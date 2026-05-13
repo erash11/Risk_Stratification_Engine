@@ -28,6 +28,9 @@ from risk_stratification_engine.experiments import (
     run_exposure_load_source_eligible_policy_sprint_experiment,
     run_exposure_load_source_eligible_shadow_monitoring_sprint_experiment,
     run_exposure_load_source_resolution_sprint_experiment,
+    run_exposure_load_shadow_channel_lock_sprint_experiment,
+    run_exposure_load_shadow_readiness_register_sprint_experiment,
+    run_exposure_load_shadow_review_protocol_sprint_experiment,
     run_injury_history_feature_sprint_experiment,
     run_injury_history_forward_diagnostic_sprint_experiment,
     run_injury_history_season_forward_validation_sprint_experiment,
@@ -2246,6 +2249,120 @@ def test_run_exposure_load_source_eligible_shadow_monitoring_sprint_writes_artif
     assert payload["overall_recommendation"] == (
         "proceed_with_prospective_source_eligible_shadow_monitoring"
     )
+
+
+def test_run_exposure_load_shadow_launch_chain_writes_artifacts(tmp_path):
+    monitoring_path = tmp_path / "exposure_load_source_eligible_shadow_monitoring.json"
+    monitoring_path.write_text(
+        json.dumps(_source_eligible_shadow_monitoring_payload()),
+        encoding="utf-8",
+    )
+
+    channel_lock_dir = run_exposure_load_shadow_channel_lock_sprint_experiment(
+        exposure_load_source_eligible_shadow_monitoring_path=monitoring_path,
+        output_dir=tmp_path,
+        experiment_id="exposure_load_shadow_channel_lock",
+    )
+
+    assert (channel_lock_dir / "exposure_load_shadow_channel_lock.csv").exists()
+    assert (
+        channel_lock_dir / "exposure_load_shadow_channel_lock_held_channels.csv"
+    ).exists()
+    assert (channel_lock_dir / "exposure_load_shadow_channel_lock.json").exists()
+    assert (
+        channel_lock_dir / "exposure_load_shadow_channel_lock_report.md"
+    ).exists()
+
+    protocol_dir = run_exposure_load_shadow_review_protocol_sprint_experiment(
+        exposure_load_shadow_channel_lock_path=(
+            channel_lock_dir / "exposure_load_shadow_channel_lock.json"
+        ),
+        output_dir=tmp_path,
+        experiment_id="exposure_load_shadow_review_protocol",
+    )
+
+    assert (protocol_dir / "exposure_load_shadow_review_protocol.csv").exists()
+    assert (protocol_dir / "exposure_load_shadow_review_protocol.json").exists()
+    assert (
+        protocol_dir / "exposure_load_shadow_review_protocol_report.md"
+    ).exists()
+
+    readiness_dir = run_exposure_load_shadow_readiness_register_sprint_experiment(
+        exposure_load_shadow_channel_lock_path=(
+            channel_lock_dir / "exposure_load_shadow_channel_lock.json"
+        ),
+        exposure_load_shadow_review_protocol_path=(
+            protocol_dir / "exposure_load_shadow_review_protocol.json"
+        ),
+        output_dir=tmp_path,
+        experiment_id="exposure_load_shadow_readiness_register",
+    )
+
+    assert (
+        readiness_dir / "exposure_load_shadow_readiness_register.csv"
+    ).exists()
+    assert (
+        readiness_dir / "exposure_load_shadow_readiness_register.json"
+    ).exists()
+    assert (
+        readiness_dir / "exposure_load_shadow_readiness_register_report.md"
+    ).exists()
+
+    payload = json.loads(
+        (readiness_dir / "exposure_load_shadow_readiness_register.json").read_text()
+    )
+    assert payload["overall_recommendation"] == (
+        "launch_research_shadow_monitoring_without_product_escalation"
+    )
+
+
+def _source_eligible_shadow_monitoring_payload() -> dict[str, object]:
+    return {
+        "experiment_type": (
+            "exposure_load_source_eligible_shadow_monitoring_sprint"
+        ),
+        "overall_recommendation": (
+            "proceed_with_prospective_source_eligible_shadow_monitoring"
+        ),
+        "production_readiness": "not_ready_for_probability_or_pilot",
+        "excluded_test_seasons": ["2024-2025"],
+        "burden_cap_episodes_per_athlete_season": 1.0,
+        "monitoring_rows": [
+            {
+                "channel_name": "broad_30d",
+                "policy_name": "exclude_concussion",
+                "horizon_days": 30,
+                "threshold_policy": "burden_capped_percentile",
+                "source_eligible_season_count": 4,
+                "mean_capture_rate": 0.151,
+                "max_episodes_per_athlete_season": 0.686,
+                "mean_threshold_absolute_drift": 0.009,
+                "monitoring_status": "ready_for_prospective_shadow_review",
+            },
+            {
+                "channel_name": "severity_7d",
+                "policy_name": "model_safe_time_loss",
+                "horizon_days": 7,
+                "threshold_policy": "burden_capped_percentile",
+                "source_eligible_season_count": 4,
+                "mean_capture_rate": 0.050,
+                "max_episodes_per_athlete_season": 0.615,
+                "mean_threshold_absolute_drift": 0.034,
+                "monitoring_status": "ready_for_prospective_shadow_review",
+            },
+            {
+                "channel_name": "subtype_lower_extremity_soft_tissue_30d",
+                "policy_name": "lower_extremity_soft_tissue",
+                "horizon_days": 30,
+                "threshold_policy": "season_local_percentile",
+                "source_eligible_season_count": 4,
+                "mean_capture_rate": 0.186,
+                "max_episodes_per_athlete_season": 2.488,
+                "mean_threshold_absolute_drift": 0.0,
+                "monitoring_status": "shadow_burden_guardrail_review_needed",
+            },
+        ],
+    }
 
 
 def _write_context_review_inputs(tmp_path):

@@ -91,6 +91,15 @@ from risk_stratification_engine.exposure_load_source_resolution import (
     clean_source_resolution_rows,
     write_exposure_load_source_resolution_report,
 )
+from risk_stratification_engine.exposure_load_shadow_launch import (
+    build_exposure_load_shadow_channel_lock,
+    build_exposure_load_shadow_readiness_register,
+    build_exposure_load_shadow_review_protocol,
+    clean_shadow_launch_rows,
+    write_exposure_load_shadow_channel_lock_report,
+    write_exposure_load_shadow_readiness_register_report,
+    write_exposure_load_shadow_review_protocol_report,
+)
 from risk_stratification_engine.exposure_load_modeling import (
     build_exposure_load_model_comparison_summary,
     write_exposure_load_model_comparison_report,
@@ -2444,6 +2453,120 @@ def run_exposure_load_source_eligible_shadow_monitoring_sprint_experiment(
     write_exposure_load_source_eligible_shadow_monitoring_report(
         experiment_dir
         / "exposure_load_source_eligible_shadow_monitoring_report.md",
+        summary,
+    )
+    return experiment_dir
+
+
+def run_exposure_load_shadow_channel_lock_sprint_experiment(
+    exposure_load_source_eligible_shadow_monitoring_path: str | Path,
+    output_dir: str | Path,
+    experiment_id: str,
+) -> Path:
+    experiment_dir = _experiment_path(output_dir, experiment_id)
+    source_eligible_shadow_monitoring = _load_json_payload(
+        exposure_load_source_eligible_shadow_monitoring_path
+    )
+    summary = build_exposure_load_shadow_channel_lock(
+        source_eligible_shadow_monitoring
+    )
+    write_frame(
+        pd.DataFrame(clean_shadow_launch_rows(summary["locked_channels"])),
+        experiment_dir / "exposure_load_shadow_channel_lock.csv",
+    )
+    write_frame(
+        pd.DataFrame(clean_shadow_launch_rows(summary["held_channels"])),
+        experiment_dir / "exposure_load_shadow_channel_lock_held_channels.csv",
+    )
+    _write_json(
+        experiment_dir / "config.json",
+        {
+            "experiment_id": experiment_id,
+            "experiment_type": "exposure_load_shadow_channel_lock_sprint",
+            "exposure_load_source_eligible_shadow_monitoring_path": str(
+                exposure_load_source_eligible_shadow_monitoring_path
+            ),
+        },
+    )
+    _write_json(experiment_dir / "exposure_load_shadow_channel_lock.json", summary)
+    write_exposure_load_shadow_channel_lock_report(
+        experiment_dir / "exposure_load_shadow_channel_lock_report.md",
+        summary,
+    )
+    return experiment_dir
+
+
+def run_exposure_load_shadow_review_protocol_sprint_experiment(
+    exposure_load_shadow_channel_lock_path: str | Path,
+    output_dir: str | Path,
+    experiment_id: str,
+) -> Path:
+    experiment_dir = _experiment_path(output_dir, experiment_id)
+    shadow_channel_lock = _load_json_payload(exposure_load_shadow_channel_lock_path)
+    summary = build_exposure_load_shadow_review_protocol(shadow_channel_lock)
+    write_frame(
+        pd.DataFrame(clean_shadow_launch_rows(summary["protocol_rows"])),
+        experiment_dir / "exposure_load_shadow_review_protocol.csv",
+    )
+    _write_json(
+        experiment_dir / "config.json",
+        {
+            "experiment_id": experiment_id,
+            "experiment_type": "exposure_load_shadow_review_protocol_sprint",
+            "exposure_load_shadow_channel_lock_path": str(
+                exposure_load_shadow_channel_lock_path
+            ),
+        },
+    )
+    _write_json(
+        experiment_dir / "exposure_load_shadow_review_protocol.json",
+        summary,
+    )
+    write_exposure_load_shadow_review_protocol_report(
+        experiment_dir / "exposure_load_shadow_review_protocol_report.md",
+        summary,
+    )
+    return experiment_dir
+
+
+def run_exposure_load_shadow_readiness_register_sprint_experiment(
+    exposure_load_shadow_channel_lock_path: str | Path,
+    exposure_load_shadow_review_protocol_path: str | Path,
+    output_dir: str | Path,
+    experiment_id: str,
+) -> Path:
+    experiment_dir = _experiment_path(output_dir, experiment_id)
+    shadow_channel_lock = _load_json_payload(exposure_load_shadow_channel_lock_path)
+    shadow_review_protocol = _load_json_payload(
+        exposure_load_shadow_review_protocol_path
+    )
+    summary = build_exposure_load_shadow_readiness_register(
+        shadow_channel_lock,
+        shadow_review_protocol,
+    )
+    write_frame(
+        pd.DataFrame(clean_shadow_launch_rows(summary["readiness_rows"])),
+        experiment_dir / "exposure_load_shadow_readiness_register.csv",
+    )
+    _write_json(
+        experiment_dir / "config.json",
+        {
+            "experiment_id": experiment_id,
+            "experiment_type": "exposure_load_shadow_readiness_register_sprint",
+            "exposure_load_shadow_channel_lock_path": str(
+                exposure_load_shadow_channel_lock_path
+            ),
+            "exposure_load_shadow_review_protocol_path": str(
+                exposure_load_shadow_review_protocol_path
+            ),
+        },
+    )
+    _write_json(
+        experiment_dir / "exposure_load_shadow_readiness_register.json",
+        summary,
+    )
+    write_exposure_load_shadow_readiness_register_report(
+        experiment_dir / "exposure_load_shadow_readiness_register_report.md",
         summary,
     )
     return experiment_dir

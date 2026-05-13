@@ -485,6 +485,50 @@ review because max burden reached 2.488 episodes per athlete-season. This
 supports prospective shadow review for the burden-capped channels only, not
 pilot/dashboard or autonomous intervention.
 
+## Run Exposure Load Shadow Launch Chain
+
+After source-eligible shadow monitoring, run the three launch-preparation
+sprints consecutively:
+
+```bash
+risk-engine \
+  --exposure-load-shadow-channel-lock-sprint \
+  --exposure-load-source-eligible-shadow-monitoring outputs/experiments/exposure_load_source_eligible_shadow_monitoring_v1/exposure_load_source_eligible_shadow_monitoring.json \
+  --output-dir outputs \
+  --experiment-id exposure_load_shadow_channel_lock_v1
+
+risk-engine \
+  --exposure-load-shadow-review-protocol-sprint \
+  --exposure-load-shadow-channel-lock outputs/experiments/exposure_load_shadow_channel_lock_v1/exposure_load_shadow_channel_lock.json \
+  --output-dir outputs \
+  --experiment-id exposure_load_shadow_review_protocol_v1
+
+risk-engine \
+  --exposure-load-shadow-readiness-register-sprint \
+  --exposure-load-shadow-channel-lock outputs/experiments/exposure_load_shadow_channel_lock_v1/exposure_load_shadow_channel_lock.json \
+  --exposure-load-shadow-review-protocol outputs/experiments/exposure_load_shadow_review_protocol_v1/exposure_load_shadow_review_protocol.json \
+  --output-dir outputs \
+  --experiment-id exposure_load_shadow_readiness_register_v1
+```
+
+These write channel-lock, review-protocol, and readiness-register CSV/JSON/report
+artifacts. The chain locks only channels that passed source-eligible burden
+guardrails, prepares the prospective research review protocol, and records the
+launch boundary. This launches research shadow monitoring preparation; it still
+does not clear pilot/dashboard work, probability-facing deployment, or
+autonomous intervention.
+
+The live `exposure_load_shadow_channel_lock_v1`,
+`exposure_load_shadow_review_protocol_v1`, and
+`exposure_load_shadow_readiness_register_v1` runs launched the research shadow
+preparation chain. Locked channels are `broad_30d`, `severity_14d`, and
+`severity_7d`, all with `burden_capped_percentile` thresholds. The subtype
+channel remains held because `subtype_lower_extremity_soft_tissue_30d` still
+needs burden guardrail review. The readiness register recommends
+`launch_research_shadow_monitoring_without_product_escalation`; outcome
+collection must precede calibration updates, pilot escalation, dashboard work,
+or autonomous intervention.
+
 ## Run Live-Source Experiment
 
 When `config/paths.local.yaml` points to available local sources, the CLI can

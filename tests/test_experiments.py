@@ -26,6 +26,7 @@ from risk_stratification_engine.experiments import (
     run_exposure_load_source_context_classification_sprint_experiment,
     run_exposure_load_source_eligible_calibration_sprint_experiment,
     run_exposure_load_source_eligible_policy_sprint_experiment,
+    run_exposure_load_source_eligible_shadow_monitoring_sprint_experiment,
     run_exposure_load_source_resolution_sprint_experiment,
     run_injury_history_feature_sprint_experiment,
     run_injury_history_forward_diagnostic_sprint_experiment,
@@ -2159,6 +2160,92 @@ def _source_eligible_policy_alert_row(
         "unique_captured_event_count": 3,
         "unique_observed_event_count": 12,
     }
+
+
+def test_run_exposure_load_source_eligible_shadow_monitoring_sprint_writes_artifacts(
+    tmp_path,
+):
+    validation_path = tmp_path / "exposure_load_season_forward_validation.csv"
+    policy_path = tmp_path / "exposure_load_source_eligible_policy.json"
+    pd.DataFrame(
+        [
+            _source_eligible_policy_alert_row(
+                "2023-2024",
+                "burden_capped_percentile",
+                capture=0.20,
+                burden=0.80,
+                threshold=0.025,
+            ),
+            _source_eligible_policy_alert_row(
+                "2024-2025",
+                "burden_capped_percentile",
+                capture=0.40,
+                burden=0.70,
+                threshold=0.05,
+            ),
+            _source_eligible_policy_alert_row(
+                "2025-2026",
+                "burden_capped_percentile",
+                capture=0.20,
+                burden=0.80,
+                threshold=0.025,
+            ),
+        ]
+    ).to_csv(validation_path, index=False)
+    policy_path.write_text(
+        json.dumps(
+            {
+                "experiment_type": "exposure_load_source_eligible_policy_sprint",
+                "overall_recommendation": (
+                    "advance_source_eligible_shadow_mode_threshold_research"
+                ),
+                "production_readiness": "not_ready_for_probability_or_pilot",
+                "excluded_test_seasons": ["2024-2025"],
+                "burden_cap_episodes_per_athlete_season": 1.0,
+                "policy_package": {
+                    "status": "source_eligible_research_shadow_mode",
+                    "recommended_channels": [
+                        {
+                            "channel_name": "broad_30d",
+                            "policy_name": "exclude_concussion",
+                            "horizon_days": 30,
+                            "threshold_policy": "burden_capped_percentile",
+                            "mean_selected_threshold_value": 0.025,
+                        }
+                    ],
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_exposure_load_source_eligible_shadow_monitoring_sprint_experiment(
+        season_forward_validation_path=validation_path,
+        exposure_load_source_eligible_policy_path=policy_path,
+        output_dir=tmp_path,
+        experiment_id="exposure_load_source_eligible_shadow_monitoring",
+    )
+
+    assert (
+        result / "exposure_load_source_eligible_shadow_monitoring.csv"
+    ).exists()
+    assert (
+        result / "exposure_load_source_eligible_shadow_monitoring_seasons.csv"
+    ).exists()
+    assert (
+        result / "exposure_load_source_eligible_shadow_monitoring.json"
+    ).exists()
+    assert (
+        result / "exposure_load_source_eligible_shadow_monitoring_report.md"
+    ).exists()
+    assert (result / "config.json").exists()
+
+    payload = json.loads(
+        (result / "exposure_load_source_eligible_shadow_monitoring.json").read_text()
+    )
+    assert payload["overall_recommendation"] == (
+        "proceed_with_prospective_source_eligible_shadow_monitoring"
+    )
 
 
 def _write_context_review_inputs(tmp_path):

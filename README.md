@@ -453,6 +453,38 @@ burden cap: `broad_30d` mean capture 0.151 / burden 0.354, `severity_14d`
 `subtype_lower_extremity_soft_tissue_30d` 0.186 / 0.774. This is model-readiness
 progress for prospective shadow monitoring, not pilot or dashboard clearance.
 
+## Run Exposure Load Source-Eligible Shadow Monitoring Sprint
+
+```bash
+risk-engine \
+  --exposure-load-source-eligible-shadow-monitoring-sprint \
+  --season-forward-validation-path outputs/experiments/exposure_load_season_forward_validation_v1/exposure_load_season_forward_validation.csv \
+  --exposure-load-source-eligible-policy outputs/experiments/exposure_load_source_eligible_policy_v1/exposure_load_source_eligible_policy.json \
+  --output-dir outputs \
+  --experiment-id exposure_load_source_eligible_shadow_monitoring_v1
+```
+
+This writes `exposure_load_source_eligible_shadow_monitoring.csv`,
+`exposure_load_source_eligible_shadow_monitoring_seasons.csv`,
+`exposure_load_source_eligible_shadow_monitoring.json`, and
+`exposure_load_source_eligible_shadow_monitoring_report.md`.
+
+The sprint reviews the frozen source-eligible threshold package against complete
+athlete-season validation rows, excludes source-ineligible seasons, and reports
+which channels are ready for prospective shadow review under the research-only
+deployment boundary. It is not pilot or dashboard clearance.
+
+The live `exposure_load_source_eligible_shadow_monitoring_v1` run recommended
+`proceed_with_prospective_source_eligible_shadow_monitoring` with production
+readiness still `not_ready_for_probability_or_pilot`. It excluded 2024-2025.
+The three burden-capped channels were ready for prospective shadow review:
+`broad_30d` mean capture 0.151 / max burden 0.686, `severity_14d` 0.129 /
+0.919, and `severity_7d` 0.050 / 0.615. The subtype channel
+`subtype_lower_extremity_soft_tissue_30d` remained blocked for burden guardrail
+review because max burden reached 2.488 episodes per athlete-season. This
+supports prospective shadow review for the burden-capped channels only, not
+pilot/dashboard or autonomous intervention.
+
 ## Run Live-Source Experiment
 
 When `config/paths.local.yaml` points to available local sources, the CLI can

@@ -28,6 +28,7 @@ from risk_stratification_engine.experiments import (
     run_exposure_load_source_context_classification_sprint_experiment,
     run_exposure_load_source_eligible_calibration_sprint_experiment,
     run_exposure_load_source_eligible_policy_sprint_experiment,
+    run_exposure_load_source_eligible_shadow_monitoring_sprint_experiment,
     run_exposure_load_source_resolution_sprint_experiment,
     run_forward_case_review_sprint_experiment,
     run_injury_history_feature_sprint_experiment,
@@ -81,6 +82,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--exposure-load-context-decision", type=Path)
     parser.add_argument("--exposure-load-source-context-classification", type=Path)
     parser.add_argument("--exposure-load-source-eligible-calibration", type=Path)
+    parser.add_argument("--exposure-load-source-eligible-policy", type=Path)
     parser.add_argument("--exposure-load-source-resolution-policy", type=Path)
     parser.add_argument("--season-forward-validation-path", type=Path)
     parser.add_argument("--output-dir", required=True, type=Path)
@@ -141,6 +143,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--exposure-load-source-eligible-policy-sprint",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--exposure-load-source-eligible-shadow-monitoring-sprint",
         action="store_true",
     )
     parser.add_argument("--stability-splits", type=int, default=5)
@@ -495,6 +501,36 @@ def main(argv: list[str] | None = None) -> int:
         print(
             "Exposure load source-eligible policy artifacts written to "
             f"{experiment_dir}"
+        )
+        return 0
+
+    if args.exposure_load_source_eligible_shadow_monitoring_sprint:
+        required_paths = {
+            "--season-forward-validation-path": args.season_forward_validation_path,
+            "--exposure-load-source-eligible-policy": (
+                args.exposure_load_source_eligible_policy
+            ),
+        }
+        missing = [flag for flag, path in required_paths.items() if path is None]
+        if missing:
+            parser.error(
+                "--exposure-load-source-eligible-shadow-monitoring-sprint "
+                "requires "
+                + ", ".join(missing)
+            )
+        experiment_dir = (
+            run_exposure_load_source_eligible_shadow_monitoring_sprint_experiment(
+                season_forward_validation_path=args.season_forward_validation_path,
+                exposure_load_source_eligible_policy_path=(
+                    args.exposure_load_source_eligible_policy
+                ),
+                output_dir=args.output_dir,
+                experiment_id=args.experiment_id,
+            )
+        )
+        print(
+            "Exposure load source-eligible shadow monitoring artifacts written "
+            f"to {experiment_dir}"
         )
         return 0
 

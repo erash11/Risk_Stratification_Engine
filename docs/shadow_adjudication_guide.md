@@ -13,6 +13,9 @@ Current status:
 This is still research collection. Do not use these outputs for a dashboard,
 probability-facing display, pilot deployment, or autonomous intervention.
 
+For a short explanation of what a packet means in this workflow, see
+`docs/shadow_packet_reference.md`.
+
 ## Files To Use
 
 The current adjudication package is:

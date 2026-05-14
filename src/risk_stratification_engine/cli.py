@@ -39,6 +39,7 @@ from risk_stratification_engine.experiments import (
     run_exposure_load_shadow_collection_packet_workflow_sprint_experiment,
     run_exposure_load_shadow_collection_template_sprint_experiment,
     run_exposure_load_shadow_collection_summary_sprint_experiment,
+    run_exposure_load_shadow_event_crosswalk_sprint_experiment,
     run_exposure_load_shadow_monitoring_plan_sprint_experiment,
     run_exposure_load_shadow_readiness_register_sprint_experiment,
     run_exposure_load_shadow_replay_sprint_experiment,
@@ -217,6 +218,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--exposure-load-shadow-calibration-readiness-sprint",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--exposure-load-shadow-event-crosswalk-sprint",
         action="store_true",
     )
     parser.add_argument("--stability-splits", type=int, default=5)
@@ -1016,6 +1021,47 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(
             "Exposure load season-forward validation artifacts written to "
+            f"{experiment_dir}"
+        )
+        return 0
+    if args.exposure_load_shadow_event_crosswalk_sprint:
+        if detailed_injuries_path is None:
+            sibling = injuries_path.parent / "injury_events_detailed.csv"
+            if not sibling.exists():
+                parser.error(
+                    "--exposure-load-shadow-event-crosswalk-sprint requires "
+                    "live-source detailed injury events or a sibling "
+                    "injury_events_detailed.csv"
+                )
+            detailed_injuries_path = sibling
+        if args.exposure_load_shadow_replay is None:
+            parser.error(
+                "--exposure-load-shadow-event-crosswalk-sprint requires "
+                "--exposure-load-shadow-replay"
+            )
+        exposure_participations = _resolve_exposure_participations(
+            parser,
+            args,
+            "--exposure-load-shadow-event-crosswalk-sprint",
+        )
+        experiment_dir = (
+            run_exposure_load_shadow_event_crosswalk_sprint_experiment(
+                measurements_path=measurements_path,
+                injuries_path=injuries_path,
+                detailed_injuries_path=detailed_injuries_path,
+                exposure_participations_path=exposure_participations,
+                exposure_load_shadow_replay_path=args.exposure_load_shadow_replay,
+                exposure_load_shadow_collection_path=(
+                    args.exposure_load_shadow_collection
+                ),
+                output_dir=args.output_dir,
+                experiment_id=args.experiment_id,
+                graph_window_size=args.graph_window_size,
+                model_variant=args.model_variant,
+            )
+        )
+        print(
+            "Exposure load shadow event crosswalk artifacts written to "
             f"{experiment_dir}"
         )
         return 0

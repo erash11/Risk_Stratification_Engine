@@ -30,6 +30,13 @@ The exact reviewer process is:
    this packet would have been interpretable and operationally meaningful in
    shadow mode.
 
+   To inspect which injury events were counted as captured or missed, use:
+   `outputs/experiments/exposure_load_shadow_event_crosswalk_v1/exposure_load_shadow_event_crosswalk.csv`.
+   Filter `review_packet_id` to the collection row you are reviewing, then use
+   `capture_status`, injury context fields, and nearest alert timing fields to
+   decide whether the existing CSV-only reviewer judgment should be confirmed,
+   downgraded, or marked unclear.
+
    The only place outside context may matter is practitioner/source-context
    judgment: whether the alert would have been useful, whether the outcome or
    managed-risk context was meaningful, whether source context was trustworthy

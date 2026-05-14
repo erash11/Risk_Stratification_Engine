@@ -1825,6 +1825,100 @@ def test_cli_runs_exposure_load_shadow_calibration_readiness_from_collection_sum
     }
 
 
+def test_cli_runs_exposure_load_shadow_event_crosswalk_from_replay_and_live_inputs(
+    tmp_path,
+    monkeypatch,
+):
+    measurements_path = tmp_path / "canonical_measurements.csv"
+    injuries_path = tmp_path / "canonical_injuries.csv"
+    detailed_path = tmp_path / "injury_events_detailed.csv"
+    exposure_participations_path = tmp_path / "exposure_participations.csv"
+    shadow_replay_path = tmp_path / "exposure_load_shadow_replay.json"
+    collection_path = tmp_path / "exposure_load_shadow_collection_prefilled.csv"
+    for path in (
+        measurements_path,
+        injuries_path,
+        detailed_path,
+        exposure_participations_path,
+        shadow_replay_path,
+        collection_path,
+    ):
+        path.write_text("artifact", encoding="utf-8")
+    calls = {}
+
+    def fake_run_exposure_load_shadow_event_crosswalk_sprint_experiment(
+        measurements_path,
+        injuries_path,
+        detailed_injuries_path,
+        exposure_participations_path,
+        exposure_load_shadow_replay_path,
+        exposure_load_shadow_collection_path,
+        output_dir,
+        experiment_id,
+        graph_window_size,
+        model_variant,
+    ):
+        calls["shadow_event_crosswalk"] = {
+            "measurements_path": measurements_path,
+            "injuries_path": injuries_path,
+            "detailed_injuries_path": detailed_injuries_path,
+            "exposure_participations_path": exposure_participations_path,
+            "exposure_load_shadow_replay_path": exposure_load_shadow_replay_path,
+            "exposure_load_shadow_collection_path": (
+                exposure_load_shadow_collection_path
+            ),
+            "output_dir": output_dir,
+            "experiment_id": experiment_id,
+            "graph_window_size": graph_window_size,
+            "model_variant": model_variant,
+        }
+        return output_dir / "experiments" / experiment_id
+
+    monkeypatch.setattr(
+        cli,
+        "run_exposure_load_shadow_event_crosswalk_sprint_experiment",
+        fake_run_exposure_load_shadow_event_crosswalk_sprint_experiment,
+    )
+
+    exit_code = main(
+        [
+            "--measurements",
+            str(measurements_path),
+            "--injuries",
+            str(injuries_path),
+            "--exposure-participations",
+            str(exposure_participations_path),
+            "--exposure-load-shadow-replay",
+            str(shadow_replay_path),
+            "--exposure-load-shadow-collection",
+            str(collection_path),
+            "--output-dir",
+            str(tmp_path),
+            "--experiment-id",
+            "exposure_load_shadow_event_crosswalk",
+            "--graph-window-size",
+            "2",
+            "--model-variant",
+            "l2",
+            "--exposure-load-shadow-event-crosswalk-sprint",
+        ]
+    )
+
+    assert exit_code == 0
+    assert calls["shadow_event_crosswalk"] == {
+        "measurements_path": measurements_path,
+        "injuries_path": injuries_path,
+        "detailed_injuries_path": detailed_path,
+        "exposure_participations_path": exposure_participations_path,
+        "exposure_load_shadow_replay_path": shadow_replay_path,
+        "exposure_load_shadow_collection_path": collection_path,
+        "output_dir": tmp_path,
+        "experiment_id": "exposure_load_shadow_event_crosswalk",
+        "graph_window_size": 2,
+        "model_variant": "l2",
+    }
+
+
 def test_cli_runs_window_sensitivity_experiment(tmp_path, monkeypatch):
     calls = {}
 

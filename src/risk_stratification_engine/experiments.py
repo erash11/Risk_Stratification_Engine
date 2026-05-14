@@ -122,6 +122,11 @@ from risk_stratification_engine.exposure_load_shadow_calibration_readiness impor
     clean_shadow_calibration_readiness_rows,
     write_exposure_load_shadow_calibration_readiness_report,
 )
+from risk_stratification_engine.exposure_load_shadow_event_crosswalk import (
+    build_shadow_event_crosswalk_summary,
+    clean_shadow_event_crosswalk_rows,
+    write_exposure_load_shadow_event_crosswalk_report,
+)
 from risk_stratification_engine.exposure_load_shadow_adjudication import (
     build_exposure_load_shadow_adjudication_decision_package,
     build_exposure_load_shadow_adjudication_package,
@@ -2660,6 +2665,109 @@ def run_exposure_load_shadow_replay_sprint_experiment(
     return experiment_dir
 
 
+def run_exposure_load_shadow_event_crosswalk_sprint_experiment(
+    measurements_path: str | Path,
+    injuries_path: str | Path,
+    detailed_injuries_path: str | Path,
+    exposure_participations_path: str | Path,
+    exposure_load_shadow_replay_path: str | Path,
+    exposure_load_shadow_collection_path: str | Path | None,
+    output_dir: str | Path,
+    experiment_id: str,
+    graph_window_size: int = 4,
+    model_variant: str = "l2",
+) -> Path:
+    experiment_dir = _experiment_path(output_dir, experiment_id)
+    measurements = load_measurements(measurements_path)
+    canonical_injuries = load_injury_events(injuries_path)
+    detailed_injuries = pd.read_csv(detailed_injuries_path)
+    exposure_participations = pd.read_csv(exposure_participations_path)
+    shadow_replay = _load_json_payload(exposure_load_shadow_replay_path)
+    retained_packet_ids = _shadow_collection_packet_ids(
+        exposure_load_shadow_collection_path
+    )
+    packet_rows = [
+        row
+        for row in shadow_replay.get("replay_rows", [])
+        if str(row.get("replay_status")) == "ready_for_research_adjudication"
+        and bool(row.get("source_eligible", True))
+        and (
+            retained_packet_ids is None
+            or str(row.get("review_packet_id")) in retained_packet_ids
+        )
+    ]
+    packet_contexts = _shadow_event_crosswalk_packet_contexts(
+        measurements=measurements,
+        canonical_injuries=canonical_injuries,
+        detailed_injuries=detailed_injuries,
+        exposure_participations=exposure_participations,
+        packet_rows=packet_rows,
+        graph_window_size=graph_window_size,
+        model_variant=model_variant,
+    )
+    summary = build_shadow_event_crosswalk_summary(
+        packet_contexts,
+        detailed_injuries,
+    )
+
+    write_frame(
+        pd.DataFrame(
+            clean_shadow_event_crosswalk_rows(summary["event_crosswalk_rows"])
+        ),
+        experiment_dir / "exposure_load_shadow_event_crosswalk.csv",
+    )
+    write_frame(
+        pd.DataFrame(
+            clean_shadow_event_crosswalk_rows(summary["packet_summary_rows"])
+        ),
+        experiment_dir / "exposure_load_shadow_event_crosswalk_summary.csv",
+    )
+    _write_json(
+        experiment_dir / "config.json",
+        {
+            "experiment_id": experiment_id,
+            "experiment_type": "exposure_load_shadow_event_crosswalk_sprint",
+            "measurements_path": str(measurements_path),
+            "injuries_path": str(injuries_path),
+            "detailed_injuries_path": str(detailed_injuries_path),
+            "exposure_participations_path": str(exposure_participations_path),
+            "exposure_load_shadow_replay_path": str(exposure_load_shadow_replay_path),
+            "exposure_load_shadow_collection_path": (
+                str(exposure_load_shadow_collection_path)
+                if exposure_load_shadow_collection_path is not None
+                else None
+            ),
+            "graph_window_size": graph_window_size,
+            "model_variant": model_variant,
+        },
+    )
+    _write_json(
+        experiment_dir / "exposure_load_shadow_event_crosswalk.json",
+        summary,
+    )
+    write_exposure_load_shadow_event_crosswalk_report(
+        experiment_dir / "exposure_load_shadow_event_crosswalk_report.md",
+        summary,
+    )
+    return experiment_dir
+
+
+def _shadow_collection_packet_ids(
+    collection_path: str | Path | None,
+) -> set[str] | None:
+    if collection_path is None:
+        return None
+    collection_rows = pd.read_csv(collection_path)
+    if "collection_packet_id" not in collection_rows:
+        return None
+    packet_ids = {
+        str(value)
+        for value in collection_rows["collection_packet_id"].dropna().tolist()
+        if str(value)
+    }
+    return packet_ids or None
+
+
 def run_exposure_load_shadow_adjudication_sprint_experiment(
     exposure_load_shadow_replay_path: str | Path,
     output_dir: str | Path,
@@ -4243,6 +4351,109 @@ def _season_forward_alert_policy_rows(
                 )
                 rows.append(row)
     return rows
+
+
+def _shadow_event_crosswalk_packet_contexts(
+    *,
+    measurements: pd.DataFrame,
+    canonical_injuries: pd.DataFrame,
+    detailed_injuries: pd.DataFrame,
+    exposure_participations: pd.DataFrame,
+    packet_rows: list[dict[str, object]],
+    graph_window_size: int,
+    model_variant: str,
+) -> list[dict[str, object]]:
+    matrix = build_measurement_matrix(measurements)
+    contexts: list[dict[str, object]] = []
+    graph_cache: dict[int, pd.DataFrame] = {}
+    channel_defaults = {
+        str(channel["channel_name"]): channel for channel in DEFAULT_SHADOW_MODE_CHANNELS
+    }
+    for packet in packet_rows:
+        channel_name = str(packet.get("channel_name"))
+        channel = dict(channel_defaults.get(channel_name, {}))
+        channel.update(
+            {
+                "channel_name": channel_name,
+                "policy_name": packet.get(
+                    "policy_name",
+                    channel.get("policy_name", ""),
+                ),
+                "horizon_days": int(
+                    packet.get("horizon_days") or channel.get("horizon_days") or 0
+                ),
+                "threshold_value": float(
+                    packet.get("selected_threshold_value")
+                    or channel.get("threshold_value")
+                    or 0.0
+                ),
+                "graph_window_size": int(
+                    packet.get("graph_window_size")
+                    or channel.get("graph_window_size")
+                    or graph_window_size
+                ),
+                "role": channel.get("role", "shadow event crosswalk"),
+            }
+        )
+        window_size = int(channel["graph_window_size"])
+        if window_size not in graph_cache:
+            graph_features = attach_coverage_source_features(
+                build_graph_snapshots(matrix, window_size=window_size),
+                measurements,
+            )
+            graph_cache[window_size] = attach_exposure_load_features(
+                graph_features,
+                exposure_participations,
+            )
+        graph_features = graph_cache[window_size]
+        policy_injuries = build_policy_injury_events(
+            canonical_injuries,
+            detailed_injuries,
+            policy_name=str(channel["policy_name"]),
+        )
+        labeled = attach_time_to_event_labels(graph_features, policy_injuries)
+        season_ids = _forward_season_ids(labeled)
+        test_season = str(packet.get("test_season_id"))
+        if test_season not in season_ids:
+            continue
+        test_index = season_ids.index(test_season)
+        if test_index == 0:
+            continue
+        train_seasons = season_ids[:test_index]
+        train_mask = labeled["season_id"].astype(str).isin(train_seasons)
+        timeline = _fit_forward_risk_timeline(
+            labeled=labeled,
+            train_mask=train_mask,
+            feature_columns=EXPOSURE_LOAD_MODEL_FEATURE_SETS[
+                "graph_plus_coverage_exposure_load"
+            ],
+            model_variant=model_variant,
+        )
+        explanation_summary = _explanation_summary(
+            timeline,
+            _forward_case_review_model_summary(
+                EXPOSURE_LOAD_MODEL_FEATURE_SETS[
+                    "graph_plus_coverage_exposure_load"
+                ]
+            ),
+        )
+        alert_timeline = _alert_episode_timeline(timeline, explanation_summary)
+        test_timeline = alert_timeline[
+            alert_timeline["season_id"].astype(str).eq(test_season)
+        ].copy()
+        episodes = build_alert_episodes(
+            test_timeline,
+            horizons=(int(channel["horizon_days"]),),
+            percentile_thresholds=(float(channel["threshold_value"]),),
+        )
+        contexts.append(
+            {
+                "packet": packet,
+                "episodes": episodes,
+                "timeline": test_timeline,
+            }
+        )
+    return contexts
 
 
 def _fit_forward_risk_timeline(

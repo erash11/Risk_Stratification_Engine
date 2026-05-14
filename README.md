@@ -793,6 +793,36 @@ independent practitioner/source-context adjudication. Probability-facing output,
 pilot/dashboard readiness, calibration claims, and autonomous intervention
 remain blocked.
 
+## Run Exposure Load Shadow Event Crosswalk Sprint
+
+Before independent practitioner adjudication, generate the retained-channel
+captured/missed injury-event crosswalk with:
+
+```bash
+risk-engine \
+  --measurements outputs/live_inputs/exposure_load_season_forward_validation_v1/canonical_measurements.csv \
+  --injuries outputs/live_inputs/exposure_load_season_forward_validation_v1/canonical_injuries.csv \
+  --exposure-participations outputs/exposure_inputs/exposure_cleaning_audit_v1/exposure_participations.csv \
+  --exposure-load-shadow-replay outputs/experiments/exposure_load_shadow_replay_v1/exposure_load_shadow_replay.json \
+  --exposure-load-shadow-collection outputs/experiments/exposure_load_shadow_collection_evidence_prefill_v1/exposure_load_shadow_collection_prefilled.csv \
+  --output-dir outputs \
+  --experiment-id exposure_load_shadow_event_crosswalk_v1 \
+  --graph-window-size 4 \
+  --model-variant l2 \
+  --exposure-load-shadow-event-crosswalk-sprint
+```
+
+This writes `exposure_load_shadow_event_crosswalk.csv`,
+`exposure_load_shadow_event_crosswalk_summary.csv`,
+`exposure_load_shadow_event_crosswalk.json`, and
+`exposure_load_shadow_event_crosswalk_report.md`. The live
+`exposure_load_shadow_event_crosswalk_v1` run is filtered to the 8 retained
+collection rows only: 363 event rows, 55 captured events, and 308 missed events,
+with every packet matching the replay aggregate counts. Use this artifact to
+inspect which de-identified injury events were captured or missed before
+changing the practitioner judgment fields. It is not probability calibration,
+pilot/dashboard clearance, or intervention evidence.
+
 ## Run Live-Source Experiment
 
 When `config/paths.local.yaml` points to available local sources, the CLI can

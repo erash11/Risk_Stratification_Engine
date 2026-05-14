@@ -38,6 +38,7 @@ from risk_stratification_engine.experiments import (
     run_exposure_load_shadow_collection_packet_workflow_sprint_experiment,
     run_exposure_load_shadow_collection_template_sprint_experiment,
     run_exposure_load_shadow_collection_summary_sprint_experiment,
+    run_exposure_load_shadow_event_crosswalk_sprint_experiment,
     run_exposure_load_shadow_monitoring_plan_sprint_experiment,
     run_exposure_load_shadow_replay_sprint_experiment,
     run_exposure_load_shadow_review_protocol_sprint_experiment,
@@ -2460,6 +2461,95 @@ def test_run_exposure_load_shadow_replay_sprint_writes_artifacts(tmp_path):
     assert payload["overall_recommendation"] == (
         "historical_shadow_replay_ready_for_prospective_collection"
     )
+
+
+def test_run_exposure_load_shadow_event_crosswalk_sprint_writes_artifacts(tmp_path):
+    measurements_path, injuries_path, detailed_path = _write_season_forward_fixture_inputs(
+        tmp_path
+    )
+    exposure_participations_path = _write_exposure_participations_for_season_forward_fixture(
+        tmp_path
+    )
+    shadow_replay_path = tmp_path / "exposure_load_shadow_replay.json"
+    collection_path = tmp_path / "exposure_load_shadow_collection_prefilled.csv"
+    shadow_replay_path.write_text(
+        json.dumps(
+            {
+                "experiment_type": "exposure_load_shadow_replay_sprint",
+                "replay_rows": [
+                    {
+                        "review_packet_id": "broad_30d__2025-2026",
+                        "test_season_id": "2025-2026",
+                        "source_eligible": True,
+                        "channel_name": "broad_30d",
+                        "policy_name": "exclude_concussion",
+                        "horizon_days": 30,
+                        "threshold_policy": "burden_capped_percentile",
+                        "selected_threshold_value": 0.05,
+                        "replay_status": "ready_for_research_adjudication",
+                    },
+                    {
+                        "review_packet_id": "severity_7d__2025-2026",
+                        "test_season_id": "2025-2026",
+                        "source_eligible": True,
+                        "channel_name": "severity_7d",
+                        "policy_name": "model_safe_time_loss",
+                        "horizon_days": 7,
+                        "threshold_policy": "burden_capped_percentile",
+                        "selected_threshold_value": 0.10,
+                        "replay_status": "ready_for_research_adjudication",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    pd.DataFrame(
+        [
+            {
+                "collection_packet_id": "broad_30d__2025-2026",
+                "channel_name": "broad_30d",
+            }
+        ]
+    ).to_csv(collection_path, index=False)
+
+    result = run_exposure_load_shadow_event_crosswalk_sprint_experiment(
+        measurements_path=measurements_path,
+        injuries_path=injuries_path,
+        detailed_injuries_path=detailed_path,
+        exposure_participations_path=exposure_participations_path,
+        exposure_load_shadow_replay_path=shadow_replay_path,
+        exposure_load_shadow_collection_path=collection_path,
+        output_dir=tmp_path,
+        experiment_id="exposure_load_shadow_event_crosswalk",
+        graph_window_size=2,
+        model_variant="l2",
+    )
+
+    assert (result / "exposure_load_shadow_event_crosswalk.csv").exists()
+    assert (result / "exposure_load_shadow_event_crosswalk_summary.csv").exists()
+    assert (result / "exposure_load_shadow_event_crosswalk.json").exists()
+    assert (result / "exposure_load_shadow_event_crosswalk_report.md").exists()
+    assert (result / "config.json").exists()
+
+    rows = pd.read_csv(result / "exposure_load_shadow_event_crosswalk.csv")
+    assert {
+        "review_packet_id",
+        "capture_status",
+        "injury_event_id",
+        "body_area",
+        "time_loss_days",
+        "linked_alert_episode_count",
+    }.issubset(rows.columns)
+    assert set(rows["review_packet_id"]) == {"broad_30d__2025-2026"}
+
+    payload = json.loads(
+        (result / "exposure_load_shadow_event_crosswalk.json").read_text()
+    )
+    assert payload["experiment_type"] == (
+        "exposure_load_shadow_event_crosswalk_sprint"
+    )
+    assert payload["production_readiness"] == "not_ready_for_probability_or_pilot"
 
 
 def test_run_exposure_load_shadow_adjudication_sprint_writes_artifacts(tmp_path):

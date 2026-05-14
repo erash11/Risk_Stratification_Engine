@@ -118,6 +118,22 @@ recommendation is `revisit_calibration_readiness_with_prospective_shadow_evidenc
 with calibration readiness limited to
 `ready_for_calibration_readiness_review_not_calibration_claim`.
 
+The captured/missed injury-event crosswalk is:
+
+`outputs/experiments/exposure_load_shadow_event_crosswalk_v1/exposure_load_shadow_event_crosswalk.csv`
+
+Use this file when deciding whether captured events were meaningful. It lists
+the de-identified injury events counted as `captured` or `missed` for the 8
+retained-channel rows, along with available body area, classification/pathology,
+time-loss/duration, activity/source context, and nearest alert timing fields.
+The companion packet summary is:
+
+`outputs/experiments/exposure_load_shadow_event_crosswalk_v1/exposure_load_shadow_event_crosswalk_summary.csv`
+
+It verifies that each retained packet's crosswalk counts match the replay
+aggregate counts. The live crosswalk has 8 packets, 363 event rows, 55 captured
+events, and 308 missed events.
+
 ## Exact Work To Do
 
 For each of the 8 rows in

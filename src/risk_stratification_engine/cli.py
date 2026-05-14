@@ -33,6 +33,7 @@ from risk_stratification_engine.experiments import (
     run_exposure_load_shadow_adjudication_decision_sprint_experiment,
     run_exposure_load_shadow_adjudication_summary_sprint_experiment,
     run_exposure_load_shadow_adjudication_sprint_experiment,
+    run_exposure_load_shadow_calibration_readiness_sprint_experiment,
     run_exposure_load_shadow_channel_lock_sprint_experiment,
     run_exposure_load_shadow_collection_evidence_prefill_sprint_experiment,
     run_exposure_load_shadow_collection_packet_workflow_sprint_experiment,
@@ -105,6 +106,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--exposure-load-shadow-adjudication-decision", type=Path)
     parser.add_argument("--exposure-load-shadow-monitoring-plan", type=Path)
     parser.add_argument("--exposure-load-shadow-collection", type=Path)
+    parser.add_argument("--exposure-load-shadow-collection-summary", type=Path)
     parser.add_argument("--exposure-load-source-resolution-policy", type=Path)
     parser.add_argument("--season-forward-validation-path", type=Path)
     parser.add_argument("--output-dir", required=True, type=Path)
@@ -211,6 +213,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--exposure-load-shadow-collection-evidence-prefill-sprint",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--exposure-load-shadow-calibration-readiness-sprint",
         action="store_true",
     )
     parser.add_argument("--stability-splits", type=int, default=5)
@@ -850,6 +856,27 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(
             "Exposure load shadow collection evidence prefill artifacts written to "
+            f"{experiment_dir}"
+        )
+        return 0
+
+    if args.exposure_load_shadow_calibration_readiness_sprint:
+        if args.exposure_load_shadow_collection_summary is None:
+            parser.error(
+                "--exposure-load-shadow-calibration-readiness-sprint requires "
+                "--exposure-load-shadow-collection-summary"
+            )
+        experiment_dir = (
+            run_exposure_load_shadow_calibration_readiness_sprint_experiment(
+                exposure_load_shadow_collection_summary_path=(
+                    args.exposure_load_shadow_collection_summary
+                ),
+                output_dir=args.output_dir,
+                experiment_id=args.experiment_id,
+            )
+        )
+        print(
+            "Exposure load shadow calibration readiness artifacts written to "
             f"{experiment_dir}"
         )
         return 0

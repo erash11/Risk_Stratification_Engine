@@ -117,6 +117,11 @@ from risk_stratification_engine.exposure_load_shadow_collection import (
     write_exposure_load_shadow_collection_summary_report,
     write_exposure_load_shadow_collection_template_report,
 )
+from risk_stratification_engine.exposure_load_shadow_calibration_readiness import (
+    build_exposure_load_shadow_calibration_readiness_review,
+    clean_shadow_calibration_readiness_rows,
+    write_exposure_load_shadow_calibration_readiness_report,
+)
 from risk_stratification_engine.exposure_load_shadow_adjudication import (
     build_exposure_load_shadow_adjudication_decision_package,
     build_exposure_load_shadow_adjudication_package,
@@ -3003,6 +3008,55 @@ def run_exposure_load_shadow_collection_evidence_prefill_sprint_experiment(
     write_exposure_load_shadow_collection_evidence_prefill_report(
         experiment_dir / "exposure_load_shadow_collection_evidence_prefill_report.md",
         prefill,
+    )
+    return experiment_dir
+
+
+def run_exposure_load_shadow_calibration_readiness_sprint_experiment(
+    exposure_load_shadow_collection_summary_path: str | Path,
+    output_dir: str | Path,
+    experiment_id: str,
+) -> Path:
+    experiment_dir = _experiment_path(output_dir, experiment_id)
+    collection_summary = _load_json_payload(
+        exposure_load_shadow_collection_summary_path
+    )
+    readiness = build_exposure_load_shadow_calibration_readiness_review(
+        collection_summary
+    )
+    write_frame(
+        pd.DataFrame(
+            clean_shadow_calibration_readiness_rows(
+                readiness["channel_readiness_rows"]
+            )
+        ),
+        experiment_dir / "exposure_load_shadow_calibration_readiness_channels.csv",
+    )
+    write_frame(
+        pd.DataFrame(
+            clean_shadow_calibration_readiness_rows(
+                readiness["evidence_gap_rows"]
+            )
+        ),
+        experiment_dir / "exposure_load_shadow_calibration_readiness_gaps.csv",
+    )
+    _write_json(
+        experiment_dir / "config.json",
+        {
+            "experiment_id": experiment_id,
+            "experiment_type": "exposure_load_shadow_calibration_readiness",
+            "exposure_load_shadow_collection_summary_path": str(
+                exposure_load_shadow_collection_summary_path
+            ),
+        },
+    )
+    _write_json(
+        experiment_dir / "exposure_load_shadow_calibration_readiness.json",
+        readiness,
+    )
+    write_exposure_load_shadow_calibration_readiness_report(
+        experiment_dir / "exposure_load_shadow_calibration_readiness_report.md",
+        readiness,
     )
     return experiment_dir
 

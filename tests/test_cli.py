@@ -1775,6 +1775,56 @@ def test_cli_runs_exposure_load_shadow_collection_evidence_prefill_from_review_p
     }
 
 
+def test_cli_runs_exposure_load_shadow_calibration_readiness_from_collection_summary(
+    tmp_path,
+    monkeypatch,
+):
+    collection_summary_path = (
+        tmp_path / "exposure_load_shadow_collection_summary.json"
+    )
+    collection_summary_path.write_text("artifact", encoding="utf-8")
+    calls = {}
+
+    def fake_run_exposure_load_shadow_calibration_readiness_sprint_experiment(
+        exposure_load_shadow_collection_summary_path,
+        output_dir,
+        experiment_id,
+    ):
+        calls["shadow_calibration_readiness"] = {
+            "exposure_load_shadow_collection_summary_path": (
+                exposure_load_shadow_collection_summary_path
+            ),
+            "output_dir": output_dir,
+            "experiment_id": experiment_id,
+        }
+        return output_dir / "experiments" / experiment_id
+
+    monkeypatch.setattr(
+        cli,
+        "run_exposure_load_shadow_calibration_readiness_sprint_experiment",
+        fake_run_exposure_load_shadow_calibration_readiness_sprint_experiment,
+    )
+
+    exit_code = main(
+        [
+            "--output-dir",
+            str(tmp_path),
+            "--experiment-id",
+            "exposure_load_shadow_calibration_readiness",
+            "--exposure-load-shadow-calibration-readiness-sprint",
+            "--exposure-load-shadow-collection-summary",
+            str(collection_summary_path),
+        ]
+    )
+
+    assert exit_code == 0
+    assert calls["shadow_calibration_readiness"] == {
+        "exposure_load_shadow_collection_summary_path": collection_summary_path,
+        "output_dir": tmp_path,
+        "experiment_id": "exposure_load_shadow_calibration_readiness",
+    }
+
+
 def test_cli_runs_window_sensitivity_experiment(tmp_path, monkeypatch):
     calls = {}
 

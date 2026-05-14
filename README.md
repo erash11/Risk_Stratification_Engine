@@ -769,6 +769,30 @@ useful/source-trustworthy/actionable rows. Its recommendation is
 next step is a calibration-readiness review, not calibration claims or product
 deployment.
 
+## Run Exposure Load Shadow Calibration Readiness Sprint
+
+After the retained-channel collection summary is complete, convert it into a
+bounded calibration-readiness decision package with:
+
+```bash
+risk-engine \
+  --exposure-load-shadow-calibration-readiness-sprint \
+  --exposure-load-shadow-collection-summary outputs/experiments/exposure_load_shadow_collection_summary_completed_v1/exposure_load_shadow_collection_summary.json \
+  --output-dir outputs \
+  --experiment-id exposure_load_shadow_calibration_readiness_v1
+```
+
+This writes `exposure_load_shadow_calibration_readiness_channels.csv`,
+`exposure_load_shadow_calibration_readiness_gaps.csv`,
+`exposure_load_shadow_calibration_readiness.json`, and
+`exposure_load_shadow_calibration_readiness_report.md`. The live
+`exposure_load_shadow_calibration_readiness_v1` run recommends
+`defer_calibration_claims_pending_independent_practitioner_adjudication`.
+Both retained channels are calibration research candidates only after
+independent practitioner/source-context adjudication. Probability-facing output,
+pilot/dashboard readiness, calibration claims, and autonomous intervention
+remain blocked.
+
 ## Run Live-Source Experiment
 
 When `config/paths.local.yaml` points to available local sources, the CLI can

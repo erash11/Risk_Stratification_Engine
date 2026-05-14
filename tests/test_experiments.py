@@ -33,6 +33,7 @@ from risk_stratification_engine.experiments import (
     run_exposure_load_shadow_adjudication_summary_sprint_experiment,
     run_exposure_load_shadow_adjudication_sprint_experiment,
     run_exposure_load_shadow_readiness_register_sprint_experiment,
+    run_exposure_load_shadow_calibration_readiness_sprint_experiment,
     run_exposure_load_shadow_collection_evidence_prefill_sprint_experiment,
     run_exposure_load_shadow_collection_packet_workflow_sprint_experiment,
     run_exposure_load_shadow_collection_template_sprint_experiment,
@@ -2932,6 +2933,69 @@ def test_run_exposure_load_shadow_collection_evidence_prefill_sprint_writes_arti
         "broad_30d__2023-2024",
         "severity_14d__2025-2026",
     }
+
+
+def test_run_exposure_load_shadow_calibration_readiness_sprint_writes_artifacts(
+    tmp_path,
+):
+    collection_summary_path = tmp_path / "exposure_load_shadow_collection_summary.json"
+    collection_summary_path.write_text(
+        json.dumps(
+            {
+                "experiment_type": "exposure_load_shadow_collection_summary",
+                "overall_recommendation": (
+                    "revisit_calibration_readiness_with_prospective_shadow_evidence"
+                ),
+                "production_readiness": "not_ready_for_probability_or_pilot",
+                "calibration_readiness": (
+                    "ready_for_calibration_readiness_review_not_calibration_claim"
+                ),
+                "total_rows": 8,
+                "complete_valid_rows": 8,
+                "pending_or_invalid_rows": 0,
+                "complete_source_eligible_rows": 8,
+                "useful_source_ok_actionable_rows": 4,
+                "channel_summary_rows": [
+                    {
+                        "channel_name": "broad_30d",
+                        "minimum_required_packets": 4,
+                        "complete_valid_rows": 4,
+                        "complete_source_eligible_rows": 4,
+                        "useful_source_ok_actionable_rows": 2,
+                        "calibration_review_gate": (
+                            "ready_for_calibration_readiness_review"
+                        ),
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_exposure_load_shadow_calibration_readiness_sprint_experiment(
+        exposure_load_shadow_collection_summary_path=collection_summary_path,
+        output_dir=tmp_path,
+        experiment_id="exposure_load_shadow_calibration_readiness",
+    )
+
+    assert (
+        result / "exposure_load_shadow_calibration_readiness_channels.csv"
+    ).exists()
+    assert (result / "exposure_load_shadow_calibration_readiness_gaps.csv").exists()
+    assert (result / "exposure_load_shadow_calibration_readiness.json").exists()
+    assert (
+        result / "exposure_load_shadow_calibration_readiness_report.md"
+    ).exists()
+    assert (result / "config.json").exists()
+    payload = json.loads(
+        (result / "exposure_load_shadow_calibration_readiness.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert payload["overall_recommendation"] == (
+        "defer_calibration_claims_pending_independent_practitioner_adjudication"
+    )
+    assert payload["production_readiness"] == "not_ready_for_probability_or_pilot"
 
 
 def _write_context_review_inputs(tmp_path):

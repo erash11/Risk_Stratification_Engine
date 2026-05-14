@@ -141,6 +141,48 @@ These rows come from existing shadow replay evidence. `severity_7d` is excluded
 because it is paused, and `2024-2025` is excluded because the source-resolution
 policy marked it source-ineligible.
 
+## Data Source Rule
+
+You do not need to source new injury data to complete the current CSV-only
+review. The injury/event counts, alert episode counts, captured events, source
+eligibility, retained-channel status, and excluded-channel decisions all come
+from project artifacts already generated from the data you provided.
+
+Use the current project artifacts for these fields:
+
+| Field group | Source to use |
+|---|---|
+| Season/window fields | Existing shadow replay and prefill artifacts. |
+| Source eligibility | Existing source-resolution, shadow replay, and prefill artifacts. |
+| Alert episode counts | Existing shadow replay packets. |
+| Observed/captured event counts | Existing shadow replay packets derived from provided injury data. |
+| Retained vs paused channel | Existing adjudication decision and monitoring plan artifacts. |
+
+Do not look for public, external, or new injury data to answer those fields.
+If a field is already prefilled, leave it alone unless you find a specific
+source error.
+
+The only information not fully contained in the project artifacts is true
+practitioner/source-context judgment. That includes whether an alert would have
+been useful to staff, whether a managed-risk context was clinically meaningful,
+whether source coverage was trustworthy in practice, and what action would have
+been reasonable. If you do not have that context, do not invent it. Mark the row
+as CSV-only evidence review and use conservative values.
+
+Use this evidence hierarchy:
+
+| Evidence available | Authentic reviewer action |
+|---|---|
+| Existing replay/adjudication artifacts only | Complete as CSV-only evidence review; notes must say the judgment is based on replay/adjudication artifacts only. |
+| De-identified internal practitioner, clinical, operations, roster, or source-quality context is available | Use that context to refine `alert_usefulness`, `outcome_confirmed`, `source_context_ok`, `action_taken`, and `notes`. |
+| Context is unavailable or ambiguous | Use `alert_usefulness=unclear`, `outcome_confirmed=false`, `action_taken=none`, and explain the limitation in `notes`. |
+
+So the answer to "do I need data other than what I already provided?" is:
+not for the current CSV-only completion. Additional internal context is optional
+and only needed if you want to make stronger practitioner-adjudicated judgments.
+Without that context, the authentic completion must stay explicitly
+artifact-limited.
+
 ## Fields To Complete
 
 These fields are already prefilled from project artifacts:

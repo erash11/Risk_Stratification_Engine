@@ -21,10 +21,21 @@ The exact reviewer process is:
    `unique_observed_event_count`, `unique_captured_event_count`,
    `evidence_source_packet_id`, `evidence_source`.
 
+   These fields are answered from project artifacts already generated from the
+   data provided to the project. Do not source new public or external injury
+   data to answer them.
+
 3. Review the packet evidence and any internal context you have.
    Your job is not to prove the model is right. Your job is to judge whether
    this packet would have been interpretable and operationally meaningful in
    shadow mode.
+
+   The only place outside context may matter is practitioner/source-context
+   judgment: whether the alert would have been useful, whether the outcome or
+   managed-risk context was meaningful, whether source context was trustworthy
+   in practice, and what action would have been reasonable. If that context is
+   not available, the authentic answer is to keep the row artifact-limited,
+   conservative, and explicit in the notes.
 
 4. Fill `alert_usefulness` conservatively:
    - `useful`: coherent concern, source context trustworthy, would support
@@ -52,6 +63,12 @@ context, do not infer or force a positive answer. Use
 `alert_usefulness=unclear`, `outcome_confirmed=false`, the best
 `source_context_ok` judgment you can defend, `action_taken=none`, and explain
 the limitation in `notes`.
+
+For the current CSV-only completion, no new injury data is required beyond what
+has already been provided to the project. Additional internal context is only
+needed if you want to replace a CSV-only judgment with true practitioner
+adjudication. If that context is unavailable, say so in the notes instead of
+creating a stronger claim.
 
 A defensible uncertain row is better than an overconfident useful row. These
 rows are meant to test whether retained-channel shadow monitoring deserves

@@ -733,6 +733,12 @@ retained-channel rows with replay-derived season, source-eligibility, episode,
 observed-event, and captured-event fields prefilled. Reviewer judgment fields
 remain blank.
 
+The reviewer process is preserved in
+`docs/shadow_collection_reviewer_process_reference.md`. The current local
+prefilled file has been completed by carrying forward the existing CSV-only
+adjudication judgments; this remains research evidence and is not independent
+clinical/practitioner adjudication.
+
 ## Run Exposure Load Shadow Collection Summary Sprint
 
 After retained-channel prefilled collection rows are reviewed, validate and
@@ -754,6 +760,14 @@ fields are complete, the summary reports the remaining missing reviewer fields
 and keeps `not_ready_for_calibration_claims`; probability, pilot, and dashboard
 readiness remain blocked until the retained-channel collection evidence is
 reviewed and summarized.
+
+The completed local run
+`exposure_load_shadow_collection_summary_completed_v1` reports 8 complete valid
+rows, 0 pending/invalid rows, 8 complete source-eligible rows, and 4
+useful/source-trustworthy/actionable rows. Its recommendation is
+`revisit_calibration_readiness_with_prospective_shadow_evidence`; this means the
+next step is a calibration-readiness review, not calibration claims or product
+deployment.
 
 ## Run Live-Source Experiment
 

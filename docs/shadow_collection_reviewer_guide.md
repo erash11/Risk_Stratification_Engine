@@ -7,14 +7,18 @@ Current status:
 
 - The retained channels are `broad_30d` and `severity_14d`.
 - `severity_7d` remains paused until revision.
-- The evidence-prefilled collection template has 8 pending reviewer rows.
+- The evidence-prefilled collection template has 8 completed CSV-only reviewer
+  rows carried forward from the completed adjudication review.
 - Reviewer packet materials have been generated for those 8 rows.
+- The completed local summary reports 8 complete valid rows, 0 pending/invalid
+  rows, and 4 useful/source-trustworthy/actionable rows.
 - Calibration, pilot, dashboard, probability-facing output, and autonomous
   intervention remain blocked.
 
-This is still research collection. The goal is to collect prospective
-source-eligible reviewer evidence, not to decide that the model is ready for
-product use.
+This is still research collection. The completed rows are CSV-only evidence
+review, not independent clinical/practitioner adjudication. The goal is to
+decide whether a calibration-readiness review is justified, not to decide that
+the model is ready for product use.
 
 ## Your Required Involvement
 
@@ -59,10 +63,15 @@ The evidence-prefilled collection template to complete is:
 
 `outputs/experiments/exposure_load_shadow_collection_evidence_prefill_v1/exposure_load_shadow_collection_prefilled.csv`
 
-This is the preferred file for review. It already fills the replay-derived
-fields that the project knows from existing injury and shadow replay artifacts.
-Use the older blank template only if you are intentionally creating a new
-prospective collection cycle from scratch.
+This is the preferred file for review. It now carries forward the completed
+CSV-only adjudication judgments for the retained channels and already fills the
+replay-derived fields that the project knows from existing injury and shadow
+replay artifacts. Use the older blank template only if you are intentionally
+creating a new prospective collection cycle from scratch.
+
+The preserved reviewer process reference is:
+
+`docs/shadow_collection_reviewer_process_reference.md`
 
 The original blank collection template is:
 
@@ -92,19 +101,30 @@ It contains:
 - `exposure_load_shadow_collection_prefill_excluded.csv`: rows excluded from retained-channel review.
 - `exposure_load_shadow_collection_evidence_prefill_report.md`: prefill summary.
 
-The current validation summary is:
+The original pending validation summary is:
 
 `outputs/experiments/exposure_load_shadow_collection_summary_v1/`
 
 It currently reports 8 pending/invalid rows and 0 complete valid rows. That is
-expected until the collection template is filled.
+expected for the unreviewed prefill state.
+
+The completed local validation summary is:
+
+`outputs/experiments/exposure_load_shadow_collection_summary_completed_v1/`
+
+It reports 8 complete valid rows, 0 pending/invalid rows, 8 complete
+source-eligible rows, and 4 useful/source-trustworthy/actionable rows. Its
+recommendation is `revisit_calibration_readiness_with_prospective_shadow_evidence`,
+with calibration readiness limited to
+`ready_for_calibration_readiness_review_not_calibration_claim`.
 
 ## Exact Work To Do
 
 For each of the 8 rows in
 `exposure_load_shadow_collection_prefilled.csv`, review the row and complete the
 remaining blank reviewer fields. The quantitative replay fields are already
-filled.
+filled. In the current local artifact, those reviewer fields have been completed
+from the existing CSV-only adjudication review.
 
 The packet IDs are:
 
@@ -243,8 +263,9 @@ research is justified. It should not claim calibrated probabilities.
 
 ## Current Boundary
 
-The project has reached a human-evidence bottleneck. The code can prepare,
-validate, and summarize the review workflow, but the next meaningful step
-requires practitioner/source-context judgment. Until the 8 retained-channel
-rows are complete and summarized, do not move to probability-facing outputs,
-calibration claims, pilot/dashboard deployment, or autonomous intervention.
+The 8 retained-channel rows are now complete and summarized in the local
+CSV-only evidence-review artifact. The next meaningful step is a
+calibration-readiness review sprint, not probability-facing output. Do not move
+to calibration claims, pilot/dashboard deployment, autonomous intervention, or
+probability-facing outputs unless a separate readiness sprint explicitly
+supports that escalation.

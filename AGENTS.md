@@ -110,6 +110,27 @@ Future work may add a dashboard performance tab inspired by the Malum/SPEAR mate
 
 ## Latest Completed Step
 
+**Exposure-load shadow collection CSV-only evidence completion** - completed and verified on 2026-05-14.
+
+**What changed:** Added `docs/shadow_collection_reviewer_process_reference.md` and completed the local retained-channel collection file at `outputs/experiments/exposure_load_shadow_collection_evidence_prefill_v1/exposure_load_shadow_collection_prefilled.csv` by carrying forward the existing CSV-only adjudication judgments for `broad_30d` and `severity_14d`. This fills `alert_usefulness`, `outcome_confirmed`, `source_context_ok`, `action_taken`, `reviewer_id`, `review_date`, notes, and completion status without inventing practitioner evidence.
+
+**Verification:** The live command `risk-engine --exposure-load-shadow-collection-summary-sprint --exposure-load-shadow-collection outputs/experiments/exposure_load_shadow_collection_evidence_prefill_v1/exposure_load_shadow_collection_prefilled.csv --output-dir outputs --experiment-id exposure_load_shadow_collection_summary_completed_v1` completed and wrote summary artifacts.
+
+**Live results (`exposure_load_shadow_collection_summary_completed_v1`):**
+- Overall recommendation: `revisit_calibration_readiness_with_prospective_shadow_evidence`.
+- Production readiness: `not_ready_for_probability_or_pilot`.
+- Calibration readiness: `ready_for_calibration_readiness_review_not_calibration_claim`.
+- Total rows: 8.
+- Complete valid rows: 8.
+- Pending or invalid rows: 0.
+- Complete source-eligible rows: 8.
+- Useful, source-trustworthy, actionable rows: 4.
+- Channel gates: `broad_30d` and `severity_14d` are both `ready_for_calibration_readiness_review`.
+
+**Interpretation:** The retained-channel collection gate is locally satisfied for a calibration-readiness review using CSV-only evidence carried forward from adjudication. This does not establish calibration, probability-facing readiness, pilot/dashboard readiness, or autonomous intervention readiness.
+
+## Previous Completed Step
+
 **Exposure-load shadow collection evidence prefill sprint** - implemented and verified on 2026-05-14.
 
 **What changed:** Added `build_exposure_load_shadow_collection_evidence_prefill(...)`, `write_exposure_load_shadow_collection_evidence_prefill_report(...)`, `run_exposure_load_shadow_collection_evidence_prefill_sprint_experiment(...)`, and the `--exposure-load-shadow-collection-evidence-prefill-sprint` CLI mode. The sprint consumes `exposure_load_shadow_review_packets.csv`, retains source-eligible `broad_30d` and `severity_14d` packets, excludes paused/source-ineligible rows, and pre-populates the collection CSV with replay-derived quantitative evidence.

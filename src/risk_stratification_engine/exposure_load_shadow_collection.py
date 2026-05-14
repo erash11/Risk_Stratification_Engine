@@ -29,6 +29,15 @@ ALLOWED_ACTIONS = (
     "clinical_review",
     "other",
 )
+RETAINED_COLLECTION_CHANNELS = ("broad_30d", "severity_14d")
+REVIEWER_JUDGMENT_FIELDS = (
+    "alert_usefulness",
+    "outcome_confirmed",
+    "source_context_ok",
+    "action_taken",
+    "reviewer_id",
+    "review_date",
+)
 
 
 def build_exposure_load_shadow_collection_template(
@@ -226,6 +235,95 @@ def write_exposure_load_shadow_collection_summary_report(
     path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
 
 
+def build_exposure_load_shadow_collection_evidence_prefill(
+    review_packet_rows: list[dict[str, object]],
+) -> dict[str, object]:
+    rows = [_clean_row(row) for row in review_packet_rows]
+    retained_rows = [
+        row for row in rows if _is_retained_source_eligible_review_packet(row)
+    ]
+    excluded_rows = [_prefill_excluded_row(row) for row in rows if row not in retained_rows]
+    prefilled_rows = [
+        _evidence_prefilled_collection_row(row, sequence)
+        for channel_name in RETAINED_COLLECTION_CHANNELS
+        for sequence, row in enumerate(
+            [
+                row
+                for row in retained_rows
+                if str(row.get("channel_name")) == channel_name
+            ],
+            start=1,
+        )
+    ]
+    validation_rows = [_collection_validation_row(row) for row in prefilled_rows]
+    return {
+        "experiment_type": (
+            "exposure_load_shadow_collection_evidence_prefill_sprint"
+        ),
+        "overall_recommendation": _evidence_prefill_recommendation(
+            prefilled_rows
+        ),
+        "production_readiness": PRODUCTION_BLOCKED,
+        "calibration_readiness": "not_ready_for_calibration_claims",
+        "prefilled_row_count": len(prefilled_rows),
+        "excluded_row_count": len(excluded_rows),
+        "reviewer_required_field_count": len(REVIEWER_JUDGMENT_FIELDS),
+        "retained_channels": list(RETAINED_COLLECTION_CHANNELS),
+        "prefilled_collection_rows": prefilled_rows,
+        "validation_rows": validation_rows,
+        "excluded_rows": excluded_rows,
+        "prefill_boundary": (
+            "replay-derived evidence prefill only; reviewer judgment fields remain blank"
+        ),
+    }
+
+
+def write_exposure_load_shadow_collection_evidence_prefill_report(
+    path: Path,
+    prefill: dict[str, object],
+) -> None:
+    pending_rows = [
+        row
+        for row in prefill.get("validation_rows", [])
+        if row.get("completion_status") != "complete_valid"
+    ]
+    lines = [
+        "# Exposure Load Shadow Collection Evidence Prefill Sprint",
+        "",
+        f"Recommendation: {prefill['overall_recommendation']}",
+        f"Production readiness: {prefill['production_readiness']}",
+        f"Calibration readiness: {prefill['calibration_readiness']}",
+        f"Boundary: {prefill['prefill_boundary']}",
+        "",
+        "## Prefill Summary",
+        "",
+        f"- Prefilled retained-channel rows: {prefill['prefilled_row_count']}",
+        f"- Excluded source/channel rows: {prefill['excluded_row_count']}",
+        f"- Reviewer fields still required: {prefill['reviewer_required_field_count']}",
+        f"- Rows still pending validation: {len(pending_rows)}",
+        "",
+        "## Reviewer Fields Still Required",
+        "",
+    ]
+    for field in REVIEWER_JUDGMENT_FIELDS:
+        lines.append(f"- `{field}`")
+    lines.extend(
+        [
+            "",
+            "## Interpretation",
+            "",
+            (
+                "This artifact fills fields already available from shadow replay "
+                "evidence: season, source eligibility, episode counts, and "
+                "observed/captured event counts. It does not fill reviewer "
+                "judgment fields or support calibration/product readiness claims."
+            ),
+        ]
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+
+
 def build_exposure_load_shadow_collection_packet_workflow(
     collection_rows: list[dict[str, object]],
 ) -> dict[str, object]:
@@ -384,6 +482,91 @@ def _collection_template_row(
     }
 
 
+def _is_retained_source_eligible_review_packet(row: dict[str, object]) -> bool:
+    status = _review_packet_status(row)
+    return (
+        str(row.get("channel_name")) in RETAINED_COLLECTION_CHANNELS
+        and _review_packet_source_eligible(row) is True
+        and status == "ready_for_research_adjudication"
+    )
+
+
+def _evidence_prefilled_collection_row(
+    review_packet: dict[str, object],
+    packet_sequence: int,
+) -> dict[str, object]:
+    season_id = str(review_packet.get("test_season_id") or "")
+    season_start, season_end = _season_window_dates(season_id)
+    return {
+        "collection_packet_id": review_packet.get("review_packet_id"),
+        "channel_name": review_packet.get("channel_name"),
+        "packet_sequence": packet_sequence,
+        "collection_unit": review_packet.get(
+            "minimum_review_unit",
+            "complete source-eligible athlete-season",
+        ),
+        "evidence_gate": "historical_replay_evidence_prefill_before_reviewer_judgment",
+        "source_rule": "source_eligible=true and replay_status=ready_for_research_adjudication",
+        "collection_season_id": season_id,
+        "packet_start_date": season_start,
+        "packet_end_date": season_end,
+        "source_eligible": _review_packet_source_eligible(review_packet),
+        "episode_count": _parse_nonnegative_int(
+            review_packet.get("episode_count")
+        ),
+        "unique_observed_event_count": _parse_nonnegative_int(
+            review_packet.get("unique_observed_event_count")
+        ),
+        "unique_captured_event_count": _parse_nonnegative_int(
+            review_packet.get("unique_captured_event_count")
+        ),
+        "alert_usefulness": "",
+        "outcome_confirmed": "",
+        "source_context_ok": "",
+        "action_taken": "",
+        "reviewer_id": "",
+        "review_date": "",
+        "notes": "",
+        "collection_status": "pending_reviewer_judgment",
+        "evidence_source_packet_id": review_packet.get("review_packet_id"),
+        "evidence_source": "exposure_load_shadow_review_packets",
+    }
+
+
+def _prefill_excluded_row(row: dict[str, object]) -> dict[str, object]:
+    channel_name = str(row.get("channel_name") or "")
+    source_eligible = _review_packet_source_eligible(row)
+    status = _review_packet_status(row)
+    reasons: list[str] = []
+    if channel_name not in RETAINED_COLLECTION_CHANNELS:
+        reasons.append("channel_not_retained")
+    if source_eligible is not True:
+        reasons.append("source_ineligible")
+    if status != "ready_for_research_adjudication":
+        reasons.append("not_ready_for_research_adjudication")
+    return {
+        "review_packet_id": row.get("review_packet_id"),
+        "channel_name": channel_name,
+        "test_season_id": row.get("test_season_id"),
+        "source_eligible": source_eligible,
+        "replay_status": row.get("replay_status") or row.get("review_packet_status"),
+        "exclusion_reason": ",".join(reasons),
+    }
+
+
+def _review_packet_status(row: dict[str, object]) -> str:
+    return _normalized(row.get("replay_status") or row.get("review_packet_status"))
+
+
+def _review_packet_source_eligible(row: dict[str, object]) -> bool | None:
+    source_eligible = _parse_bool_text(row.get("source_eligible"))
+    if source_eligible is not None:
+        return source_eligible
+    if _review_packet_status(row) == "ready_for_research_adjudication":
+        return True
+    return None
+
+
 def _completion_check_row(row: dict[str, object]) -> dict[str, object]:
     missing = [
         field
@@ -482,6 +665,18 @@ def _collection_invalid_fields(
     ) not in ALLOWED_ACTIONS:
         invalid.append("action_taken")
     return invalid
+
+
+def _season_window_dates(season_id: str) -> tuple[str, str]:
+    if "-" not in season_id:
+        return "", ""
+    start_year_text, end_year_text = season_id.split("-", maxsplit=1)
+    try:
+        start_year = int(start_year_text)
+        end_year = int(end_year_text)
+    except ValueError:
+        return "", ""
+    return f"{start_year:04d}-07-01", f"{end_year:04d}-06-30"
 
 
 def _collection_channel_summary_rows(
@@ -791,6 +986,14 @@ def _packet_workflow_recommendation(
     if packet_manifest_rows:
         return "prepare_retained_channel_reviewer_packets"
     return "revise_collection_template_before_packet_workflow"
+
+
+def _evidence_prefill_recommendation(
+    prefilled_rows: list[dict[str, object]],
+) -> str:
+    if prefilled_rows:
+        return "review_prefilled_retained_channel_shadow_collection_rows"
+    return "no_retained_source_eligible_replay_packets_available"
 
 
 def _schema_row(

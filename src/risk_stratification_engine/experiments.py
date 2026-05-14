@@ -106,10 +106,12 @@ from risk_stratification_engine.exposure_load_shadow_monitoring import (
     write_exposure_load_shadow_monitoring_plan_report,
 )
 from risk_stratification_engine.exposure_load_shadow_collection import (
+    build_exposure_load_shadow_collection_evidence_prefill,
     build_exposure_load_shadow_collection_packet_workflow,
     build_exposure_load_shadow_collection_template,
     build_exposure_load_shadow_collection_summary,
     clean_shadow_collection_rows,
+    write_exposure_load_shadow_collection_evidence_prefill_report,
     write_exposure_load_shadow_collection_packet_workflow_report,
     write_exposure_load_shadow_collection_reviewer_instructions,
     write_exposure_load_shadow_collection_summary_report,
@@ -2956,6 +2958,51 @@ def run_exposure_load_shadow_collection_packet_workflow_sprint_experiment(
     write_exposure_load_shadow_collection_packet_workflow_report(
         experiment_dir / "exposure_load_shadow_collection_packet_workflow_report.md",
         workflow,
+    )
+    return experiment_dir
+
+
+def run_exposure_load_shadow_collection_evidence_prefill_sprint_experiment(
+    exposure_load_shadow_review_packets_path: str | Path,
+    output_dir: str | Path,
+    experiment_id: str,
+) -> Path:
+    experiment_dir = _experiment_path(output_dir, experiment_id)
+    review_packets = pd.read_csv(exposure_load_shadow_review_packets_path)
+    prefill = build_exposure_load_shadow_collection_evidence_prefill(
+        _json_records(review_packets)
+    )
+    write_frame(
+        pd.DataFrame(
+            clean_shadow_collection_rows(prefill["prefilled_collection_rows"])
+        ),
+        experiment_dir / "exposure_load_shadow_collection_prefilled.csv",
+    )
+    write_frame(
+        pd.DataFrame(clean_shadow_collection_rows(prefill["excluded_rows"])),
+        experiment_dir / "exposure_load_shadow_collection_prefill_excluded.csv",
+    )
+    write_frame(
+        pd.DataFrame(clean_shadow_collection_rows(prefill["validation_rows"])),
+        experiment_dir / "exposure_load_shadow_collection_prefill_validation.csv",
+    )
+    _write_json(
+        experiment_dir / "config.json",
+        {
+            "experiment_id": experiment_id,
+            "experiment_type": "exposure_load_shadow_collection_evidence_prefill",
+            "exposure_load_shadow_review_packets_path": str(
+                exposure_load_shadow_review_packets_path
+            ),
+        },
+    )
+    _write_json(
+        experiment_dir / "exposure_load_shadow_collection_evidence_prefill.json",
+        prefill,
+    )
+    write_exposure_load_shadow_collection_evidence_prefill_report(
+        experiment_dir / "exposure_load_shadow_collection_evidence_prefill_report.md",
+        prefill,
     )
     return experiment_dir
 

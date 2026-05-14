@@ -33,6 +33,7 @@ from risk_stratification_engine.experiments import (
     run_exposure_load_shadow_adjudication_summary_sprint_experiment,
     run_exposure_load_shadow_adjudication_sprint_experiment,
     run_exposure_load_shadow_readiness_register_sprint_experiment,
+    run_exposure_load_shadow_collection_evidence_prefill_sprint_experiment,
     run_exposure_load_shadow_collection_packet_workflow_sprint_experiment,
     run_exposure_load_shadow_collection_template_sprint_experiment,
     run_exposure_load_shadow_collection_summary_sprint_experiment,
@@ -2872,6 +2873,65 @@ def test_run_exposure_load_shadow_collection_packet_workflow_sprint_writes_artif
     )
     assert payload["packet_count"] == 1
     assert payload["production_readiness"] == "not_ready_for_probability_or_pilot"
+
+
+def test_run_exposure_load_shadow_collection_evidence_prefill_sprint_writes_artifacts(
+    tmp_path,
+):
+    review_packets_path = tmp_path / "exposure_load_shadow_review_packets.csv"
+    review_packets_path.write_text(
+        "\n".join(
+            [
+                (
+                    "review_packet_id,channel_name,test_season_id,source_eligible,"
+                    "episode_count,unique_observed_event_count,"
+                    "unique_captured_event_count,replay_status,minimum_review_unit"
+                ),
+                (
+                    "broad_30d__2023-2024,broad_30d,2023-2024,True,"
+                    "109,85,20,ready_for_research_adjudication,"
+                    "complete source-eligible athlete-season"
+                ),
+                (
+                    "severity_14d__2025-2026,severity_14d,2025-2026,True,"
+                    "161,47,7,ready_for_research_adjudication,"
+                    "complete source-eligible athlete-season"
+                ),
+                (
+                    "severity_7d__2025-2026,severity_7d,2025-2026,True,"
+                    "124,47,6,ready_for_research_adjudication,"
+                    "complete source-eligible athlete-season"
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = run_exposure_load_shadow_collection_evidence_prefill_sprint_experiment(
+        exposure_load_shadow_review_packets_path=review_packets_path,
+        output_dir=tmp_path,
+        experiment_id="exposure_load_shadow_collection_evidence_prefill",
+    )
+
+    assert (result / "exposure_load_shadow_collection_prefilled.csv").exists()
+    assert (result / "exposure_load_shadow_collection_prefill_excluded.csv").exists()
+    assert (result / "exposure_load_shadow_collection_prefill_validation.csv").exists()
+    assert (result / "exposure_load_shadow_collection_evidence_prefill.json").exists()
+    assert (result / "exposure_load_shadow_collection_evidence_prefill_report.md").exists()
+    payload = json.loads(
+        (result / "exposure_load_shadow_collection_evidence_prefill.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert payload["prefilled_row_count"] == 2
+    assert payload["excluded_row_count"] == 1
+    assert payload["reviewer_required_field_count"] == 6
+    prefilled = pd.read_csv(result / "exposure_load_shadow_collection_prefilled.csv")
+    assert set(prefilled["collection_packet_id"]) == {
+        "broad_30d__2023-2024",
+        "severity_14d__2025-2026",
+    }
 
 
 def _write_context_review_inputs(tmp_path):

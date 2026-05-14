@@ -1,10 +1,12 @@
 import json
 
 from risk_stratification_engine.exposure_load_shadow_collection import (
+    build_exposure_load_shadow_collection_evidence_prefill,
     build_exposure_load_shadow_collection_packet_workflow,
     build_exposure_load_shadow_collection_template,
     build_exposure_load_shadow_collection_summary,
     clean_shadow_collection_rows,
+    write_exposure_load_shadow_collection_evidence_prefill_report,
     write_exposure_load_shadow_collection_packet_workflow_report,
     write_exposure_load_shadow_collection_reviewer_instructions,
     write_exposure_load_shadow_collection_summary_report,
@@ -266,6 +268,107 @@ def test_shadow_collection_packet_workflow_creates_reviewer_materials_without_cl
     assert "Reviewer packet count: 2" in report
 
     json.dumps(workflow, allow_nan=False)
+
+
+def test_shadow_collection_evidence_prefill_uses_replay_fields_and_leaves_judgment_blank(
+    tmp_path,
+):
+    prefill = build_exposure_load_shadow_collection_evidence_prefill(
+        [
+            {
+                "review_packet_id": "broad_30d__2023-2024",
+                "channel_name": "broad_30d",
+                "test_season_id": "2023-2024",
+                "source_eligible": True,
+                "episode_count": 109,
+                "unique_observed_event_count": 85,
+                "unique_captured_event_count": 20,
+                "replay_status": "ready_for_research_adjudication",
+                "minimum_review_unit": "complete source-eligible athlete-season",
+            },
+            {
+                "review_packet_id": "broad_30d__2024-2025",
+                "channel_name": "broad_30d",
+                "test_season_id": "2024-2025",
+                "source_eligible": False,
+                "episode_count": 98,
+                "unique_observed_event_count": 64,
+                "unique_captured_event_count": 13,
+                "replay_status": "source_ineligible_stop",
+                "minimum_review_unit": "complete source-eligible athlete-season",
+            },
+            {
+                "review_packet_id": "severity_14d__2025-2026",
+                "channel_name": "severity_14d",
+                "test_season_id": "2025-2026",
+                "episode_count": 161,
+                "unique_observed_event_count": 47,
+                "unique_captured_event_count": 7,
+                "review_packet_status": "ready_for_research_adjudication",
+                "minimum_review_unit": "complete source-eligible athlete-season",
+            },
+            {
+                "review_packet_id": "severity_7d__2025-2026",
+                "channel_name": "severity_7d",
+                "test_season_id": "2025-2026",
+                "source_eligible": True,
+                "episode_count": 124,
+                "unique_observed_event_count": 47,
+                "unique_captured_event_count": 6,
+                "replay_status": "ready_for_research_adjudication",
+                "minimum_review_unit": "complete source-eligible athlete-season",
+            },
+        ]
+    )
+
+    assert prefill["experiment_type"] == (
+        "exposure_load_shadow_collection_evidence_prefill_sprint"
+    )
+    assert prefill["overall_recommendation"] == (
+        "review_prefilled_retained_channel_shadow_collection_rows"
+    )
+    assert prefill["production_readiness"] == "not_ready_for_probability_or_pilot"
+    assert prefill["calibration_readiness"] == "not_ready_for_calibration_claims"
+    assert prefill["prefilled_row_count"] == 2
+    assert prefill["excluded_row_count"] == 2
+    assert prefill["reviewer_required_field_count"] == 6
+
+    rows = {
+        row["collection_packet_id"]: row
+        for row in prefill["prefilled_collection_rows"]
+    }
+    broad = rows["broad_30d__2023-2024"]
+    assert broad["collection_season_id"] == "2023-2024"
+    assert broad["packet_start_date"] == "2023-07-01"
+    assert broad["packet_end_date"] == "2024-06-30"
+    assert broad["source_eligible"] is True
+    assert broad["episode_count"] == 109
+    assert broad["unique_observed_event_count"] == 85
+    assert broad["unique_captured_event_count"] == 20
+    assert broad["alert_usefulness"] == ""
+    assert broad["outcome_confirmed"] == ""
+    assert broad["source_context_ok"] == ""
+    assert broad["action_taken"] == ""
+    assert broad["collection_status"] == "pending_reviewer_judgment"
+
+    assert "broad_30d__2024-2025" in {
+        row["review_packet_id"] for row in prefill["excluded_rows"]
+    }
+    assert "severity_7d__2025-2026" in {
+        row["review_packet_id"] for row in prefill["excluded_rows"]
+    }
+
+    report_path = tmp_path / "prefill.md"
+    write_exposure_load_shadow_collection_evidence_prefill_report(
+        report_path,
+        prefill,
+    )
+    report = report_path.read_text(encoding="utf-8")
+    assert "Evidence Prefill Sprint" in report
+    assert "Prefilled retained-channel rows: 2" in report
+    assert "Reviewer fields still required: 6" in report
+
+    json.dumps(prefill, allow_nan=False)
 
 
 def _monitoring_plan() -> dict[str, object]:

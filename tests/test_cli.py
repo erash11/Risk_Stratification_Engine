@@ -1725,6 +1725,56 @@ def test_cli_runs_exposure_load_shadow_collection_packet_workflow_from_collectio
     }
 
 
+def test_cli_runs_exposure_load_shadow_collection_evidence_prefill_from_review_packets(
+    tmp_path,
+    monkeypatch,
+):
+    review_packets_path = tmp_path / "exposure_load_shadow_review_packets.csv"
+    review_packets_path.write_text("artifact", encoding="utf-8")
+    calls = {}
+
+    def fake_run_exposure_load_shadow_collection_evidence_prefill_sprint_experiment(
+        exposure_load_shadow_review_packets_path,
+        output_dir,
+        experiment_id,
+    ):
+        calls["shadow_collection_evidence_prefill"] = {
+            "exposure_load_shadow_review_packets_path": (
+                exposure_load_shadow_review_packets_path
+            ),
+            "output_dir": output_dir,
+            "experiment_id": experiment_id,
+        }
+        result = output_dir / "experiments" / experiment_id
+        result.mkdir(parents=True)
+        return result
+
+    monkeypatch.setattr(
+        cli,
+        "run_exposure_load_shadow_collection_evidence_prefill_sprint_experiment",
+        fake_run_exposure_load_shadow_collection_evidence_prefill_sprint_experiment,
+    )
+
+    exit_code = main(
+        [
+            "--output-dir",
+            str(tmp_path),
+            "--experiment-id",
+            "exposure_load_shadow_collection_evidence_prefill",
+            "--exposure-load-shadow-collection-evidence-prefill-sprint",
+            "--exposure-load-shadow-review-packets",
+            str(review_packets_path),
+        ]
+    )
+
+    assert exit_code == 0
+    assert calls["shadow_collection_evidence_prefill"] == {
+        "exposure_load_shadow_review_packets_path": review_packets_path,
+        "output_dir": tmp_path,
+        "experiment_id": "exposure_load_shadow_collection_evidence_prefill",
+    }
+
+
 def test_cli_runs_window_sensitivity_experiment(tmp_path, monkeypatch):
     calls = {}
 

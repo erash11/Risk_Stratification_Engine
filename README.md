@@ -710,15 +710,38 @@ evidence or changing readiness status.
 For the exact reviewer workflow and user responsibilities, see
 `docs/shadow_collection_reviewer_guide.md`.
 
+## Run Exposure Load Shadow Collection Evidence Prefill Sprint
+
+To avoid asking reviewers to manually recover fields that are already present in
+the shadow replay artifacts, prefill retained-channel collection rows with:
+
+```bash
+risk-engine \
+  --exposure-load-shadow-collection-evidence-prefill-sprint \
+  --exposure-load-shadow-review-packets outputs/experiments/exposure_load_shadow_replay_v1/exposure_load_shadow_review_packets.csv \
+  --output-dir outputs \
+  --experiment-id exposure_load_shadow_collection_evidence_prefill_v1
+```
+
+This writes `exposure_load_shadow_collection_prefilled.csv`,
+`exposure_load_shadow_collection_prefill_validation.csv`,
+`exposure_load_shadow_collection_prefill_excluded.csv`,
+`exposure_load_shadow_collection_evidence_prefill.json`, and
+`exposure_load_shadow_collection_evidence_prefill_report.md`. The live
+`exposure_load_shadow_collection_evidence_prefill_v1` run produced 8
+retained-channel rows with replay-derived season, source-eligibility, episode,
+observed-event, and captured-event fields prefilled. Reviewer judgment fields
+remain blank.
+
 ## Run Exposure Load Shadow Collection Summary Sprint
 
-After retained-channel prospective collection rows are filled, validate and
+After retained-channel prefilled collection rows are reviewed, validate and
 summarize them with:
 
 ```bash
 risk-engine \
   --exposure-load-shadow-collection-summary-sprint \
-  --exposure-load-shadow-collection outputs/experiments/exposure_load_shadow_collection_template_v1/exposure_load_shadow_collection_template.csv \
+  --exposure-load-shadow-collection outputs/experiments/exposure_load_shadow_collection_evidence_prefill_v1/exposure_load_shadow_collection_prefilled.csv \
   --output-dir outputs \
   --experiment-id exposure_load_shadow_collection_summary_v1
 ```
@@ -726,12 +749,11 @@ risk-engine \
 This writes `exposure_load_shadow_collection_validation.csv`,
 `exposure_load_shadow_collection_channel_summary.csv`,
 `exposure_load_shadow_collection_summary.json`, and
-`exposure_load_shadow_collection_summary_report.md`. The live
-`exposure_load_shadow_collection_summary_v1` run against the current pending
-template reported 8 pending/invalid rows, 0 complete valid rows, and
-`not_ready_for_calibration_claims`; probability, pilot, and dashboard readiness
-remain blocked until the retained-channel collection evidence is complete and
-summarized.
+`exposure_load_shadow_collection_summary_report.md`. When run before reviewer
+fields are complete, the summary reports the remaining missing reviewer fields
+and keeps `not_ready_for_calibration_claims`; probability, pilot, and dashboard
+readiness remain blocked until the retained-channel collection evidence is
+reviewed and summarized.
 
 ## Run Live-Source Experiment
 

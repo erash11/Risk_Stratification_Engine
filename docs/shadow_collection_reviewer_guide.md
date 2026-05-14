@@ -7,7 +7,7 @@ Current status:
 
 - The retained channels are `broad_30d` and `severity_14d`.
 - `severity_7d` remains paused until revision.
-- The collection template has 8 pending rows.
+- The evidence-prefilled collection template has 8 pending reviewer rows.
 - Reviewer packet materials have been generated for those 8 rows.
 - Calibration, pilot, dashboard, probability-facing output, and autonomous
   intervention remain blocked.
@@ -55,7 +55,16 @@ judgment or an approved source you provide.
 
 ## Files To Use
 
-The collection template to complete is:
+The evidence-prefilled collection template to complete is:
+
+`outputs/experiments/exposure_load_shadow_collection_evidence_prefill_v1/exposure_load_shadow_collection_prefilled.csv`
+
+This is the preferred file for review. It already fills the replay-derived
+fields that the project knows from existing injury and shadow replay artifacts.
+Use the older blank template only if you are intentionally creating a new
+prospective collection cycle from scratch.
+
+The original blank collection template is:
 
 `outputs/experiments/exposure_load_shadow_collection_template_v1/exposure_load_shadow_collection_template.csv`
 
@@ -72,6 +81,17 @@ Key files:
 - `review_packets/*.md`: one de-identified packet worksheet per collection row.
 - `exposure_load_shadow_collection_packet_workflow_report.md`: package summary.
 
+The current evidence prefill package is:
+
+`outputs/experiments/exposure_load_shadow_collection_evidence_prefill_v1/`
+
+It contains:
+
+- `exposure_load_shadow_collection_prefilled.csv`: the file to complete.
+- `exposure_load_shadow_collection_prefill_validation.csv`: current missing-field status.
+- `exposure_load_shadow_collection_prefill_excluded.csv`: rows excluded from retained-channel review.
+- `exposure_load_shadow_collection_evidence_prefill_report.md`: prefill summary.
+
 The current validation summary is:
 
 `outputs/experiments/exposure_load_shadow_collection_summary_v1/`
@@ -82,37 +102,43 @@ expected until the collection template is filled.
 ## Exact Work To Do
 
 For each of the 8 rows in
-`exposure_load_shadow_collection_template.csv`, open the matching packet file
-under `review_packets/` and complete the blank fields in the CSV.
+`exposure_load_shadow_collection_prefilled.csv`, review the row and complete the
+remaining blank reviewer fields. The quantitative replay fields are already
+filled.
 
 The packet IDs are:
 
-- `broad_30d__prospective_001`
-- `broad_30d__prospective_002`
-- `broad_30d__prospective_003`
-- `broad_30d__prospective_004`
-- `severity_14d__prospective_001`
-- `severity_14d__prospective_002`
-- `severity_14d__prospective_003`
-- `severity_14d__prospective_004`
+- `broad_30d__2021-2022`
+- `broad_30d__2022-2023`
+- `broad_30d__2023-2024`
+- `broad_30d__2025-2026`
+- `severity_14d__2021-2022`
+- `severity_14d__2022-2023`
+- `severity_14d__2023-2024`
+- `severity_14d__2025-2026`
 
-Use one row per complete source-eligible athlete-season review unit. If a
-packet fails the source rule, record `source_eligible=false` and explain the
-de-identified reason in `notes`.
+These rows come from existing shadow replay evidence. `severity_7d` is excluded
+because it is paused, and `2024-2025` is excluded because the source-resolution
+policy marked it source-ineligible.
 
 ## Fields To Complete
 
-Fill these required fields:
+These fields are already prefilled from project artifacts:
 
 | Field | What to enter |
 |---|---|
-| `collection_season_id` | De-identified season label, such as `2026-2027`. |
-| `packet_start_date` | Packet review window start in `YYYY-MM-DD` format. |
-| `packet_end_date` | Packet review window end in `YYYY-MM-DD` format. |
-| `source_eligible` | `true` if the packet passes the source rule; otherwise `false`. |
-| `episode_count` | Non-negative count of alert episodes in the packet. |
-| `unique_observed_event_count` | Non-negative count of observed relevant events. |
-| `unique_captured_event_count` | Non-negative count of observed events captured by the channel. This cannot exceed observed events. |
+| `collection_season_id` | Copied from shadow replay `test_season_id`. |
+| `packet_start_date` | Derived from the season label using the July 1 season start rule. |
+| `packet_end_date` | Derived from the season label using the June 30 season end rule. |
+| `source_eligible` | Derived from ready source-eligible replay packet status. |
+| `episode_count` | Copied from shadow replay packet evidence. |
+| `unique_observed_event_count` | Copied from shadow replay packet evidence. |
+| `unique_captured_event_count` | Copied from shadow replay packet evidence. |
+
+Fill these required reviewer fields:
+
+| Field | What to enter |
+|---|---|
 | `alert_usefulness` | One of `useful`, `noisy`, `misleading`, or `unclear`. |
 | `reviewer_id` | Stable reviewer code or initials. Avoid full names if not needed. |
 | `review_date` | Review date in `YYYY-MM-DD` format. |
@@ -126,9 +152,12 @@ Fill these recommended fields when the information is available:
 | `action_taken` | One of `none`, `monitor`, `communicate`, `modify_load`, `clinical_review`, or `other`. |
 | `notes` | Short de-identified rationale. Do not include athlete names or identifiable details. |
 
-Leave generated packet identity fields unchanged, including
+Leave generated and prefilled evidence fields unchanged unless you find a
+specific source error. These include
 `collection_packet_id`, `channel_name`, `packet_sequence`, `collection_unit`,
-`evidence_gate`, and `source_rule`.
+`evidence_gate`, `source_rule`, `collection_season_id`, `packet_start_date`,
+`packet_end_date`, `source_eligible`, `episode_count`,
+`unique_observed_event_count`, and `unique_captured_event_count`.
 
 ## Decision Rules
 
@@ -156,23 +185,23 @@ response would have been reasonable from the packet context.
 
 ## Example Completed Row
 
-The template starts like this:
+The prefilled template starts like this:
 
 ```csv
-collection_packet_id,channel_name,packet_sequence,collection_unit,evidence_gate,source_rule,collection_season_id,packet_start_date,packet_end_date,source_eligible,episode_count,unique_observed_event_count,unique_captured_event_count,alert_usefulness,outcome_confirmed,source_context_ok,action_taken,reviewer_id,review_date,notes,collection_status
-broad_30d__prospective_001,broad_30d,1,complete source-eligible athlete-season,prospective_shadow_review_before_calibration,stop if source eligibility fails or alert burden exceeds policy cap,,,,,,,,,,,,,,,pending_collection
+collection_packet_id,channel_name,packet_sequence,collection_unit,evidence_gate,source_rule,collection_season_id,packet_start_date,packet_end_date,source_eligible,episode_count,unique_observed_event_count,unique_captured_event_count,alert_usefulness,outcome_confirmed,source_context_ok,action_taken,reviewer_id,review_date,notes,collection_status,evidence_source_packet_id,evidence_source
+broad_30d__2021-2022,broad_30d,1,complete source-eligible athlete-season,historical_replay_evidence_prefill_before_reviewer_judgment,source_eligible=true and replay_status=ready_for_research_adjudication,2021-2022,2021-07-01,2022-06-30,True,8,0,0,,,,,,,,pending_reviewer_judgment,broad_30d__2021-2022,exposure_load_shadow_review_packets
 ```
 
-A completed source-eligible row could look like this:
+A completed reviewer row could look like this:
 
 ```csv
-broad_30d__prospective_001,broad_30d,1,complete source-eligible athlete-season,prospective_shadow_review_before_calibration,stop if source eligibility fails or alert burden exceeds policy cap,2026-2027,2026-08-01,2026-12-01,true,3,1,1,useful,true,true,monitor,ER1,2026-12-15,"De-identified review: packet aligned with a plausible managed-risk period and would have supported closer monitoring.",complete
+broad_30d__2021-2022,broad_30d,1,complete source-eligible athlete-season,historical_replay_evidence_prefill_before_reviewer_judgment,source_eligible=true and replay_status=ready_for_research_adjudication,2021-2022,2021-07-01,2022-06-30,True,8,0,0,useful,true,true,monitor,ER1,2026-05-14,"De-identified review: packet aligned with a plausible managed-risk period and would have supported closer monitoring.",complete,broad_30d__2021-2022,exposure_load_shadow_review_packets
 ```
 
-A conservative source-failed row could look like this:
+A conservative uncertain row could look like this:
 
 ```csv
-broad_30d__prospective_002,broad_30d,2,complete source-eligible athlete-season,prospective_shadow_review_before_calibration,stop if source eligibility fails or alert burden exceeds policy cap,2026-2027,2026-12-02,2027-02-01,false,0,0,0,unclear,false,false,none,ER1,2027-02-15,"De-identified review: packet failed source eligibility because context was incomplete.",complete
+broad_30d__2022-2023,broad_30d,2,complete source-eligible athlete-season,historical_replay_evidence_prefill_before_reviewer_judgment,source_eligible=true and replay_status=ready_for_research_adjudication,2022-2023,2022-07-01,2023-06-30,True,9,71,0,unclear,false,true,none,ER1,2026-05-14,"De-identified review: replay evidence is quantitative, but reviewer context was insufficient to call it useful.",complete,broad_30d__2022-2023,exposure_load_shadow_review_packets
 ```
 
 ## Validation Command
@@ -182,7 +211,7 @@ After you fill the CSV, run:
 ```bash
 risk-engine \
   --exposure-load-shadow-collection-summary-sprint \
-  --exposure-load-shadow-collection outputs/experiments/exposure_load_shadow_collection_template_v1/exposure_load_shadow_collection_template.csv \
+  --exposure-load-shadow-collection outputs/experiments/exposure_load_shadow_collection_evidence_prefill_v1/exposure_load_shadow_collection_prefilled.csv \
   --output-dir outputs \
   --experiment-id exposure_load_shadow_collection_summary_completed_v1
 ```

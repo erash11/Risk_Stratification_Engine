@@ -34,6 +34,7 @@ from risk_stratification_engine.experiments import (
     run_exposure_load_shadow_adjudication_summary_sprint_experiment,
     run_exposure_load_shadow_adjudication_sprint_experiment,
     run_exposure_load_shadow_channel_lock_sprint_experiment,
+    run_exposure_load_shadow_collection_evidence_prefill_sprint_experiment,
     run_exposure_load_shadow_collection_packet_workflow_sprint_experiment,
     run_exposure_load_shadow_collection_template_sprint_experiment,
     run_exposure_load_shadow_collection_summary_sprint_experiment,
@@ -98,6 +99,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--exposure-load-shadow-channel-lock", type=Path)
     parser.add_argument("--exposure-load-shadow-review-protocol", type=Path)
     parser.add_argument("--exposure-load-shadow-replay", type=Path)
+    parser.add_argument("--exposure-load-shadow-review-packets", type=Path)
     parser.add_argument("--exposure-load-shadow-adjudication", type=Path)
     parser.add_argument("--exposure-load-shadow-adjudication-summary", type=Path)
     parser.add_argument("--exposure-load-shadow-adjudication-decision", type=Path)
@@ -205,6 +207,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--exposure-load-shadow-collection-packet-workflow-sprint",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--exposure-load-shadow-collection-evidence-prefill-sprint",
         action="store_true",
     )
     parser.add_argument("--stability-splits", type=int, default=5)
@@ -823,6 +829,27 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(
             "Exposure load shadow collection packet workflow artifacts written to "
+            f"{experiment_dir}"
+        )
+        return 0
+
+    if args.exposure_load_shadow_collection_evidence_prefill_sprint:
+        if args.exposure_load_shadow_review_packets is None:
+            parser.error(
+                "--exposure-load-shadow-collection-evidence-prefill-sprint "
+                "requires --exposure-load-shadow-review-packets"
+            )
+        experiment_dir = (
+            run_exposure_load_shadow_collection_evidence_prefill_sprint_experiment(
+                exposure_load_shadow_review_packets_path=(
+                    args.exposure_load_shadow_review_packets
+                ),
+                output_dir=args.output_dir,
+                experiment_id=args.experiment_id,
+            )
+        )
+        print(
+            "Exposure load shadow collection evidence prefill artifacts written to "
             f"{experiment_dir}"
         )
         return 0

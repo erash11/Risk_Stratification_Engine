@@ -811,6 +811,33 @@ channels marked `calibration_research_candidate_practitioner_adjudicated`.
 Probability-facing output, pilot/dashboard readiness, calibration claims, and
 autonomous intervention remain blocked.
 
+## Run Exposure Load Shadow Calibration Sensitivity Sprint
+
+After the practitioner-reviewed calibration-readiness gate is satisfied, run a
+bounded sensitivity review before considering any calibration research claim:
+
+```bash
+risk-engine \
+  --exposure-load-shadow-calibration-sensitivity-sprint \
+  --exposure-load-shadow-calibration-readiness outputs/experiments/exposure_load_shadow_calibration_readiness_practitioner_v1/exposure_load_shadow_calibration_readiness.json \
+  --exposure-load-shadow-collection outputs/experiments/exposure_load_shadow_collection_practitioner_review_v1/exposure_load_shadow_collection_practitioner_review.csv \
+  --exposure-load-shadow-event-crosswalk outputs/experiments/exposure_load_shadow_event_crosswalk_v1/exposure_load_shadow_event_crosswalk.csv \
+  --output-dir outputs \
+  --experiment-id exposure_load_shadow_calibration_sensitivity_v1
+```
+
+This writes `exposure_load_shadow_calibration_sensitivity.csv`,
+`exposure_load_shadow_evidence_dossier.csv`,
+`exposure_load_shadow_error_modes.csv`,
+`exposure_load_shadow_calibration_sensitivity.json`, and
+`exposure_load_shadow_calibration_sensitivity_report.md`. The live
+`exposure_load_shadow_calibration_sensitivity_v1` run recommends
+`continue_bounded_calibration_research_with_error_mode_controls`. Both retained
+channels pass the practitioner/usefulness gates but carry high miss-fraction
+error modes: `broad_30d` captured 37 and missed 197 crosswalk event rows;
+`severity_14d` captured 18 and missed 111. This supports bounded calibration
+research only, not calibration claims or deployment.
+
 ## Run Exposure Load Shadow Event Crosswalk Sprint
 
 Before independent practitioner adjudication, generate the retained-channel

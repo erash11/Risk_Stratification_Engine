@@ -122,6 +122,11 @@ from risk_stratification_engine.exposure_load_shadow_calibration_readiness impor
     clean_shadow_calibration_readiness_rows,
     write_exposure_load_shadow_calibration_readiness_report,
 )
+from risk_stratification_engine.exposure_load_shadow_calibration_sensitivity import (
+    build_exposure_load_shadow_calibration_sensitivity_review,
+    clean_shadow_calibration_sensitivity_rows,
+    write_exposure_load_shadow_calibration_sensitivity_report,
+)
 from risk_stratification_engine.exposure_load_shadow_event_crosswalk import (
     build_shadow_event_crosswalk_summary,
     clean_shadow_event_crosswalk_rows,
@@ -3165,6 +3170,75 @@ def run_exposure_load_shadow_calibration_readiness_sprint_experiment(
     write_exposure_load_shadow_calibration_readiness_report(
         experiment_dir / "exposure_load_shadow_calibration_readiness_report.md",
         readiness,
+    )
+    return experiment_dir
+
+
+def run_exposure_load_shadow_calibration_sensitivity_sprint_experiment(
+    exposure_load_shadow_calibration_readiness_path: str | Path,
+    exposure_load_shadow_collection_path: str | Path,
+    exposure_load_shadow_event_crosswalk_path: str | Path,
+    output_dir: str | Path,
+    experiment_id: str,
+) -> Path:
+    experiment_dir = _experiment_path(output_dir, experiment_id)
+    calibration_readiness = _load_json_payload(
+        exposure_load_shadow_calibration_readiness_path
+    )
+    collection_rows = pd.read_csv(exposure_load_shadow_collection_path)
+    event_crosswalk_rows = pd.read_csv(exposure_load_shadow_event_crosswalk_path)
+    sensitivity = build_exposure_load_shadow_calibration_sensitivity_review(
+        calibration_readiness=calibration_readiness,
+        collection_rows=_json_records(collection_rows),
+        event_crosswalk_rows=_json_records(event_crosswalk_rows),
+    )
+    write_frame(
+        pd.DataFrame(
+            clean_shadow_calibration_sensitivity_rows(
+                sensitivity["sensitivity_rows"]
+            )
+        ),
+        experiment_dir / "exposure_load_shadow_calibration_sensitivity.csv",
+    )
+    write_frame(
+        pd.DataFrame(
+            clean_shadow_calibration_sensitivity_rows(
+                sensitivity["evidence_dossier_rows"]
+            )
+        ),
+        experiment_dir / "exposure_load_shadow_evidence_dossier.csv",
+    )
+    write_frame(
+        pd.DataFrame(
+            clean_shadow_calibration_sensitivity_rows(
+                sensitivity["error_mode_rows"]
+            )
+        ),
+        experiment_dir / "exposure_load_shadow_error_modes.csv",
+    )
+    _write_json(
+        experiment_dir / "config.json",
+        {
+            "experiment_id": experiment_id,
+            "experiment_type": "exposure_load_shadow_calibration_sensitivity",
+            "exposure_load_shadow_calibration_readiness_path": str(
+                exposure_load_shadow_calibration_readiness_path
+            ),
+            "exposure_load_shadow_collection_path": str(
+                exposure_load_shadow_collection_path
+            ),
+            "exposure_load_shadow_event_crosswalk_path": str(
+                exposure_load_shadow_event_crosswalk_path
+            ),
+        },
+    )
+    _write_json(
+        experiment_dir / "exposure_load_shadow_calibration_sensitivity.json",
+        sensitivity,
+    )
+    write_exposure_load_shadow_calibration_sensitivity_report(
+        experiment_dir / "exposure_load_shadow_calibration_sensitivity_report.md",
+        sensitivity,
     )
     return experiment_dir
 

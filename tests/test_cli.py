@@ -1525,6 +1525,73 @@ def test_cli_runs_exposure_load_shadow_adjudication_decision_from_summary(
     }
 
 
+def test_cli_runs_exposure_load_shadow_calibration_sensitivity_from_artifacts(
+    tmp_path,
+    monkeypatch,
+):
+    readiness_path = tmp_path / "exposure_load_shadow_calibration_readiness.json"
+    collection_path = tmp_path / "exposure_load_shadow_collection.csv"
+    crosswalk_path = tmp_path / "exposure_load_shadow_event_crosswalk.csv"
+    for path in (readiness_path, collection_path, crosswalk_path):
+        path.write_text("artifact", encoding="utf-8")
+    calls = {}
+
+    def fake_run_exposure_load_shadow_calibration_sensitivity_sprint_experiment(
+        exposure_load_shadow_calibration_readiness_path,
+        exposure_load_shadow_collection_path,
+        exposure_load_shadow_event_crosswalk_path,
+        output_dir,
+        experiment_id,
+    ):
+        calls["shadow_calibration_sensitivity"] = {
+            "exposure_load_shadow_calibration_readiness_path": (
+                exposure_load_shadow_calibration_readiness_path
+            ),
+            "exposure_load_shadow_collection_path": (
+                exposure_load_shadow_collection_path
+            ),
+            "exposure_load_shadow_event_crosswalk_path": (
+                exposure_load_shadow_event_crosswalk_path
+            ),
+            "output_dir": output_dir,
+            "experiment_id": experiment_id,
+        }
+        result = output_dir / "experiments" / experiment_id
+        result.mkdir(parents=True)
+        return result
+
+    monkeypatch.setattr(
+        cli,
+        "run_exposure_load_shadow_calibration_sensitivity_sprint_experiment",
+        fake_run_exposure_load_shadow_calibration_sensitivity_sprint_experiment,
+    )
+
+    exit_code = main(
+        [
+            "--output-dir",
+            str(tmp_path),
+            "--experiment-id",
+            "exposure_load_shadow_calibration_sensitivity",
+            "--exposure-load-shadow-calibration-sensitivity-sprint",
+            "--exposure-load-shadow-calibration-readiness",
+            str(readiness_path),
+            "--exposure-load-shadow-collection",
+            str(collection_path),
+            "--exposure-load-shadow-event-crosswalk",
+            str(crosswalk_path),
+        ]
+    )
+
+    assert exit_code == 0
+    assert calls["shadow_calibration_sensitivity"] == {
+        "exposure_load_shadow_calibration_readiness_path": readiness_path,
+        "exposure_load_shadow_collection_path": collection_path,
+        "exposure_load_shadow_event_crosswalk_path": crosswalk_path,
+        "output_dir": tmp_path,
+        "experiment_id": "exposure_load_shadow_calibration_sensitivity",
+    }
+
+
 def test_cli_runs_exposure_load_shadow_monitoring_plan_from_decision(
     tmp_path,
     monkeypatch,

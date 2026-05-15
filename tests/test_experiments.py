@@ -34,6 +34,7 @@ from risk_stratification_engine.experiments import (
     run_exposure_load_shadow_adjudication_sprint_experiment,
     run_exposure_load_shadow_readiness_register_sprint_experiment,
     run_exposure_load_shadow_calibration_readiness_sprint_experiment,
+    run_exposure_load_shadow_calibration_sensitivity_sprint_experiment,
     run_exposure_load_shadow_collection_evidence_prefill_sprint_experiment,
     run_exposure_load_shadow_collection_packet_workflow_sprint_experiment,
     run_exposure_load_shadow_collection_template_sprint_experiment,
@@ -3084,6 +3085,106 @@ def test_run_exposure_load_shadow_calibration_readiness_sprint_writes_artifacts(
     )
     assert payload["overall_recommendation"] == (
         "defer_calibration_claims_pending_independent_practitioner_adjudication"
+    )
+    assert payload["production_readiness"] == "not_ready_for_probability_or_pilot"
+
+
+def test_run_exposure_load_shadow_calibration_sensitivity_sprint_writes_artifacts(
+    tmp_path,
+):
+    readiness_path = tmp_path / "exposure_load_shadow_calibration_readiness.json"
+    collection_path = tmp_path / "exposure_load_shadow_collection.csv"
+    crosswalk_path = tmp_path / "exposure_load_shadow_event_crosswalk.csv"
+    readiness_path.write_text(
+        json.dumps(
+            {
+                "overall_recommendation": (
+                    "advance_to_bounded_calibration_research_not_claims"
+                ),
+                "calibration_research_status": (
+                    "ready_for_bounded_calibration_research_not_claims"
+                ),
+                "independent_adjudication_required": False,
+                "evidence_basis": (
+                    "independent_practitioner_adjudicated_shadow_collection"
+                ),
+                "channel_readiness_rows": [
+                    {
+                        "channel_name": "broad_30d",
+                        "complete_valid_rows": 1,
+                        "useful_source_ok_actionable_rows": 1,
+                        "readiness_status": (
+                            "calibration_research_candidate_practitioner_adjudicated"
+                        ),
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    pd.DataFrame(
+        [
+            {
+                "collection_packet_id": "broad_30d__2023-2024",
+                "channel_name": "broad_30d",
+                "collection_season_id": "2023-2024",
+                "source_eligible": "true",
+                "episode_count": 2,
+                "unique_observed_event_count": 2,
+                "unique_captured_event_count": 1,
+                "alert_usefulness": "useful",
+                "outcome_confirmed": "true",
+                "source_context_ok": "true",
+                "action_taken": "monitor",
+                "reviewer_id": "ER1",
+                "review_date": "2026-05-15",
+                "collection_status": "complete_practitioner_adjudication",
+                "notes": "Practitioner reviewed.",
+            }
+        ]
+    ).to_csv(collection_path, index=False)
+    pd.DataFrame(
+        [
+            {
+                "review_packet_id": "broad_30d__2023-2024",
+                "channel_name": "broad_30d",
+                "capture_status": "captured",
+                "event_date": "2024-01-01",
+                "injury_type": "lower_extremity",
+            },
+            {
+                "review_packet_id": "broad_30d__2023-2024",
+                "channel_name": "broad_30d",
+                "capture_status": "missed",
+                "event_date": "2024-02-01",
+                "injury_type": "lower_extremity",
+            },
+        ]
+    ).to_csv(crosswalk_path, index=False)
+
+    result = run_exposure_load_shadow_calibration_sensitivity_sprint_experiment(
+        exposure_load_shadow_calibration_readiness_path=readiness_path,
+        exposure_load_shadow_collection_path=collection_path,
+        exposure_load_shadow_event_crosswalk_path=crosswalk_path,
+        output_dir=tmp_path,
+        experiment_id="exposure_load_shadow_calibration_sensitivity",
+    )
+
+    assert (result / "exposure_load_shadow_calibration_sensitivity.csv").exists()
+    assert (result / "exposure_load_shadow_evidence_dossier.csv").exists()
+    assert (result / "exposure_load_shadow_error_modes.csv").exists()
+    assert (result / "exposure_load_shadow_calibration_sensitivity.json").exists()
+    assert (
+        result / "exposure_load_shadow_calibration_sensitivity_report.md"
+    ).exists()
+    assert (result / "config.json").exists()
+    payload = json.loads(
+        (result / "exposure_load_shadow_calibration_sensitivity.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert payload["experiment_type"] == (
+        "exposure_load_shadow_calibration_sensitivity_sprint"
     )
     assert payload["production_readiness"] == "not_ready_for_probability_or_pilot"
 

@@ -33,6 +33,7 @@ from risk_stratification_engine.experiments import (
     run_exposure_load_shadow_adjudication_decision_sprint_experiment,
     run_exposure_load_shadow_adjudication_summary_sprint_experiment,
     run_exposure_load_shadow_adjudication_sprint_experiment,
+    run_exposure_load_shadow_bounded_calibration_protocol_sprint_experiment,
     run_exposure_load_shadow_calibration_readiness_sprint_experiment,
     run_exposure_load_shadow_calibration_sensitivity_sprint_experiment,
     run_exposure_load_shadow_error_control_sprint_experiment,
@@ -112,6 +113,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--exposure-load-shadow-collection-summary", type=Path)
     parser.add_argument("--exposure-load-shadow-calibration-readiness", type=Path)
     parser.add_argument("--exposure-load-shadow-calibration-sensitivity", type=Path)
+    parser.add_argument("--exposure-load-shadow-error-control-policy", type=Path)
     parser.add_argument("--exposure-load-shadow-event-crosswalk", type=Path)
     parser.add_argument("--exposure-load-source-resolution-policy", type=Path)
     parser.add_argument("--season-forward-validation-path", type=Path)
@@ -231,6 +233,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--exposure-load-shadow-error-control-sprint",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--exposure-load-shadow-bounded-calibration-protocol-sprint",
         action="store_true",
     )
     parser.add_argument(
@@ -952,6 +958,27 @@ def main(argv: list[str] | None = None) -> int:
         print(
             "Exposure load shadow error-control artifacts written to "
             f"{experiment_dir}"
+        )
+        return 0
+
+    if args.exposure_load_shadow_bounded_calibration_protocol_sprint:
+        if args.exposure_load_shadow_error_control_policy is None:
+            parser.error(
+                "--exposure-load-shadow-bounded-calibration-protocol-sprint "
+                "requires --exposure-load-shadow-error-control-policy"
+            )
+        experiment_dir = (
+            run_exposure_load_shadow_bounded_calibration_protocol_sprint_experiment(
+                exposure_load_shadow_error_control_policy_path=(
+                    args.exposure_load_shadow_error_control_policy
+                ),
+                output_dir=args.output_dir,
+                experiment_id=args.experiment_id,
+            )
+        )
+        print(
+            "Exposure load shadow bounded calibration protocol artifacts "
+            f"written to {experiment_dir}"
         )
         return 0
 

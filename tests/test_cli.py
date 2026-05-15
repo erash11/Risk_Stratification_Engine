@@ -1642,6 +1642,56 @@ def test_cli_runs_exposure_load_shadow_error_control_from_sensitivity(
     }
 
 
+def test_cli_runs_exposure_load_shadow_bounded_calibration_protocol_from_policy(
+    tmp_path,
+    monkeypatch,
+):
+    policy_path = tmp_path / "exposure_load_shadow_error_control_policy.json"
+    policy_path.write_text("artifact", encoding="utf-8")
+    calls = {}
+
+    def fake_run_exposure_load_shadow_bounded_calibration_protocol_sprint_experiment(
+        exposure_load_shadow_error_control_policy_path,
+        output_dir,
+        experiment_id,
+    ):
+        calls["shadow_bounded_calibration_protocol"] = {
+            "exposure_load_shadow_error_control_policy_path": (
+                exposure_load_shadow_error_control_policy_path
+            ),
+            "output_dir": output_dir,
+            "experiment_id": experiment_id,
+        }
+        result = output_dir / "experiments" / experiment_id
+        result.mkdir(parents=True)
+        return result
+
+    monkeypatch.setattr(
+        cli,
+        "run_exposure_load_shadow_bounded_calibration_protocol_sprint_experiment",
+        fake_run_exposure_load_shadow_bounded_calibration_protocol_sprint_experiment,
+    )
+
+    exit_code = main(
+        [
+            "--output-dir",
+            str(tmp_path),
+            "--experiment-id",
+            "exposure_load_shadow_bounded_calibration_protocol",
+            "--exposure-load-shadow-bounded-calibration-protocol-sprint",
+            "--exposure-load-shadow-error-control-policy",
+            str(policy_path),
+        ]
+    )
+
+    assert exit_code == 0
+    assert calls["shadow_bounded_calibration_protocol"] == {
+        "exposure_load_shadow_error_control_policy_path": policy_path,
+        "output_dir": tmp_path,
+        "experiment_id": "exposure_load_shadow_bounded_calibration_protocol",
+    }
+
+
 def test_cli_runs_exposure_load_shadow_monitoring_plan_from_decision(
     tmp_path,
     monkeypatch,

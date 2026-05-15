@@ -127,6 +127,11 @@ from risk_stratification_engine.exposure_load_shadow_calibration_sensitivity imp
     clean_shadow_calibration_sensitivity_rows,
     write_exposure_load_shadow_calibration_sensitivity_report,
 )
+from risk_stratification_engine.exposure_load_shadow_bounded_calibration_protocol import (
+    build_exposure_load_shadow_bounded_calibration_protocol,
+    clean_shadow_bounded_calibration_protocol_rows,
+    write_exposure_load_shadow_bounded_calibration_protocol_report,
+)
 from risk_stratification_engine.exposure_load_shadow_error_control import (
     build_exposure_load_shadow_error_control_review,
     clean_shadow_error_control_rows,
@@ -3287,6 +3292,64 @@ def run_exposure_load_shadow_error_control_sprint_experiment(
     write_exposure_load_shadow_error_control_report(
         experiment_dir / "exposure_load_shadow_error_control_report.md",
         review,
+    )
+    return experiment_dir
+
+
+def run_exposure_load_shadow_bounded_calibration_protocol_sprint_experiment(
+    exposure_load_shadow_error_control_policy_path: str | Path,
+    output_dir: str | Path,
+    experiment_id: str,
+) -> Path:
+    experiment_dir = _experiment_path(output_dir, experiment_id)
+    error_control_policy = _load_json_payload(
+        exposure_load_shadow_error_control_policy_path
+    )
+    protocol = build_exposure_load_shadow_bounded_calibration_protocol(
+        error_control_policy
+    )
+    write_frame(
+        pd.DataFrame(
+            clean_shadow_bounded_calibration_protocol_rows(
+                protocol["channel_protocol_rows"]
+            )
+        ),
+        experiment_dir / "exposure_load_shadow_bounded_calibration_protocol_channels.csv",
+    )
+    write_frame(
+        pd.DataFrame(
+            clean_shadow_bounded_calibration_protocol_rows(
+                protocol["evidence_use_rows"]
+            )
+        ),
+        experiment_dir / "exposure_load_shadow_bounded_calibration_evidence_use.csv",
+    )
+    write_frame(
+        pd.DataFrame(
+            clean_shadow_bounded_calibration_protocol_rows(
+                protocol["protocol_gate_rows"]
+            )
+        ),
+        experiment_dir / "exposure_load_shadow_bounded_calibration_protocol_gates.csv",
+    )
+    _write_json(
+        experiment_dir / "config.json",
+        {
+            "experiment_id": experiment_id,
+            "experiment_type": "exposure_load_shadow_bounded_calibration_protocol",
+            "exposure_load_shadow_error_control_policy_path": str(
+                exposure_load_shadow_error_control_policy_path
+            ),
+        },
+    )
+    _write_json(
+        experiment_dir / "exposure_load_shadow_bounded_calibration_protocol.json",
+        protocol,
+    )
+    write_exposure_load_shadow_bounded_calibration_protocol_report(
+        experiment_dir
+        / "exposure_load_shadow_bounded_calibration_protocol_report.md",
+        protocol,
     )
     return experiment_dir
 

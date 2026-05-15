@@ -864,6 +864,32 @@ prediction/calibration usefulness remains `not_established_high_miss_fraction`,
 with probability-facing output, calibration claims, pilot/dashboard readiness,
 autonomous intervention, and load modification still blocked.
 
+## Run Exposure Load Shadow Bounded Calibration Protocol Sprint
+
+After the error-control package is available, define the research-only protocol
+for a descriptive shadow calibration stress test:
+
+```bash
+risk-engine \
+  --exposure-load-shadow-bounded-calibration-protocol-sprint \
+  --exposure-load-shadow-error-control-policy outputs/experiments/exposure_load_shadow_error_control_v1/exposure_load_shadow_error_control_policy.json \
+  --output-dir outputs \
+  --experiment-id exposure_load_shadow_bounded_calibration_protocol_v1
+```
+
+This writes `exposure_load_shadow_bounded_calibration_protocol_channels.csv`,
+`exposure_load_shadow_bounded_calibration_evidence_use.csv`,
+`exposure_load_shadow_bounded_calibration_protocol_gates.csv`,
+`exposure_load_shadow_bounded_calibration_protocol.json`, and
+`exposure_load_shadow_bounded_calibration_protocol_report.md`. The live
+`exposure_load_shadow_bounded_calibration_protocol_v1` run recommends
+`run_bounded_calibration_stress_test_without_claims`. Both retained channels
+are eligible only for a descriptive shadow calibration stress test with
+miss-fraction, monitoring/prediction-boundary, and packet-review controls.
+Monitoring context is not calibration evidence, and probability-facing output,
+calibration claims, pilot/dashboard readiness, autonomous intervention, and
+load modification remain blocked.
+
 ## Run Exposure Load Shadow Event Crosswalk Sprint
 
 Before independent practitioner adjudication, generate the retained-channel

@@ -180,6 +180,62 @@ def test_shadow_collection_summary_validates_prospective_rows_and_gates_calibrat
     json.dumps(summary, allow_nan=False)
 
 
+def test_shadow_collection_summary_distinguishes_practitioner_review_from_csv_prefill():
+    rows = [
+        {
+            "collection_packet_id": "broad_30d__2023-2024",
+            "channel_name": "broad_30d",
+            "packet_sequence": 1,
+            "collection_season_id": "2023-2024",
+            "packet_start_date": "2023-07-01",
+            "packet_end_date": "2024-06-30",
+            "source_eligible": "true",
+            "episode_count": "3",
+            "unique_observed_event_count": "1",
+            "unique_captured_event_count": "1",
+            "alert_usefulness": "useful",
+            "outcome_confirmed": "true",
+            "source_context_ok": "true",
+            "action_taken": "monitor",
+            "reviewer_id": "ER1",
+            "review_date": "2026-05-15",
+            "notes": "Practitioner reviewed and accepted.",
+            "collection_status": "complete_practitioner_adjudication",
+        },
+        {
+            "collection_packet_id": "severity_14d__2023-2024",
+            "channel_name": "severity_14d",
+            "packet_sequence": 1,
+            "collection_season_id": "2023-2024",
+            "packet_start_date": "2023-07-01",
+            "packet_end_date": "2024-06-30",
+            "source_eligible": "true",
+            "episode_count": "3",
+            "unique_observed_event_count": "1",
+            "unique_captured_event_count": "1",
+            "alert_usefulness": "useful",
+            "outcome_confirmed": "true",
+            "source_context_ok": "true",
+            "action_taken": "monitor",
+            "reviewer_id": "ER1",
+            "review_date": "2026-05-15",
+            "notes": "CSV-only prefill still awaiting practitioner review.",
+            "collection_status": "complete_csv_evidence_review",
+        },
+    ]
+
+    summary = build_exposure_load_shadow_collection_summary(rows)
+
+    assert summary["practitioner_adjudicated_rows"] == 1
+    assert summary["csv_only_review_rows"] == 1
+    assert summary["independent_practitioner_adjudication_status"] == "partial"
+    channel_rows = {
+        row["channel_name"]: row for row in summary["channel_summary_rows"]
+    }
+    assert channel_rows["broad_30d"]["practitioner_adjudicated_rows"] == 1
+    assert channel_rows["severity_14d"]["csv_only_review_rows"] == 1
+
+
 def test_shadow_collection_packet_workflow_creates_reviewer_materials_without_claiming_readiness(
     tmp_path,
 ):

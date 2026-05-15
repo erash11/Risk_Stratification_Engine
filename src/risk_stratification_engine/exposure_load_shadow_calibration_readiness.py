@@ -11,6 +11,9 @@ CALIBRATION_CLAIMS_BLOCKED = "not_ready_for_calibration_claims"
 ADJUDICATION_CAVEAT = (
     "csv_only_artifact_review_requires_independent_practitioner_adjudication"
 )
+PRACTITIONER_ADJUDICATED_EVIDENCE = (
+    "independent_practitioner_adjudicated_shadow_collection"
+)
 
 
 def build_exposure_load_shadow_calibration_readiness_review(
@@ -28,8 +31,12 @@ def build_exposure_load_shadow_calibration_readiness_review(
     complete_valid_rows = _parse_nonnegative_int(
         summary.get("complete_valid_rows")
     ) or 0
+    adjudication_satisfied = (
+        str(summary.get("independent_practitioner_adjudication_status") or "")
+        == "satisfied"
+    )
     channel_readiness_rows = [
-        _channel_readiness_row(row, pending_or_invalid_rows)
+        _channel_readiness_row(row, pending_or_invalid_rows, adjudication_satisfied)
         for row in channel_summary_rows
     ]
     calibration_research_status = _calibration_research_status(
@@ -45,14 +52,28 @@ def build_exposure_load_shadow_calibration_readiness_review(
         "production_readiness": PRODUCTION_BLOCKED,
         "calibration_claim_readiness": CALIBRATION_CLAIMS_BLOCKED,
         "calibration_research_status": calibration_research_status,
-        "independent_adjudication_required": True,
-        "evidence_basis": ADJUDICATION_CAVEAT,
+        "independent_adjudication_required": not adjudication_satisfied,
+        "evidence_basis": (
+            PRACTITIONER_ADJUDICATED_EVIDENCE
+            if adjudication_satisfied
+            else ADJUDICATION_CAVEAT
+        ),
         "collection_summary_recommendation": summary.get("overall_recommendation"),
         "collection_summary_calibration_readiness": summary.get(
             "calibration_readiness"
         ),
         "collection_summary_complete_valid_rows": complete_valid_rows,
         "collection_summary_pending_or_invalid_rows": pending_or_invalid_rows,
+        "collection_summary_practitioner_adjudicated_rows": (
+            _parse_nonnegative_int(summary.get("practitioner_adjudicated_rows"))
+            or 0
+        ),
+        "collection_summary_csv_only_review_rows": (
+            _parse_nonnegative_int(summary.get("csv_only_review_rows")) or 0
+        ),
+        "collection_summary_independent_practitioner_adjudication_status": (
+            summary.get("independent_practitioner_adjudication_status")
+        ),
         "collection_summary_useful_source_ok_actionable_rows": (
             _parse_nonnegative_int(
                 summary.get("useful_source_ok_actionable_rows")
@@ -63,6 +84,7 @@ def build_exposure_load_shadow_calibration_readiness_review(
         "evidence_gap_rows": _evidence_gap_rows(
             pending_or_invalid_rows,
             channel_readiness_rows,
+            adjudication_satisfied,
         ),
         "interpretation_boundary": (
             "calibration-readiness review only; not calibrated probability, "
@@ -82,6 +104,10 @@ def write_exposure_load_shadow_calibration_readiness_report(
         f"Production readiness: {review['production_readiness']}",
         f"Calibration claim readiness: {review['calibration_claim_readiness']}",
         f"Calibration research status: {review['calibration_research_status']}",
+        (
+            "independent practitioner adjudication required: "
+            f"{review['independent_adjudication_required']}"
+        ),
         f"Evidence basis: {review['evidence_basis']}",
         f"Interpretation boundary: {review['interpretation_boundary']}",
         "",
@@ -98,6 +124,18 @@ def write_exposure_load_shadow_calibration_readiness_report(
         (
             "- Useful, source-trustworthy, actionable rows: "
             f"{review['collection_summary_useful_source_ok_actionable_rows']}"
+        ),
+        (
+            "- Practitioner-adjudicated rows: "
+            f"{review['collection_summary_practitioner_adjudicated_rows']}"
+        ),
+        (
+            "- CSV-only review rows: "
+            f"{review['collection_summary_csv_only_review_rows']}"
+        ),
+        (
+            "- Independent practitioner adjudication status: "
+            f"{review['collection_summary_independent_practitioner_adjudication_status']}"
         ),
         "",
         "## Channel Readiness",
@@ -141,10 +179,7 @@ def write_exposure_load_shadow_calibration_readiness_report(
             "",
             (
                 "This sprint can identify retained channels as calibration "
-                "research candidates, but the current evidence basis is CSV-only "
-                "artifact review. The next required evidence step is independent "
-                "practitioner adjudication before moving beyond research framing. "
-                "This is not "
+                "research candidates, but this is not "
                 "calibration claims, probability-facing output, pilot readiness, "
                 "or dashboard clearance."
             ),
@@ -163,6 +198,7 @@ def clean_shadow_calibration_readiness_rows(
 def _channel_readiness_row(
     row: dict[str, object],
     pending_or_invalid_rows: int,
+    adjudication_satisfied: bool,
 ) -> dict[str, object]:
     collection_gate = str(row.get("calibration_review_gate") or "")
     useful_source_ok_actionable_rows = _parse_nonnegative_int(
@@ -177,6 +213,9 @@ def _channel_readiness_row(
     elif useful_source_ok_actionable_rows <= 0:
         readiness_status = "not_ready_no_useful_actionable_evidence"
         required_next_action = "revise_channel_before_calibration_research"
+    elif adjudication_satisfied:
+        readiness_status = "calibration_research_candidate_practitioner_adjudicated"
+        required_next_action = "bounded_calibration_research_sensitivity_review"
     else:
         readiness_status = (
             "candidate_pending_independent_practitioner_adjudication"
@@ -198,6 +237,14 @@ def _channel_readiness_row(
         )
         or 0,
         "useful_source_ok_actionable_rows": useful_source_ok_actionable_rows,
+        "practitioner_adjudicated_rows": _parse_nonnegative_int(
+            row.get("practitioner_adjudicated_rows")
+        )
+        or 0,
+        "csv_only_review_rows": _parse_nonnegative_int(
+            row.get("csv_only_review_rows")
+        )
+        or 0,
         "readiness_status": readiness_status,
         "required_next_action": required_next_action,
         "calibration_claim_status": "blocked",
@@ -217,6 +264,12 @@ def _channel_rationale(
             "actionable rows support calibration research framing only; "
             "independent practitioner adjudication remains required."
         )
+    if readiness_status == "calibration_research_candidate_practitioner_adjudicated":
+        return (
+            f"{complete} complete practitioner-adjudicated rows and {useful} "
+            "useful/source-trustworthy/actionable rows support bounded "
+            "calibration research only; probability-facing claims remain blocked."
+        )
     if readiness_status == "not_ready_collection_incomplete":
         return "Collection summary still has pending or invalid rows."
     if readiness_status == "not_ready_no_useful_actionable_evidence":
@@ -227,6 +280,7 @@ def _channel_rationale(
 def _evidence_gap_rows(
     pending_or_invalid_rows: int,
     channel_readiness_rows: list[dict[str, object]],
+    adjudication_satisfied: bool,
 ) -> list[dict[str, object]]:
     has_candidate = any(
         row.get("readiness_status")
@@ -234,7 +288,10 @@ def _evidence_gap_rows(
         for row in channel_readiness_rows
     )
     adjudication_requirement = (
-        "complete independent practitioner/source-context adjudication for "
+        "independent practitioner/source-context adjudication is complete for "
+        "the retained-channel rows"
+        if adjudication_satisfied
+        else "complete independent practitioner/source-context adjudication for "
         "the retained-channel rows before calibration research can advance"
         if has_candidate
         else "complete or revise retained-channel shadow collection before "
@@ -252,7 +309,7 @@ def _evidence_gap_rows(
         },
         {
             "gate_name": "independent_practitioner_adjudication",
-            "gate_status": "required",
+            "gate_status": "satisfied" if adjudication_satisfied else "required",
             "requirement": adjudication_requirement,
         },
         {
@@ -289,6 +346,12 @@ def _overall_recommendation(
         return "complete_shadow_collection_before_calibration_readiness_review"
     if any(
         row.get("readiness_status")
+        == "calibration_research_candidate_practitioner_adjudicated"
+        for row in channel_readiness_rows
+    ):
+        return "advance_to_bounded_calibration_research_not_claims"
+    if any(
+        row.get("readiness_status")
         == "candidate_pending_independent_practitioner_adjudication"
         for row in channel_readiness_rows
     ):
@@ -304,6 +367,12 @@ def _calibration_research_status(
 ) -> str:
     if pending_or_invalid_rows:
         return "not_ready_collection_incomplete"
+    if any(
+        row.get("readiness_status")
+        == "calibration_research_candidate_practitioner_adjudicated"
+        for row in channel_readiness_rows
+    ):
+        return "ready_for_bounded_calibration_research_not_claims"
     if any(
         row.get("readiness_status")
         == "candidate_pending_independent_practitioner_adjudication"

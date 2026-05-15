@@ -135,3 +135,83 @@ def test_shadow_calibration_readiness_blocks_when_collection_summary_is_incomple
     assert review["channel_readiness_rows"][0]["readiness_status"] == (
         "not_ready_collection_incomplete"
     )
+
+
+def test_shadow_calibration_readiness_clears_adjudication_gate_after_practitioner_review():
+    review = build_exposure_load_shadow_calibration_readiness_review(
+        {
+            "experiment_type": "exposure_load_shadow_collection_summary",
+            "overall_recommendation": (
+                "revisit_calibration_readiness_with_prospective_shadow_evidence"
+            ),
+            "production_readiness": "not_ready_for_probability_or_pilot",
+            "calibration_readiness": (
+                "ready_for_calibration_readiness_review_not_calibration_claim"
+            ),
+            "complete_valid_rows": 8,
+            "pending_or_invalid_rows": 0,
+            "complete_source_eligible_rows": 8,
+            "useful_source_ok_actionable_rows": 4,
+            "independent_practitioner_adjudication_status": "satisfied",
+            "practitioner_adjudicated_rows": 8,
+            "csv_only_review_rows": 0,
+            "channel_summary_rows": [
+                {
+                    "channel_name": "broad_30d",
+                    "minimum_required_packets": 4,
+                    "complete_valid_rows": 4,
+                    "complete_source_eligible_rows": 4,
+                    "useful_source_ok_actionable_rows": 2,
+                    "practitioner_adjudicated_rows": 4,
+                    "csv_only_review_rows": 0,
+                    "calibration_review_gate": (
+                        "ready_for_calibration_readiness_review"
+                    ),
+                },
+                {
+                    "channel_name": "severity_14d",
+                    "minimum_required_packets": 4,
+                    "complete_valid_rows": 4,
+                    "complete_source_eligible_rows": 4,
+                    "useful_source_ok_actionable_rows": 2,
+                    "practitioner_adjudicated_rows": 4,
+                    "csv_only_review_rows": 0,
+                    "calibration_review_gate": (
+                        "ready_for_calibration_readiness_review"
+                    ),
+                },
+            ],
+        }
+    )
+
+    assert review["overall_recommendation"] == (
+        "advance_to_bounded_calibration_research_not_claims"
+    )
+    assert review["production_readiness"] == "not_ready_for_probability_or_pilot"
+    assert review["calibration_claim_readiness"] == (
+        "not_ready_for_calibration_claims"
+    )
+    assert review["calibration_research_status"] == (
+        "ready_for_bounded_calibration_research_not_claims"
+    )
+    assert review["independent_adjudication_required"] is False
+    assert review["evidence_basis"] == (
+        "independent_practitioner_adjudicated_shadow_collection"
+    )
+
+    channel_rows = {
+        row["channel_name"]: row for row in review["channel_readiness_rows"]
+    }
+    assert channel_rows["broad_30d"]["readiness_status"] == (
+        "calibration_research_candidate_practitioner_adjudicated"
+    )
+    assert channel_rows["severity_14d"]["required_next_action"] == (
+        "bounded_calibration_research_sensitivity_review"
+    )
+
+    gap_rows = {row["gate_name"]: row for row in review["evidence_gap_rows"]}
+    assert gap_rows["independent_practitioner_adjudication"]["gate_status"] == (
+        "satisfied"
+    )
+    assert gap_rows["probability_facing_outputs"]["gate_status"] == "blocked"
+    assert gap_rows["pilot_dashboard_readiness"]["gate_status"] == "blocked"

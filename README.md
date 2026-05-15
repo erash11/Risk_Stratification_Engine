@@ -769,6 +769,16 @@ useful/source-trustworthy/actionable rows. Its recommendation is
 next step is a calibration-readiness review, not calibration claims or product
 deployment.
 
+After independent practitioner/source-context review, preserve a separate
+reviewed input instead of overwriting the CSV-only prefill:
+`outputs/experiments/exposure_load_shadow_collection_practitioner_review_v1/exposure_load_shadow_collection_practitioner_review.csv`.
+The practitioner-reviewed local run
+`exposure_load_shadow_collection_summary_practitioner_v1` reports 8 complete
+valid rows, 0 pending/invalid rows, 8 complete source-eligible rows, 5
+useful/source-trustworthy/actionable rows, 8 practitioner-adjudicated rows, and
+0 CSV-only review rows. Its independent practitioner adjudication status is
+`satisfied`.
+
 ## Run Exposure Load Shadow Calibration Readiness Sprint
 
 After the retained-channel collection summary is complete, convert it into a
@@ -792,6 +802,14 @@ Both retained channels are calibration research candidates only after
 independent practitioner/source-context adjudication. Probability-facing output,
 pilot/dashboard readiness, calibration claims, and autonomous intervention
 remain blocked.
+
+After the practitioner-reviewed summary is available, rerun this sprint against
+`exposure_load_shadow_collection_summary_practitioner_v1`. The live
+`exposure_load_shadow_calibration_readiness_practitioner_v1` run recommends
+`advance_to_bounded_calibration_research_not_claims`, with both retained
+channels marked `calibration_research_candidate_practitioner_adjudicated`.
+Probability-facing output, pilot/dashboard readiness, calibration claims, and
+autonomous intervention remain blocked.
 
 ## Run Exposure Load Shadow Event Crosswalk Sprint
 

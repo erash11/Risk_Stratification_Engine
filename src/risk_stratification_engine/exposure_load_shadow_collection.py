@@ -30,6 +30,12 @@ ALLOWED_ACTIONS = (
     "other",
 )
 RETAINED_COLLECTION_CHANNELS = ("broad_30d", "severity_14d")
+PRACTITIONER_ADJUDICATED_STATUSES = (
+    "complete",
+    "complete_practitioner_adjudication",
+    "complete_practitioner_review",
+)
+CSV_ONLY_REVIEW_STATUSES = ("complete_csv_evidence_review",)
 REVIEWER_JUDGMENT_FIELDS = (
     "alert_usefulness",
     "outcome_confirmed",
@@ -145,6 +151,10 @@ def build_exposure_load_shadow_collection_summary(
     ]
     channel_summary_rows = _collection_channel_summary_rows(rows, complete_rows)
     pending_or_invalid_rows = len(rows) - len(complete_rows)
+    practitioner_adjudicated_rows = sum(
+        1 for row in complete_rows if _is_practitioner_adjudicated(row)
+    )
+    csv_only_review_rows = sum(1 for row in complete_rows if _is_csv_only_review(row))
     complete_source_eligible_rows = sum(
         int(row["complete_source_eligible_rows"])
         for row in channel_summary_rows
@@ -167,6 +177,14 @@ def build_exposure_load_shadow_collection_summary(
         "total_rows": len(rows),
         "complete_valid_rows": len(complete_rows),
         "pending_or_invalid_rows": pending_or_invalid_rows,
+        "practitioner_adjudicated_rows": practitioner_adjudicated_rows,
+        "csv_only_review_rows": csv_only_review_rows,
+        "independent_practitioner_adjudication_status": (
+            _independent_practitioner_adjudication_status(
+                complete_rows,
+                practitioner_adjudicated_rows,
+            )
+        ),
         "complete_source_eligible_rows": complete_source_eligible_rows,
         "useful_source_ok_actionable_rows": useful_source_ok_actionable_rows,
         "validation_rows": validation_rows,
@@ -198,6 +216,12 @@ def write_exposure_load_shadow_collection_summary_report(
         (
             "- Useful, source-trustworthy, actionable rows: "
             f"{summary['useful_source_ok_actionable_rows']}"
+        ),
+        f"- Practitioner-adjudicated rows: {summary['practitioner_adjudicated_rows']}",
+        f"- CSV-only review rows: {summary['csv_only_review_rows']}",
+        (
+            "- Independent practitioner adjudication status: "
+            f"{summary['independent_practitioner_adjudication_status']}"
         ),
         "",
         "## Channel Summary",
@@ -748,6 +772,10 @@ def _collection_channel_summary_row(
         len(source_eligible_rows),
         len(useful_source_ok_actionable),
     )
+    practitioner_adjudicated_rows = sum(
+        1 for row in complete_rows if _is_practitioner_adjudicated(row)
+    )
+    csv_only_review_rows = sum(1 for row in complete_rows if _is_csv_only_review(row))
     return {
         "channel_name": channel_name,
         "minimum_required_packets": minimum_required_packets,
@@ -758,8 +786,31 @@ def _collection_channel_summary_row(
         "source_context_ok_rows": len(source_ok_rows),
         "actionable_rows": len(actionable_rows),
         "useful_source_ok_actionable_rows": len(useful_source_ok_actionable),
+        "practitioner_adjudicated_rows": practitioner_adjudicated_rows,
+        "csv_only_review_rows": csv_only_review_rows,
         "calibration_review_gate": gate,
     }
+
+
+def _is_practitioner_adjudicated(row: dict[str, object]) -> bool:
+    return _normalized(row.get("collection_status")) in PRACTITIONER_ADJUDICATED_STATUSES
+
+
+def _is_csv_only_review(row: dict[str, object]) -> bool:
+    return _normalized(row.get("collection_status")) in CSV_ONLY_REVIEW_STATUSES
+
+
+def _independent_practitioner_adjudication_status(
+    complete_rows: list[dict[str, object]],
+    practitioner_adjudicated_rows: int,
+) -> str:
+    if not complete_rows:
+        return "not_started"
+    if practitioner_adjudicated_rows == len(complete_rows):
+        return "satisfied"
+    if practitioner_adjudicated_rows > 0:
+        return "partial"
+    return "required"
 
 
 def _collection_calibration_review_gate(

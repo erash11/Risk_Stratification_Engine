@@ -35,6 +35,7 @@ from risk_stratification_engine.experiments import (
     run_exposure_load_shadow_readiness_register_sprint_experiment,
     run_exposure_load_shadow_calibration_readiness_sprint_experiment,
     run_exposure_load_shadow_calibration_sensitivity_sprint_experiment,
+    run_exposure_load_shadow_error_control_sprint_experiment,
     run_exposure_load_shadow_collection_evidence_prefill_sprint_experiment,
     run_exposure_load_shadow_collection_packet_workflow_sprint_experiment,
     run_exposure_load_shadow_collection_template_sprint_experiment,
@@ -3187,6 +3188,91 @@ def test_run_exposure_load_shadow_calibration_sensitivity_sprint_writes_artifact
         "exposure_load_shadow_calibration_sensitivity_sprint"
     )
     assert payload["production_readiness"] == "not_ready_for_probability_or_pilot"
+
+
+def test_run_exposure_load_shadow_error_control_sprint_writes_artifacts(tmp_path):
+    sensitivity_path = tmp_path / "exposure_load_shadow_calibration_sensitivity.json"
+    sensitivity_path.write_text(
+        json.dumps(
+            {
+                "experiment_type": (
+                    "exposure_load_shadow_calibration_sensitivity_sprint"
+                ),
+                "overall_recommendation": (
+                    "continue_bounded_calibration_research_with_error_mode_controls"
+                ),
+                "production_readiness": "not_ready_for_probability_or_pilot",
+                "calibration_claim_readiness": "not_ready_for_calibration_claims",
+                "pilot_dashboard_readiness": "blocked",
+                "bounded_research_status": (
+                    "ready_for_bounded_sensitivity_review_not_claims"
+                ),
+                "sensitivity_rows": [
+                    {
+                        "channel_name": "broad_30d",
+                        "useful_actionable_rows": 2,
+                        "capture_rate": 0.15,
+                        "missed_event_rate": 0.85,
+                        "miss_rate_gate": "caution",
+                        "practitioner_adjudication_gate": "pass",
+                    }
+                ],
+                "evidence_dossier_rows": [
+                    {
+                        "collection_packet_id": "broad_30d__2023-2024",
+                        "channel_name": "broad_30d",
+                        "collection_season_id": "2023-2024",
+                        "alert_usefulness": "useful",
+                        "action_taken": "monitor",
+                        "observed_event_count": 3,
+                        "captured_event_count": 1,
+                        "missed_event_count": 2,
+                    }
+                ],
+                "error_mode_rows": [
+                    {
+                        "channel_name": "broad_30d",
+                        "error_mode": "high_miss_fraction",
+                        "severity": "high",
+                        "packet_count": 1,
+                        "affected_packet_ids": "broad_30d__2023-2024",
+                    },
+                    {
+                        "channel_name": "broad_30d",
+                        "error_mode": "monitor_only_action_boundary",
+                        "severity": "medium",
+                        "packet_count": 1,
+                        "affected_packet_ids": "broad_30d__2023-2024",
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_exposure_load_shadow_error_control_sprint_experiment(
+        exposure_load_shadow_calibration_sensitivity_path=sensitivity_path,
+        output_dir=tmp_path,
+        experiment_id="exposure_load_shadow_error_control",
+    )
+
+    assert (result / "exposure_load_shadow_error_control_decisions.csv").exists()
+    assert (
+        result / "exposure_load_shadow_error_control_evidence_dossier.csv"
+    ).exists()
+    assert (result / "exposure_load_shadow_error_controls.csv").exists()
+    assert (result / "exposure_load_shadow_error_control_policy.json").exists()
+    assert (result / "exposure_load_shadow_error_control_report.md").exists()
+    assert (result / "config.json").exists()
+    payload = json.loads(
+        (result / "exposure_load_shadow_error_control_policy.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert payload["experiment_type"] == "exposure_load_shadow_error_control_sprint"
+    assert payload["calibration_claim_readiness"] == (
+        "not_ready_for_calibration_claims"
+    )
 
 
 def _write_context_review_inputs(tmp_path):

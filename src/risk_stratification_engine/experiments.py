@@ -127,6 +127,11 @@ from risk_stratification_engine.exposure_load_shadow_calibration_sensitivity imp
     clean_shadow_calibration_sensitivity_rows,
     write_exposure_load_shadow_calibration_sensitivity_report,
 )
+from risk_stratification_engine.exposure_load_shadow_error_control import (
+    build_exposure_load_shadow_error_control_review,
+    clean_shadow_error_control_rows,
+    write_exposure_load_shadow_error_control_report,
+)
 from risk_stratification_engine.exposure_load_shadow_event_crosswalk import (
     build_shadow_event_crosswalk_summary,
     clean_shadow_event_crosswalk_rows,
@@ -3239,6 +3244,49 @@ def run_exposure_load_shadow_calibration_sensitivity_sprint_experiment(
     write_exposure_load_shadow_calibration_sensitivity_report(
         experiment_dir / "exposure_load_shadow_calibration_sensitivity_report.md",
         sensitivity,
+    )
+    return experiment_dir
+
+
+def run_exposure_load_shadow_error_control_sprint_experiment(
+    exposure_load_shadow_calibration_sensitivity_path: str | Path,
+    output_dir: str | Path,
+    experiment_id: str,
+) -> Path:
+    experiment_dir = _experiment_path(output_dir, experiment_id)
+    sensitivity = _load_json_payload(exposure_load_shadow_calibration_sensitivity_path)
+    review = build_exposure_load_shadow_error_control_review(sensitivity)
+    write_frame(
+        pd.DataFrame(clean_shadow_error_control_rows(review["decision_rows"])),
+        experiment_dir / "exposure_load_shadow_error_control_decisions.csv",
+    )
+    write_frame(
+        pd.DataFrame(
+            clean_shadow_error_control_rows(review["refined_evidence_dossier_rows"])
+        ),
+        experiment_dir / "exposure_load_shadow_error_control_evidence_dossier.csv",
+    )
+    write_frame(
+        pd.DataFrame(clean_shadow_error_control_rows(review["error_control_rows"])),
+        experiment_dir / "exposure_load_shadow_error_controls.csv",
+    )
+    _write_json(
+        experiment_dir / "config.json",
+        {
+            "experiment_id": experiment_id,
+            "experiment_type": "exposure_load_shadow_error_control",
+            "exposure_load_shadow_calibration_sensitivity_path": str(
+                exposure_load_shadow_calibration_sensitivity_path
+            ),
+        },
+    )
+    _write_json(
+        experiment_dir / "exposure_load_shadow_error_control_policy.json",
+        review,
+    )
+    write_exposure_load_shadow_error_control_report(
+        experiment_dir / "exposure_load_shadow_error_control_report.md",
+        review,
     )
     return experiment_dir
 

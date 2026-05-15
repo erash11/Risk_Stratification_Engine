@@ -838,6 +838,32 @@ error modes: `broad_30d` captured 37 and missed 197 crosswalk event rows;
 `severity_14d` captured 18 and missed 111. This supports bounded calibration
 research only, not calibration claims or deployment.
 
+## Run Exposure Load Shadow Error-Control Sprint
+
+After the sensitivity run identifies high miss-fraction or packet-level error
+modes, convert those findings into a stricter research decision package:
+
+```bash
+risk-engine \
+  --exposure-load-shadow-error-control-sprint \
+  --exposure-load-shadow-calibration-sensitivity outputs/experiments/exposure_load_shadow_calibration_sensitivity_v1/exposure_load_shadow_calibration_sensitivity.json \
+  --output-dir outputs \
+  --experiment-id exposure_load_shadow_error_control_v1
+```
+
+This writes `exposure_load_shadow_error_control_decisions.csv`,
+`exposure_load_shadow_error_control_evidence_dossier.csv`,
+`exposure_load_shadow_error_controls.csv`,
+`exposure_load_shadow_error_control_policy.json`, and
+`exposure_load_shadow_error_control_report.md`. The live
+`exposure_load_shadow_error_control_v1` run recommends
+`continue_bounded_calibration_research_with_error_controls_not_claims`.
+`broad_30d` and `severity_14d` remain retained research candidates only under
+high miss-fraction controls. Both are supported for monitoring context only;
+prediction/calibration usefulness remains `not_established_high_miss_fraction`,
+with probability-facing output, calibration claims, pilot/dashboard readiness,
+autonomous intervention, and load modification still blocked.
+
 ## Run Exposure Load Shadow Event Crosswalk Sprint
 
 Before independent practitioner adjudication, generate the retained-channel

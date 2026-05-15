@@ -1592,6 +1592,56 @@ def test_cli_runs_exposure_load_shadow_calibration_sensitivity_from_artifacts(
     }
 
 
+def test_cli_runs_exposure_load_shadow_error_control_from_sensitivity(
+    tmp_path,
+    monkeypatch,
+):
+    sensitivity_path = tmp_path / "exposure_load_shadow_calibration_sensitivity.json"
+    sensitivity_path.write_text("artifact", encoding="utf-8")
+    calls = {}
+
+    def fake_run_exposure_load_shadow_error_control_sprint_experiment(
+        exposure_load_shadow_calibration_sensitivity_path,
+        output_dir,
+        experiment_id,
+    ):
+        calls["shadow_error_control"] = {
+            "exposure_load_shadow_calibration_sensitivity_path": (
+                exposure_load_shadow_calibration_sensitivity_path
+            ),
+            "output_dir": output_dir,
+            "experiment_id": experiment_id,
+        }
+        result = output_dir / "experiments" / experiment_id
+        result.mkdir(parents=True)
+        return result
+
+    monkeypatch.setattr(
+        cli,
+        "run_exposure_load_shadow_error_control_sprint_experiment",
+        fake_run_exposure_load_shadow_error_control_sprint_experiment,
+    )
+
+    exit_code = main(
+        [
+            "--output-dir",
+            str(tmp_path),
+            "--experiment-id",
+            "exposure_load_shadow_error_control",
+            "--exposure-load-shadow-error-control-sprint",
+            "--exposure-load-shadow-calibration-sensitivity",
+            str(sensitivity_path),
+        ]
+    )
+
+    assert exit_code == 0
+    assert calls["shadow_error_control"] == {
+        "exposure_load_shadow_calibration_sensitivity_path": sensitivity_path,
+        "output_dir": tmp_path,
+        "experiment_id": "exposure_load_shadow_error_control",
+    }
+
+
 def test_cli_runs_exposure_load_shadow_monitoring_plan_from_decision(
     tmp_path,
     monkeypatch,

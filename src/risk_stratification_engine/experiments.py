@@ -132,6 +132,11 @@ from risk_stratification_engine.exposure_load_shadow_bounded_calibration_protoco
     clean_shadow_bounded_calibration_protocol_rows,
     write_exposure_load_shadow_bounded_calibration_protocol_report,
 )
+from risk_stratification_engine.exposure_load_shadow_bounded_calibration_stress_test import (
+    build_exposure_load_shadow_bounded_calibration_stress_test,
+    clean_shadow_bounded_calibration_stress_test_rows,
+    write_exposure_load_shadow_bounded_calibration_stress_test_report,
+)
 from risk_stratification_engine.exposure_load_shadow_error_control import (
     build_exposure_load_shadow_error_control_review,
     clean_shadow_error_control_rows,
@@ -3350,6 +3355,60 @@ def run_exposure_load_shadow_bounded_calibration_protocol_sprint_experiment(
         experiment_dir
         / "exposure_load_shadow_bounded_calibration_protocol_report.md",
         protocol,
+    )
+    return experiment_dir
+
+
+def run_exposure_load_shadow_bounded_calibration_stress_test_sprint_experiment(
+    exposure_load_shadow_bounded_calibration_protocol_path: str | Path,
+    output_dir: str | Path,
+    experiment_id: str,
+) -> Path:
+    experiment_dir = _experiment_path(output_dir, experiment_id)
+    protocol = _load_json_payload(exposure_load_shadow_bounded_calibration_protocol_path)
+    stress_test = build_exposure_load_shadow_bounded_calibration_stress_test(protocol)
+    write_frame(
+        pd.DataFrame(
+            clean_shadow_bounded_calibration_stress_test_rows(
+                stress_test["channel_stress_rows"]
+            )
+        ),
+        experiment_dir / "exposure_load_shadow_bounded_calibration_stress_channels.csv",
+    )
+    write_frame(
+        pd.DataFrame(
+            clean_shadow_bounded_calibration_stress_test_rows(
+                stress_test["stress_scenario_rows"]
+            )
+        ),
+        experiment_dir / "exposure_load_shadow_bounded_calibration_stress_scenarios.csv",
+    )
+    write_frame(
+        pd.DataFrame(
+            clean_shadow_bounded_calibration_stress_test_rows(
+                stress_test["stress_gate_rows"]
+            )
+        ),
+        experiment_dir / "exposure_load_shadow_bounded_calibration_stress_gates.csv",
+    )
+    _write_json(
+        experiment_dir / "config.json",
+        {
+            "experiment_id": experiment_id,
+            "experiment_type": "exposure_load_shadow_bounded_calibration_stress_test",
+            "exposure_load_shadow_bounded_calibration_protocol_path": str(
+                exposure_load_shadow_bounded_calibration_protocol_path
+            ),
+        },
+    )
+    _write_json(
+        experiment_dir / "exposure_load_shadow_bounded_calibration_stress_test.json",
+        stress_test,
+    )
+    write_exposure_load_shadow_bounded_calibration_stress_test_report(
+        experiment_dir
+        / "exposure_load_shadow_bounded_calibration_stress_test_report.md",
+        stress_test,
     )
     return experiment_dir
 

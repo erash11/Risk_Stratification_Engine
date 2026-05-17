@@ -890,6 +890,33 @@ Monitoring context is not calibration evidence, and probability-facing output,
 calibration claims, pilot/dashboard readiness, autonomous intervention, and
 load modification remain blocked.
 
+## Run Exposure Load Shadow Bounded Calibration Stress-Test Sprint
+
+After the bounded protocol is defined, run the descriptive stress test without
+making calibration claims:
+
+```bash
+risk-engine \
+  --exposure-load-shadow-bounded-calibration-stress-test-sprint \
+  --exposure-load-shadow-bounded-calibration-protocol outputs/experiments/exposure_load_shadow_bounded_calibration_protocol_v1/exposure_load_shadow_bounded_calibration_protocol.json \
+  --output-dir outputs \
+  --experiment-id exposure_load_shadow_bounded_calibration_stress_test_v1
+```
+
+This writes `exposure_load_shadow_bounded_calibration_stress_channels.csv`,
+`exposure_load_shadow_bounded_calibration_stress_scenarios.csv`,
+`exposure_load_shadow_bounded_calibration_stress_gates.csv`,
+`exposure_load_shadow_bounded_calibration_stress_test.json`, and
+`exposure_load_shadow_bounded_calibration_stress_test_report.md`. The live
+`exposure_load_shadow_bounded_calibration_stress_test_v1` run recommends
+`preserve_limited_calibration_finding_and_collect_more_prospective_evidence`.
+`broad_30d` captured 37 of 234 observed event rows, and `severity_14d`
+captured 18 of 129 observed event rows. Both retained channels classify as
+`high_miss_limited_calibration_signal`, preserving only limited monitoring
+value while keeping calibration claims, probability-facing output,
+pilot/dashboard readiness, autonomous intervention, and load modification
+blocked.
+
 ## Run Exposure Load Shadow Event Crosswalk Sprint
 
 Before independent practitioner adjudication, generate the retained-channel

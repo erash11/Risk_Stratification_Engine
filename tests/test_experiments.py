@@ -36,6 +36,7 @@ from risk_stratification_engine.experiments import (
     run_exposure_load_shadow_calibration_readiness_sprint_experiment,
     run_exposure_load_shadow_calibration_sensitivity_sprint_experiment,
     run_exposure_load_shadow_bounded_calibration_protocol_sprint_experiment,
+    run_exposure_load_shadow_bounded_calibration_stress_test_sprint_experiment,
     run_exposure_load_shadow_error_control_sprint_experiment,
     run_exposure_load_shadow_collection_evidence_prefill_sprint_experiment,
     run_exposure_load_shadow_collection_packet_workflow_sprint_experiment,
@@ -3373,6 +3374,90 @@ def test_run_exposure_load_shadow_bounded_calibration_protocol_sprint_writes_art
         "exposure_load_shadow_bounded_calibration_protocol_sprint"
     )
     assert payload["production_readiness"] == "not_ready_for_probability_or_pilot"
+
+
+def test_run_exposure_load_shadow_bounded_calibration_stress_test_sprint_writes_artifacts(
+    tmp_path,
+):
+    protocol_path = (
+        tmp_path / "exposure_load_shadow_bounded_calibration_protocol.json"
+    )
+    protocol_path.write_text(
+        json.dumps(
+            {
+                "experiment_type": (
+                    "exposure_load_shadow_bounded_calibration_protocol_sprint"
+                ),
+                "overall_recommendation": (
+                    "run_bounded_calibration_stress_test_without_claims"
+                ),
+                "production_readiness": "not_ready_for_probability_or_pilot",
+                "calibration_claim_readiness": "not_ready_for_calibration_claims",
+                "pilot_dashboard_readiness": "blocked",
+                "load_modification_readiness": "blocked",
+                "bounded_protocol_status": (
+                    "ready_for_research_only_stress_test_protocol"
+                ),
+                "channel_protocol_rows": [
+                    {
+                        "channel_name": "broad_30d",
+                        "protocol_status": (
+                            "eligible_for_bounded_stress_test_not_claims"
+                        ),
+                    }
+                ],
+                "evidence_use_rows": [
+                    {
+                        "collection_packet_id": "broad_30d__2023-2024",
+                        "channel_name": "broad_30d",
+                        "collection_season_id": "2023-2024",
+                        "observed_event_count": 3,
+                        "captured_event_count": 1,
+                        "missed_event_count": 2,
+                        "protocol_evidence_role": (
+                            "monitoring_context_only_not_calibration_claim"
+                        ),
+                    }
+                ],
+                "protocol_gate_rows": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_exposure_load_shadow_bounded_calibration_stress_test_sprint_experiment(
+        exposure_load_shadow_bounded_calibration_protocol_path=protocol_path,
+        output_dir=tmp_path,
+        experiment_id="exposure_load_shadow_bounded_calibration_stress_test",
+    )
+
+    assert (
+        result / "exposure_load_shadow_bounded_calibration_stress_channels.csv"
+    ).exists()
+    assert (
+        result / "exposure_load_shadow_bounded_calibration_stress_scenarios.csv"
+    ).exists()
+    assert (
+        result / "exposure_load_shadow_bounded_calibration_stress_gates.csv"
+    ).exists()
+    assert (
+        result / "exposure_load_shadow_bounded_calibration_stress_test.json"
+    ).exists()
+    assert (
+        result / "exposure_load_shadow_bounded_calibration_stress_test_report.md"
+    ).exists()
+    assert (result / "config.json").exists()
+    payload = json.loads(
+        (
+            result / "exposure_load_shadow_bounded_calibration_stress_test.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert payload["experiment_type"] == (
+        "exposure_load_shadow_bounded_calibration_stress_test_sprint"
+    )
+    assert payload["calibration_claim_readiness"] == (
+        "not_ready_for_calibration_claims"
+    )
 
 
 def _write_context_review_inputs(tmp_path):

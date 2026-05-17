@@ -38,6 +38,7 @@ from risk_stratification_engine.experiments import (
     run_exposure_load_shadow_bounded_calibration_protocol_sprint_experiment,
     run_exposure_load_shadow_bounded_calibration_stress_test_sprint_experiment,
     run_exposure_load_shadow_error_control_sprint_experiment,
+    run_exposure_load_shadow_prospective_collection_ingest_sprint_experiment,
     run_exposure_load_shadow_prospective_collection_operations_sprint_experiment,
     run_exposure_load_shadow_prospective_collection_completion_sprint_experiment,
     run_exposure_load_shadow_prospective_evidence_gate_sprint_experiment,
@@ -3714,6 +3715,132 @@ def test_run_exposure_load_shadow_prospective_collection_completion_sprint_write
         "continue_prospective_collection_before_bounded_retest"
     )
     assert payload["bounded_retest_readiness"] == "blocked_pending_collection"
+
+
+def test_run_exposure_load_shadow_prospective_collection_ingest_sprint_writes_artifacts(
+    tmp_path,
+):
+    operations_path = (
+        tmp_path / "exposure_load_shadow_prospective_collection_operations.json"
+    )
+    operations_path.write_text(
+        json.dumps(
+            {
+                "experiment_type": (
+                    "exposure_load_shadow_prospective_collection_operations_sprint"
+                ),
+                "overall_recommendation": (
+                    "prepare_prospective_collection_operations_before_retest"
+                ),
+                "retest_readiness": "pending_required_prospective_collection",
+                "production_readiness": "not_ready_for_probability_or_pilot",
+                "calibration_claim_readiness": "not_ready_for_calibration_claims",
+                "pilot_dashboard_readiness": "blocked",
+                "load_modification_readiness": "blocked",
+                "channel_operation_rows": [
+                    {
+                        "channel_name": "broad_30d",
+                        "required_packet_count": 1,
+                        "required_captured_events": 2,
+                        "maximum_allowed_missed_event_rate": 0.75,
+                    }
+                ],
+                "collection_worksheet_rows": [
+                    {
+                        "collection_packet_id": (
+                            "broad_30d__prospective_collection_001"
+                        ),
+                        "channel_name": "broad_30d",
+                        "packet_sequence": 1,
+                        "collection_season_id": "",
+                        "packet_start_date": "",
+                        "packet_end_date": "",
+                        "source_eligible": "",
+                        "episode_count": "",
+                        "unique_observed_event_count": "",
+                        "unique_captured_event_count": "",
+                        "unique_missed_event_count": "",
+                        "missed_event_rate": "",
+                        "alert_usefulness": "",
+                        "outcome_confirmed": "",
+                        "source_context_ok": "",
+                        "action_taken": "",
+                        "reviewer_id": "",
+                        "review_date": "",
+                        "collection_status": "pending_prospective_collection",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    completed_path = tmp_path / "completed_prospective_collection.csv"
+    pd.DataFrame(
+        [
+            {
+                "collection_packet_id": "broad_30d__prospective_collection_001",
+                "collection_season_id": "2026-2027",
+                "packet_start_date": "2026-08-01",
+                "packet_end_date": "2026-12-01",
+                "source_eligible": "true",
+                "episode_count": "2",
+                "unique_observed_event_count": "10",
+                "unique_captured_event_count": "2",
+                "unique_missed_event_count": "2",
+                "missed_event_rate": "0.2",
+                "alert_usefulness": "useful",
+                "outcome_confirmed": "true",
+                "source_context_ok": "true",
+                "action_taken": "monitor",
+                "reviewer_id": "PRAC1",
+                "review_date": "2027-01-15",
+                "collection_status": "complete_practitioner_adjudication",
+            }
+        ]
+    ).to_csv(completed_path, index=False)
+
+    result = (
+        run_exposure_load_shadow_prospective_collection_ingest_sprint_experiment(
+            exposure_load_shadow_prospective_collection_operations_path=(
+                operations_path
+            ),
+            completed_prospective_collection_path=completed_path,
+            output_dir=tmp_path,
+            experiment_id="exposure_load_shadow_prospective_collection_ingest",
+        )
+    )
+
+    assert (
+        result
+        / "exposure_load_shadow_prospective_collection_ingest_validation.csv"
+    ).exists()
+    assert (
+        result / "exposure_load_shadow_prospective_collection_ingest_summary.csv"
+    ).exists()
+    assert (
+        result
+        / "exposure_load_shadow_prospective_collection_ingested_worksheet.csv"
+    ).exists()
+    assert (
+        result
+        / "exposure_load_shadow_prospective_collection_ingested_operations.json"
+    ).exists()
+    assert (
+        result / "exposure_load_shadow_prospective_collection_ingest.json"
+    ).exists()
+    assert (
+        result / "exposure_load_shadow_prospective_collection_ingest_report.md"
+    ).exists()
+    assert (result / "config.json").exists()
+    payload = json.loads(
+        (
+            result / "exposure_load_shadow_prospective_collection_ingest.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert payload["overall_recommendation"] == (
+        "rerun_completion_validation_with_ingested_practitioner_rows"
+    )
+    assert payload["ingested_completed_rows"] == 1
 
 
 def _write_context_review_inputs(tmp_path):

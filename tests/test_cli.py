@@ -1904,6 +1904,69 @@ def test_cli_runs_exposure_load_shadow_prospective_collection_completion_from_op
     }
 
 
+def test_cli_runs_exposure_load_shadow_prospective_collection_ingest_from_completed_worksheet(
+    tmp_path,
+    monkeypatch,
+):
+    operations_path = (
+        tmp_path / "exposure_load_shadow_prospective_collection_operations.json"
+    )
+    operations_path.write_text("artifact", encoding="utf-8")
+    completed_path = tmp_path / "completed_prospective_collection.csv"
+    completed_path.write_text("collection_packet_id\npacket_001\n", encoding="utf-8")
+    calls = {}
+
+    def fake_run_exposure_load_shadow_prospective_collection_ingest_sprint_experiment(
+        exposure_load_shadow_prospective_collection_operations_path,
+        completed_prospective_collection_path,
+        output_dir,
+        experiment_id,
+    ):
+        calls["shadow_prospective_collection_ingest"] = {
+            "exposure_load_shadow_prospective_collection_operations_path": (
+                exposure_load_shadow_prospective_collection_operations_path
+            ),
+            "completed_prospective_collection_path": (
+                completed_prospective_collection_path
+            ),
+            "output_dir": output_dir,
+            "experiment_id": experiment_id,
+        }
+        return tmp_path / experiment_id
+
+    monkeypatch.setattr(
+        cli,
+        (
+            "run_exposure_load_shadow_prospective_collection_ingest_sprint_experiment"
+        ),
+        fake_run_exposure_load_shadow_prospective_collection_ingest_sprint_experiment,
+    )
+
+    exit_code = main(
+        [
+            "--output-dir",
+            str(tmp_path),
+            "--experiment-id",
+            "exposure_load_shadow_prospective_collection_ingest",
+            "--exposure-load-shadow-prospective-collection-ingest-sprint",
+            "--exposure-load-shadow-prospective-collection-operations",
+            str(operations_path),
+            "--completed-prospective-collection",
+            str(completed_path),
+        ]
+    )
+
+    assert exit_code == 0
+    assert calls["shadow_prospective_collection_ingest"] == {
+        "exposure_load_shadow_prospective_collection_operations_path": (
+            operations_path
+        ),
+        "completed_prospective_collection_path": completed_path,
+        "output_dir": tmp_path,
+        "experiment_id": "exposure_load_shadow_prospective_collection_ingest",
+    }
+
+
 def test_cli_runs_exposure_load_shadow_monitoring_plan_from_decision(
     tmp_path,
     monkeypatch,

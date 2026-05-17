@@ -85,6 +85,7 @@ Future work may add a dashboard performance tab inspired by the Malum/SPEAR mate
 - Exposure-load shadow prospective evidence gate sprints are available through `risk-engine --exposure-load-shadow-prospective-evidence-gate-sprint --exposure-load-shadow-bounded-calibration-stress-test <exposure_load_shadow_bounded_calibration_stress_test.json> --output-dir outputs --experiment-id <id>`. They write `exposure_load_shadow_prospective_evidence_targets.csv`, `exposure_load_shadow_prospective_packet_targets.csv`, `exposure_load_shadow_prospective_evidence_gates.csv`, `exposure_load_shadow_prospective_evidence_gate.json`, and `exposure_load_shadow_prospective_evidence_gate_report.md`; the sprint defines retained-channel prospective evidence targets before any bounded retest while keeping calibration claims, probability-facing output, pilot/dashboard readiness, autonomous intervention, and load modification blocked.
 - Exposure-load shadow prospective collection operations sprints are available through `risk-engine --exposure-load-shadow-prospective-collection-operations-sprint --exposure-load-shadow-prospective-evidence-gate <exposure_load_shadow_prospective_evidence_gate.json> --output-dir outputs --experiment-id <id>`. They write `exposure_load_shadow_prospective_collection_channels.csv`, `exposure_load_shadow_prospective_collection_packet_manifest.csv`, `exposure_load_shadow_prospective_collection_worksheet.csv`, `exposure_load_shadow_prospective_collection_checklist.csv`, `exposure_load_shadow_prospective_collection_audit_trail.csv`, `exposure_load_shadow_prospective_collection_reviewer_instructions.md`, `exposure_load_shadow_prospective_collection_operations.json`, `exposure_load_shadow_prospective_collection_operations_report.md`, and one de-identified markdown file per packet under `review_packets/`; the sprint converts prospective evidence gates into reviewer-ready packet operations while keeping retest readiness pending and calibration claims, probability-facing output, pilot/dashboard readiness, autonomous intervention, and load modification blocked.
 - Exposure-load shadow prospective collection completion sprints are available through `risk-engine --exposure-load-shadow-prospective-collection-completion-sprint --exposure-load-shadow-prospective-collection-operations <exposure_load_shadow_prospective_collection_operations.json> --output-dir outputs --experiment-id <id>`. They write `exposure_load_shadow_prospective_collection_packet_validation.csv`, `exposure_load_shadow_prospective_collection_channel_completion.csv`, `exposure_load_shadow_prospective_collection_completion_gates.csv`, `exposure_load_shadow_prospective_collection_completion.json`, and `exposure_load_shadow_prospective_collection_completion_report.md`; the sprint validates whether prospective practitioner packet evidence is complete enough for bounded retest while keeping calibration claims, probability-facing output, pilot/dashboard readiness, autonomous intervention, and load modification blocked.
+- Exposure-load shadow prospective collection ingest sprints are available through `risk-engine --exposure-load-shadow-prospective-collection-ingest-sprint --exposure-load-shadow-prospective-collection-operations <exposure_load_shadow_prospective_collection_operations.json> --completed-prospective-collection <completed_prospective_collection.csv> --output-dir outputs --experiment-id <id>`. They write `exposure_load_shadow_prospective_collection_ingest_validation.csv`, `exposure_load_shadow_prospective_collection_ingest_summary.csv`, `exposure_load_shadow_prospective_collection_ingested_worksheet.csv`, `exposure_load_shadow_prospective_collection_ingested_operations.json`, `exposure_load_shadow_prospective_collection_ingest.json`, and `exposure_load_shadow_prospective_collection_ingest_report.md`; the sprint safely merges completed de-identified practitioner worksheet rows for known packet IDs only, flags duplicate/unknown/de-identification errors, and prepares the updated operations package for completion validation without changing calibration, product, pilot/dashboard, autonomous intervention, or load-modification readiness.
 - Exposure-load shadow event-crosswalk sprints are available through `risk-engine --exposure-load-shadow-event-crosswalk-sprint --measurements <canonical_measurements.csv> --injuries <canonical_injuries.csv> --exposure-participations <exposure_participations.csv> --exposure-load-shadow-replay <exposure_load_shadow_replay.json> --exposure-load-shadow-collection <retained_collection.csv> --output-dir outputs --experiment-id <id> --model-variant l2 --graph-window-size 4`. They write `exposure_load_shadow_event_crosswalk.csv`, `exposure_load_shadow_event_crosswalk_summary.csv`, `exposure_load_shadow_event_crosswalk.json`, and `exposure_load_shadow_event_crosswalk_report.md`; the sprint filters to retained collection packets when a collection CSV is supplied, identifies de-identified captured/missed injury events with available injury context and nearest alert timing, and supports independent practitioner adjudication only.
 - As of 2026-04-27, `run_research_experiment(...)` trains a discrete-time logistic baseline at the 7, 14, and 30 day horizons over 13 graph snapshot-time features: `time_index`, `node_count`, `edge_count`, `mean_abs_correlation`, `edge_density`, `delta_edge_count`, `delta_mean_abs_correlation`, `delta_edge_density`, `graph_instability`, `z_mean_abs_correlation`, `z_edge_density`, `z_edge_count`, and `z_graph_instability`.
 - The temporal delta features (`delta_*`) are computed per athlete-season in chronological order and are zero at each athlete's first snapshot; they capture change from one snapshot to the next. `edge_density` normalizes edge count by the maximum possible edges for the observed node count. `graph_instability` is the rolling population standard deviation of `mean_abs_correlation` over the most recent three snapshots, zero when fewer than two snapshots are available.
@@ -119,6 +120,30 @@ Future work may add a dashboard performance tab inspired by the Malum/SPEAR mate
 
 ## Latest Completed Step
 
+**Exposure-load shadow prospective collection ingest sprint** - implemented and verified on 2026-05-17.
+
+**What changed:** Added `exposure_load_shadow_prospective_collection_ingest.py`, `run_exposure_load_shadow_prospective_collection_ingest_sprint_experiment(...)`, and the `--exposure-load-shadow-prospective-collection-ingest-sprint` CLI mode. The sprint consumes the prospective collection operations JSON plus a completed prospective collection CSV, validates known packet IDs and de-identification boundaries, emits ingest validation/summary artifacts, and writes an updated operations JSON for completion validation.
+
+**Live results (`exposure_load_shadow_prospective_collection_ingest_v1`):**
+- Overall recommendation: `await_completed_practitioner_collection_before_ingest`.
+- Milestone status: `completed_collection_ingest_path_ready`.
+- Bounded retest readiness: `pending_completed_practitioner_rows`.
+- Production readiness: `not_ready_for_probability_or_pilot`.
+- Calibration claim readiness: `not_ready_for_calibration_claims`.
+- Pilot/dashboard readiness: `blocked`.
+- Load modification readiness: `blocked`.
+- Known packet rows: 8.
+- Submitted input rows: 8.
+- Pending input rows: 8.
+- Ingested completed practitioner rows: 0.
+- Ingest error rows: 0.
+- `broad_30d`: 4 known packets, 0 ingested completed rows, status `await_completed_practitioner_collection`.
+- `severity_14d`: 4 known packets, 0 ingested completed rows, status `await_completed_practitioner_collection`.
+
+**Interpretation:** The code-side ingest path is ready, but the current blank worksheet cannot advance the project. This is the current user/practitioner involvement boundary: complete the de-identified packet rows first, then re-run ingest and completion validation. Do not move to bounded retest, calibration claims, probability-facing output, pilot/dashboard work, autonomous intervention, or load modification until required collection rows are complete and revalidated.
+
+## Previous Completed Step
+
 **Exposure-load shadow prospective collection completion sprint** - implemented and verified on 2026-05-17.
 
 **What changed:** Added `exposure_load_shadow_prospective_collection_completion.py`, `run_exposure_load_shadow_prospective_collection_completion_sprint_experiment(...)`, and the `--exposure-load-shadow-prospective-collection-completion-sprint` CLI mode. The sprint consumes the prospective collection operations JSON and emits packet validation, channel completion, completion gate, JSON, and report artifacts.
@@ -136,28 +161,7 @@ Future work may add a dashboard performance tab inspired by the Malum/SPEAR mate
 - `broad_30d`: 4 required packets, 0 complete practitioner packets, 0 captured events, completion gate `blocked_pending_required_packets`.
 - `severity_14d`: 4 required packets, 0 complete practitioner packets, 0 captured events, completion gate `blocked_pending_required_packets`.
 
-**Interpretation:** This sprint prevents the reviewer-ready operations package from being mistaken for completed evidence. The next useful work is actual prospective practitioner collection/adjudication outside the codebase or a collection-ingest path once completed packets exist. Do not move to bounded retest, calibration claims, probability-facing output, pilot/dashboard work, autonomous intervention, or load modification until required collection rows are complete and revalidated.
-
-## Previous Completed Step
-
-**Exposure-load shadow prospective collection operations sprint** - implemented and verified on 2026-05-17.
-
-**What changed:** Added `exposure_load_shadow_prospective_collection_operations.py`, `run_exposure_load_shadow_prospective_collection_operations_sprint_experiment(...)`, and the `--exposure-load-shadow-prospective-collection-operations-sprint` CLI mode. The sprint consumes the prospective evidence gate JSON and emits channel operations, packet manifest, worksheet, checklist, audit trail, reviewer instructions, JSON, report, and one de-identified packet markdown file per required packet.
-
-**Live results (`exposure_load_shadow_prospective_collection_operations_v1`):**
-- Overall recommendation: `prepare_prospective_collection_operations_before_retest`.
-- Milestone status: `reviewer_ready_prospective_packet_operations_defined`.
-- Retest readiness: `pending_required_prospective_collection`.
-- Production readiness: `not_ready_for_probability_or_pilot`.
-- Calibration claim readiness: `not_ready_for_calibration_claims`.
-- Pilot/dashboard readiness: `blocked`.
-- Load modification readiness: `blocked`.
-- Packet count: 8 reviewer-ready prospective packets.
-- `broad_30d`: 4 packets, at least 8 captured events, missed-event rate no greater than 0.75 before retesting.
-- `severity_14d`: 4 packets, at least 8 captured events, missed-event rate no greater than 0.75 before retesting.
-- Packet target mix for both retained channels: 2 monitoring-context packets, 1 missed-only error packet, and 1 outcome-context packet.
-
-**Interpretation:** The project now has reviewer-ready prospective packet operations, but it still has no new evidence. The next allowed work is collecting/adjudicating those prospective packets or building a strict collection-completion validation sprint after evidence exists. Do not move to calibration claims, probability-facing output, pilot/dashboard work, autonomous intervention, or load modification.
+**Interpretation:** This sprint prevents the reviewer-ready operations package from being mistaken for completed evidence. The next useful work is actual prospective practitioner collection/adjudication outside the codebase or the collection-ingest path once completed packets exist. Do not move to bounded retest, calibration claims, probability-facing output, pilot/dashboard work, autonomous intervention, or load modification until required collection rows are complete and revalidated.
 
 ## Previous Completed Step
 

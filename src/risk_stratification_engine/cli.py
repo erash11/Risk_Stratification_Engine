@@ -46,6 +46,7 @@ from risk_stratification_engine.experiments import (
     run_exposure_load_shadow_event_crosswalk_sprint_experiment,
     run_exposure_load_shadow_monitoring_plan_sprint_experiment,
     run_exposure_load_shadow_prospective_collection_completion_sprint_experiment,
+    run_exposure_load_shadow_prospective_collection_ingest_sprint_experiment,
     run_exposure_load_shadow_prospective_collection_operations_sprint_experiment,
     run_exposure_load_shadow_prospective_evidence_gate_sprint_experiment,
     run_exposure_load_shadow_readiness_register_sprint_experiment,
@@ -122,6 +123,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--exposure-load-shadow-bounded-calibration-stress-test", type=Path)
     parser.add_argument("--exposure-load-shadow-prospective-evidence-gate", type=Path)
     parser.add_argument("--exposure-load-shadow-prospective-collection-operations", type=Path)
+    parser.add_argument("--completed-prospective-collection", type=Path)
     parser.add_argument("--exposure-load-shadow-event-crosswalk", type=Path)
     parser.add_argument("--exposure-load-source-resolution-policy", type=Path)
     parser.add_argument("--season-forward-validation-path", type=Path)
@@ -261,6 +263,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--exposure-load-shadow-prospective-collection-completion-sprint",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--exposure-load-shadow-prospective-collection-ingest-sprint",
         action="store_true",
     )
     parser.add_argument(
@@ -1086,6 +1092,35 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(
             "Exposure load shadow prospective collection completion artifacts "
+            f"written to {experiment_dir}"
+        )
+        return 0
+
+    if args.exposure_load_shadow_prospective_collection_ingest_sprint:
+        if args.exposure_load_shadow_prospective_collection_operations is None:
+            parser.error(
+                "--exposure-load-shadow-prospective-collection-ingest-sprint "
+                "requires --exposure-load-shadow-prospective-collection-operations"
+            )
+        if args.completed_prospective_collection is None:
+            parser.error(
+                "--exposure-load-shadow-prospective-collection-ingest-sprint "
+                "requires --completed-prospective-collection"
+            )
+        experiment_dir = (
+            run_exposure_load_shadow_prospective_collection_ingest_sprint_experiment(
+                exposure_load_shadow_prospective_collection_operations_path=(
+                    args.exposure_load_shadow_prospective_collection_operations
+                ),
+                completed_prospective_collection_path=(
+                    args.completed_prospective_collection
+                ),
+                output_dir=args.output_dir,
+                experiment_id=args.experiment_id,
+            )
+        )
+        print(
+            "Exposure load shadow prospective collection ingest artifacts "
             f"written to {experiment_dir}"
         )
         return 0

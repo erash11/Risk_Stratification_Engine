@@ -1000,6 +1000,43 @@ both `broad_30d` and `severity_14d` remain blocked pending required packets.
 Probability-facing output, calibration claims, pilot/dashboard readiness,
 autonomous intervention, and load modification remain blocked.
 
+## Run Exposure Load Shadow Prospective Collection Ingest Sprint
+
+After reviewer packets are completed outside the codebase, merge a completed
+de-identified worksheet back into the operations package before re-running
+completion validation:
+
+```bash
+risk-engine \
+  --exposure-load-shadow-prospective-collection-ingest-sprint \
+  --exposure-load-shadow-prospective-collection-operations outputs/experiments/exposure_load_shadow_prospective_collection_operations_v1/exposure_load_shadow_prospective_collection_operations.json \
+  --completed-prospective-collection <completed_prospective_collection.csv> \
+  --output-dir outputs \
+  --experiment-id exposure_load_shadow_prospective_collection_ingest_v1
+```
+
+This writes `exposure_load_shadow_prospective_collection_ingest_validation.csv`,
+`exposure_load_shadow_prospective_collection_ingest_summary.csv`,
+`exposure_load_shadow_prospective_collection_ingested_worksheet.csv`,
+`exposure_load_shadow_prospective_collection_ingested_operations.json`,
+`exposure_load_shadow_prospective_collection_ingest.json`, and
+`exposure_load_shadow_prospective_collection_ingest_report.md`. The ingest pass
+accepts only known collection packet IDs, flags duplicate packet IDs, rejects
+identifier fields such as athlete names or source athlete IDs, and only updates
+rows marked `complete_practitioner_adjudication`.
+
+The live `exposure_load_shadow_prospective_collection_ingest_v1` run used the
+current blank operations worksheet as input. It reached
+`completed_collection_ingest_path_ready` but recommended
+`await_completed_practitioner_collection_before_ingest`: all 8 submitted packet
+rows were still pending, 0 completed practitioner rows were ingested, and both
+`broad_30d` and `severity_14d` remain awaiting completed practitioner
+collection. This is the current code-side handoff point. Further progress
+requires user/practitioner completion of de-identified packet rows, then this
+ingest sprint should be re-run followed by the completion validation sprint.
+Probability-facing output, calibration claims, pilot/dashboard readiness,
+autonomous intervention, and load modification remain blocked.
+
 ## Run Exposure Load Shadow Event Crosswalk Sprint
 
 Before independent practitioner adjudication, generate the retained-channel

@@ -38,6 +38,7 @@ from risk_stratification_engine.experiments import (
     run_exposure_load_shadow_bounded_calibration_protocol_sprint_experiment,
     run_exposure_load_shadow_bounded_calibration_stress_test_sprint_experiment,
     run_exposure_load_shadow_error_control_sprint_experiment,
+    run_exposure_load_shadow_prospective_collection_operations_sprint_experiment,
     run_exposure_load_shadow_prospective_evidence_gate_sprint_experiment,
     run_exposure_load_shadow_collection_evidence_prefill_sprint_experiment,
     run_exposure_load_shadow_collection_packet_workflow_sprint_experiment,
@@ -3526,6 +3527,102 @@ def test_run_exposure_load_shadow_prospective_evidence_gate_sprint_writes_artifa
     assert payload["experiment_type"] == (
         "exposure_load_shadow_prospective_evidence_gate_sprint"
     )
+    assert payload["production_readiness"] == "not_ready_for_probability_or_pilot"
+
+
+def test_run_exposure_load_shadow_prospective_collection_operations_sprint_writes_artifacts(
+    tmp_path,
+):
+    gate_path = tmp_path / "exposure_load_shadow_prospective_evidence_gate.json"
+    gate_path.write_text(
+        json.dumps(
+            {
+                "experiment_type": (
+                    "exposure_load_shadow_prospective_evidence_gate_sprint"
+                ),
+                "overall_recommendation": (
+                    "collect_prospective_retained_channel_evidence_before_retesting"
+                ),
+                "milestone_status": "prospective_evidence_collection_gate_defined",
+                "production_readiness": "not_ready_for_probability_or_pilot",
+                "calibration_claim_readiness": "not_ready_for_calibration_claims",
+                "pilot_dashboard_readiness": "blocked",
+                "load_modification_readiness": "blocked",
+                "collection_target_rows": [
+                    {
+                        "channel_name": "broad_30d",
+                        "minimum_new_prospective_packets": 4,
+                        "minimum_captured_events_needed": 8,
+                        "maximum_allowed_missed_event_rate": 0.75,
+                        "target_decision": "collect_prospective_evidence_then_retest",
+                    }
+                ],
+                "packet_target_rows": [
+                    {
+                        "channel_name": "broad_30d",
+                        "target_type": "monitoring_context_packet",
+                        "minimum_packet_count": 2,
+                        "required_action": (
+                            "capture_practitioner_monitoring_context_and_outcome_followup"
+                        ),
+                    },
+                    {
+                        "channel_name": "broad_30d",
+                        "target_type": "missed_only_error_packet",
+                        "minimum_packet_count": 1,
+                        "required_action": "adjudicate_missed_only_error_context",
+                    },
+                    {
+                        "channel_name": "broad_30d",
+                        "target_type": "outcome_context_packet",
+                        "minimum_packet_count": 1,
+                        "required_action": "capture_outcome_context_or_mark_unavailable",
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_exposure_load_shadow_prospective_collection_operations_sprint_experiment(
+        exposure_load_shadow_prospective_evidence_gate_path=gate_path,
+        output_dir=tmp_path,
+        experiment_id="exposure_load_shadow_prospective_collection_operations",
+    )
+
+    assert (
+        result / "exposure_load_shadow_prospective_collection_packet_manifest.csv"
+    ).exists()
+    assert (
+        result / "exposure_load_shadow_prospective_collection_worksheet.csv"
+    ).exists()
+    assert (
+        result / "exposure_load_shadow_prospective_collection_checklist.csv"
+    ).exists()
+    assert (
+        result / "exposure_load_shadow_prospective_collection_audit_trail.csv"
+    ).exists()
+    assert (
+        result / "exposure_load_shadow_prospective_collection_reviewer_instructions.md"
+    ).exists()
+    assert (
+        result / "exposure_load_shadow_prospective_collection_operations.json"
+    ).exists()
+    assert (
+        result / "exposure_load_shadow_prospective_collection_operations_report.md"
+    ).exists()
+    assert (
+        result / "review_packets" / "broad_30d__prospective_collection_001.md"
+    ).exists()
+    payload = json.loads(
+        (
+            result / "exposure_load_shadow_prospective_collection_operations.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert payload["overall_recommendation"] == (
+        "prepare_prospective_collection_operations_before_retest"
+    )
+    assert payload["packet_count"] == 4
     assert payload["production_readiness"] == "not_ready_for_probability_or_pilot"
 
 

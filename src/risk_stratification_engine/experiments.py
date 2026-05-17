@@ -142,6 +142,12 @@ from risk_stratification_engine.exposure_load_shadow_prospective_evidence_gate i
     clean_shadow_prospective_evidence_gate_rows,
     write_exposure_load_shadow_prospective_evidence_gate_report,
 )
+from risk_stratification_engine.exposure_load_shadow_prospective_collection_operations import (
+    build_exposure_load_shadow_prospective_collection_operations,
+    clean_shadow_prospective_collection_operation_rows,
+    write_exposure_load_shadow_prospective_collection_operations_report,
+    write_exposure_load_shadow_prospective_collection_reviewer_instructions,
+)
 from risk_stratification_engine.exposure_load_shadow_error_control import (
     build_exposure_load_shadow_error_control_review,
     clean_shadow_error_control_rows,
@@ -3466,6 +3472,91 @@ def run_exposure_load_shadow_prospective_evidence_gate_sprint_experiment(
         experiment_dir / "exposure_load_shadow_prospective_evidence_gate_report.md",
         gate,
     )
+    return experiment_dir
+
+
+def run_exposure_load_shadow_prospective_collection_operations_sprint_experiment(
+    exposure_load_shadow_prospective_evidence_gate_path: str | Path,
+    output_dir: str | Path,
+    experiment_id: str,
+) -> Path:
+    experiment_dir = _experiment_path(output_dir, experiment_id)
+    gate = _load_json_payload(exposure_load_shadow_prospective_evidence_gate_path)
+    operations = build_exposure_load_shadow_prospective_collection_operations(gate)
+    write_frame(
+        pd.DataFrame(
+            clean_shadow_prospective_collection_operation_rows(
+                operations["channel_operation_rows"]
+            )
+        ),
+        experiment_dir / "exposure_load_shadow_prospective_collection_channels.csv",
+    )
+    write_frame(
+        pd.DataFrame(
+            clean_shadow_prospective_collection_operation_rows(
+                operations["packet_manifest_rows"]
+            )
+        ),
+        experiment_dir
+        / "exposure_load_shadow_prospective_collection_packet_manifest.csv",
+    )
+    write_frame(
+        pd.DataFrame(
+            clean_shadow_prospective_collection_operation_rows(
+                operations["collection_worksheet_rows"]
+            )
+        ),
+        experiment_dir / "exposure_load_shadow_prospective_collection_worksheet.csv",
+    )
+    write_frame(
+        pd.DataFrame(
+            clean_shadow_prospective_collection_operation_rows(
+                operations["packet_checklist_rows"]
+            )
+        ),
+        experiment_dir / "exposure_load_shadow_prospective_collection_checklist.csv",
+    )
+    write_frame(
+        pd.DataFrame(
+            clean_shadow_prospective_collection_operation_rows(
+                operations["audit_trail_rows"]
+            )
+        ),
+        experiment_dir / "exposure_load_shadow_prospective_collection_audit_trail.csv",
+    )
+    _write_json(
+        experiment_dir / "config.json",
+        {
+            "experiment_id": experiment_id,
+            "experiment_type": (
+                "exposure_load_shadow_prospective_collection_operations"
+            ),
+            "exposure_load_shadow_prospective_evidence_gate_path": str(
+                exposure_load_shadow_prospective_evidence_gate_path
+            ),
+        },
+    )
+    _write_json(
+        experiment_dir / "exposure_load_shadow_prospective_collection_operations.json",
+        operations,
+    )
+    write_exposure_load_shadow_prospective_collection_reviewer_instructions(
+        experiment_dir
+        / "exposure_load_shadow_prospective_collection_reviewer_instructions.md",
+        operations,
+    )
+    write_exposure_load_shadow_prospective_collection_operations_report(
+        experiment_dir
+        / "exposure_load_shadow_prospective_collection_operations_report.md",
+        operations,
+    )
+    packet_dir = experiment_dir / "review_packets"
+    for packet_document in operations["packet_documents"]:
+        packet_path = experiment_dir / str(packet_document["packet_filename"])
+        packet_path.parent.mkdir(parents=True, exist_ok=True)
+        packet_path.write_text(str(packet_document["content"]), encoding="utf-8")
+    if operations["packet_documents"]:
+        packet_dir.mkdir(parents=True, exist_ok=True)
     return experiment_dir
 
 

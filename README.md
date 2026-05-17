@@ -943,6 +943,37 @@ and missed-event rate no greater than 0.75 before retesting. Probability-facing
 output, calibration claims, pilot/dashboard readiness, autonomous intervention,
 and load modification remain blocked.
 
+## Run Exposure Load Shadow Prospective Collection Operations Sprint
+
+After the prospective evidence gate is defined, prepare reviewer-ready packet
+operations before collecting or retesting evidence:
+
+```bash
+risk-engine \
+  --exposure-load-shadow-prospective-collection-operations-sprint \
+  --exposure-load-shadow-prospective-evidence-gate outputs/experiments/exposure_load_shadow_prospective_evidence_gate_v1/exposure_load_shadow_prospective_evidence_gate.json \
+  --output-dir outputs \
+  --experiment-id exposure_load_shadow_prospective_collection_operations_v1
+```
+
+This writes `exposure_load_shadow_prospective_collection_channels.csv`,
+`exposure_load_shadow_prospective_collection_packet_manifest.csv`,
+`exposure_load_shadow_prospective_collection_worksheet.csv`,
+`exposure_load_shadow_prospective_collection_checklist.csv`,
+`exposure_load_shadow_prospective_collection_audit_trail.csv`,
+`exposure_load_shadow_prospective_collection_reviewer_instructions.md`,
+`exposure_load_shadow_prospective_collection_operations.json`,
+`exposure_load_shadow_prospective_collection_operations_report.md`, and one
+de-identified packet markdown file per required packet under `review_packets/`.
+The live `exposure_load_shadow_prospective_collection_operations_v1` run
+recommends `prepare_prospective_collection_operations_before_retest` and reaches
+`reviewer_ready_prospective_packet_operations_defined`. It creates 8 packets:
+4 for `broad_30d` and 4 for `severity_14d`, each channel requiring 2
+monitoring-context packets, 1 missed-only error packet, and 1 outcome-context
+packet. Retest readiness remains `pending_required_prospective_collection`;
+probability-facing output, calibration claims, pilot/dashboard readiness,
+autonomous intervention, and load modification remain blocked.
+
 ## Run Exposure Load Shadow Event Crosswalk Sprint
 
 Before independent practitioner adjudication, generate the retained-channel

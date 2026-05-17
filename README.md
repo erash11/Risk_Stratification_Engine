@@ -1037,6 +1037,11 @@ ingest sprint should be re-run followed by the completion validation sprint.
 Probability-facing output, calibration claims, pilot/dashboard readiness,
 autonomous intervention, and load modification remain blocked.
 
+For the exact user/practitioner workflow, field definitions, allowed values,
+examples, ingest command, and follow-on validation command, see
+`docs/prospective_collection_completion_guide.md`. For a compact step-by-step
+reference, see `docs/prospective_collection_completion_process_reference.md`.
+
 ## Run Exposure Load Shadow Event Crosswalk Sprint
 
 Before independent practitioner adjudication, generate the retained-channel

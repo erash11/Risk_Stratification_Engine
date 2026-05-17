@@ -140,7 +140,7 @@ Future work may add a dashboard performance tab inspired by the Malum/SPEAR mate
 - `broad_30d`: 4 known packets, 0 ingested completed rows, status `await_completed_practitioner_collection`.
 - `severity_14d`: 4 known packets, 0 ingested completed rows, status `await_completed_practitioner_collection`.
 
-**Interpretation:** The code-side ingest path is ready, but the current blank worksheet cannot advance the project. This is the current user/practitioner involvement boundary: complete the de-identified packet rows first, then re-run ingest and completion validation. Do not move to bounded retest, calibration claims, probability-facing output, pilot/dashboard work, autonomous intervention, or load modification until required collection rows are complete and revalidated.
+**Interpretation:** The code-side ingest path is ready, but the current blank worksheet cannot advance the project. This is the current user/practitioner involvement boundary: complete the de-identified packet rows first, then re-run ingest and completion validation. Use `docs/prospective_collection_completion_guide.md` and `docs/prospective_collection_completion_process_reference.md` for the exact completion workflow, allowed values, examples, and validation commands. Do not move to bounded retest, calibration claims, probability-facing output, pilot/dashboard work, autonomous intervention, or load modification until required collection rows are complete and revalidated.
 
 ## Previous Completed Step
 

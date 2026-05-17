@@ -38,6 +38,7 @@ from risk_stratification_engine.experiments import (
     run_exposure_load_shadow_bounded_calibration_protocol_sprint_experiment,
     run_exposure_load_shadow_bounded_calibration_stress_test_sprint_experiment,
     run_exposure_load_shadow_error_control_sprint_experiment,
+    run_exposure_load_shadow_prospective_evidence_gate_sprint_experiment,
     run_exposure_load_shadow_collection_evidence_prefill_sprint_experiment,
     run_exposure_load_shadow_collection_packet_workflow_sprint_experiment,
     run_exposure_load_shadow_collection_template_sprint_experiment,
@@ -3458,6 +3459,74 @@ def test_run_exposure_load_shadow_bounded_calibration_stress_test_sprint_writes_
     assert payload["calibration_claim_readiness"] == (
         "not_ready_for_calibration_claims"
     )
+
+
+def test_run_exposure_load_shadow_prospective_evidence_gate_sprint_writes_artifacts(
+    tmp_path,
+):
+    stress_path = (
+        tmp_path / "exposure_load_shadow_bounded_calibration_stress_test.json"
+    )
+    stress_path.write_text(
+        json.dumps(
+            {
+                "experiment_type": (
+                    "exposure_load_shadow_bounded_calibration_stress_test_sprint"
+                ),
+                "overall_recommendation": (
+                    "preserve_limited_calibration_finding_and_collect_more_prospective_evidence"
+                ),
+                "production_readiness": "not_ready_for_probability_or_pilot",
+                "calibration_claim_readiness": "not_ready_for_calibration_claims",
+                "pilot_dashboard_readiness": "blocked",
+                "load_modification_readiness": "blocked",
+                "channel_stress_rows": [
+                    {
+                        "channel_name": "broad_30d",
+                        "observed_event_count": 10,
+                        "captured_event_count": 1,
+                        "missed_event_count": 9,
+                        "capture_rate": 0.1,
+                        "missed_event_rate": 0.9,
+                        "stress_decision": (
+                            "preserve_limited_monitoring_value_collect_more_evidence"
+                        ),
+                    }
+                ],
+                "stress_scenario_rows": [],
+                "stress_gate_rows": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_exposure_load_shadow_prospective_evidence_gate_sprint_experiment(
+        exposure_load_shadow_bounded_calibration_stress_test_path=stress_path,
+        output_dir=tmp_path,
+        experiment_id="exposure_load_shadow_prospective_evidence_gate",
+    )
+
+    assert (
+        result / "exposure_load_shadow_prospective_evidence_targets.csv"
+    ).exists()
+    assert (
+        result / "exposure_load_shadow_prospective_packet_targets.csv"
+    ).exists()
+    assert (result / "exposure_load_shadow_prospective_evidence_gates.csv").exists()
+    assert (result / "exposure_load_shadow_prospective_evidence_gate.json").exists()
+    assert (
+        result / "exposure_load_shadow_prospective_evidence_gate_report.md"
+    ).exists()
+    assert (result / "config.json").exists()
+    payload = json.loads(
+        (result / "exposure_load_shadow_prospective_evidence_gate.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert payload["experiment_type"] == (
+        "exposure_load_shadow_prospective_evidence_gate_sprint"
+    )
+    assert payload["production_readiness"] == "not_ready_for_probability_or_pilot"
 
 
 def _write_context_review_inputs(tmp_path):

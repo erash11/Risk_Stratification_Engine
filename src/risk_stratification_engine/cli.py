@@ -45,6 +45,7 @@ from risk_stratification_engine.experiments import (
     run_exposure_load_shadow_collection_summary_sprint_experiment,
     run_exposure_load_shadow_event_crosswalk_sprint_experiment,
     run_exposure_load_shadow_monitoring_plan_sprint_experiment,
+    run_exposure_load_shadow_prospective_evidence_gate_sprint_experiment,
     run_exposure_load_shadow_readiness_register_sprint_experiment,
     run_exposure_load_shadow_replay_sprint_experiment,
     run_exposure_load_shadow_review_protocol_sprint_experiment,
@@ -116,6 +117,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--exposure-load-shadow-calibration-sensitivity", type=Path)
     parser.add_argument("--exposure-load-shadow-error-control-policy", type=Path)
     parser.add_argument("--exposure-load-shadow-bounded-calibration-protocol", type=Path)
+    parser.add_argument("--exposure-load-shadow-bounded-calibration-stress-test", type=Path)
     parser.add_argument("--exposure-load-shadow-event-crosswalk", type=Path)
     parser.add_argument("--exposure-load-source-resolution-policy", type=Path)
     parser.add_argument("--season-forward-validation-path", type=Path)
@@ -243,6 +245,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--exposure-load-shadow-bounded-calibration-stress-test-sprint",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--exposure-load-shadow-prospective-evidence-gate-sprint",
         action="store_true",
     )
     parser.add_argument(
@@ -1005,6 +1011,27 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(
             "Exposure load shadow bounded calibration stress-test artifacts "
+            f"written to {experiment_dir}"
+        )
+        return 0
+
+    if args.exposure_load_shadow_prospective_evidence_gate_sprint:
+        if args.exposure_load_shadow_bounded_calibration_stress_test is None:
+            parser.error(
+                "--exposure-load-shadow-prospective-evidence-gate-sprint "
+                "requires --exposure-load-shadow-bounded-calibration-stress-test"
+            )
+        experiment_dir = (
+            run_exposure_load_shadow_prospective_evidence_gate_sprint_experiment(
+                exposure_load_shadow_bounded_calibration_stress_test_path=(
+                    args.exposure_load_shadow_bounded_calibration_stress_test
+                ),
+                output_dir=args.output_dir,
+                experiment_id=args.experiment_id,
+            )
+        )
+        print(
+            "Exposure load shadow prospective evidence gate artifacts "
             f"written to {experiment_dir}"
         )
         return 0

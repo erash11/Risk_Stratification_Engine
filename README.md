@@ -917,6 +917,32 @@ value while keeping calibration claims, probability-facing output,
 pilot/dashboard readiness, autonomous intervention, and load modification
 blocked.
 
+## Run Exposure Load Shadow Prospective Evidence Gate Sprint
+
+After the bounded stress test preserves a limited finding, define the
+prospective retained-channel evidence gate before any retest:
+
+```bash
+risk-engine \
+  --exposure-load-shadow-prospective-evidence-gate-sprint \
+  --exposure-load-shadow-bounded-calibration-stress-test outputs/experiments/exposure_load_shadow_bounded_calibration_stress_test_v1/exposure_load_shadow_bounded_calibration_stress_test.json \
+  --output-dir outputs \
+  --experiment-id exposure_load_shadow_prospective_evidence_gate_v1
+```
+
+This writes `exposure_load_shadow_prospective_evidence_targets.csv`,
+`exposure_load_shadow_prospective_packet_targets.csv`,
+`exposure_load_shadow_prospective_evidence_gates.csv`,
+`exposure_load_shadow_prospective_evidence_gate.json`, and
+`exposure_load_shadow_prospective_evidence_gate_report.md`. The live
+`exposure_load_shadow_prospective_evidence_gate_v1` run recommends
+`collect_prospective_retained_channel_evidence_before_retesting` and reaches
+`prospective_evidence_collection_gate_defined`. Both `broad_30d` and
+`severity_14d` require 4 new prospective packets, at least 8 captured events,
+and missed-event rate no greater than 0.75 before retesting. Probability-facing
+output, calibration claims, pilot/dashboard readiness, autonomous intervention,
+and load modification remain blocked.
+
 ## Run Exposure Load Shadow Event Crosswalk Sprint
 
 Before independent practitioner adjudication, generate the retained-channel

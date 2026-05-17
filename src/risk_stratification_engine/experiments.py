@@ -137,6 +137,11 @@ from risk_stratification_engine.exposure_load_shadow_bounded_calibration_stress_
     clean_shadow_bounded_calibration_stress_test_rows,
     write_exposure_load_shadow_bounded_calibration_stress_test_report,
 )
+from risk_stratification_engine.exposure_load_shadow_prospective_evidence_gate import (
+    build_exposure_load_shadow_prospective_evidence_gate,
+    clean_shadow_prospective_evidence_gate_rows,
+    write_exposure_load_shadow_prospective_evidence_gate_report,
+)
 from risk_stratification_engine.exposure_load_shadow_error_control import (
     build_exposure_load_shadow_error_control_review,
     clean_shadow_error_control_rows,
@@ -3409,6 +3414,57 @@ def run_exposure_load_shadow_bounded_calibration_stress_test_sprint_experiment(
         experiment_dir
         / "exposure_load_shadow_bounded_calibration_stress_test_report.md",
         stress_test,
+    )
+    return experiment_dir
+
+
+def run_exposure_load_shadow_prospective_evidence_gate_sprint_experiment(
+    exposure_load_shadow_bounded_calibration_stress_test_path: str | Path,
+    output_dir: str | Path,
+    experiment_id: str,
+) -> Path:
+    experiment_dir = _experiment_path(output_dir, experiment_id)
+    stress_test = _load_json_payload(
+        exposure_load_shadow_bounded_calibration_stress_test_path
+    )
+    gate = build_exposure_load_shadow_prospective_evidence_gate(stress_test)
+    write_frame(
+        pd.DataFrame(
+            clean_shadow_prospective_evidence_gate_rows(
+                gate["collection_target_rows"]
+            )
+        ),
+        experiment_dir / "exposure_load_shadow_prospective_evidence_targets.csv",
+    )
+    write_frame(
+        pd.DataFrame(
+            clean_shadow_prospective_evidence_gate_rows(gate["packet_target_rows"])
+        ),
+        experiment_dir / "exposure_load_shadow_prospective_packet_targets.csv",
+    )
+    write_frame(
+        pd.DataFrame(
+            clean_shadow_prospective_evidence_gate_rows(gate["evidence_gate_rows"])
+        ),
+        experiment_dir / "exposure_load_shadow_prospective_evidence_gates.csv",
+    )
+    _write_json(
+        experiment_dir / "config.json",
+        {
+            "experiment_id": experiment_id,
+            "experiment_type": "exposure_load_shadow_prospective_evidence_gate",
+            "exposure_load_shadow_bounded_calibration_stress_test_path": str(
+                exposure_load_shadow_bounded_calibration_stress_test_path
+            ),
+        },
+    )
+    _write_json(
+        experiment_dir / "exposure_load_shadow_prospective_evidence_gate.json",
+        gate,
+    )
+    write_exposure_load_shadow_prospective_evidence_gate_report(
+        experiment_dir / "exposure_load_shadow_prospective_evidence_gate_report.md",
+        gate,
     )
     return experiment_dir
 

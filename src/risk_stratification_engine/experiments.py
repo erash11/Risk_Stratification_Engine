@@ -148,6 +148,11 @@ from risk_stratification_engine.exposure_load_shadow_prospective_collection_oper
     write_exposure_load_shadow_prospective_collection_operations_report,
     write_exposure_load_shadow_prospective_collection_reviewer_instructions,
 )
+from risk_stratification_engine.exposure_load_shadow_prospective_collection_completion import (
+    build_exposure_load_shadow_prospective_collection_completion,
+    clean_shadow_prospective_collection_completion_rows,
+    write_exposure_load_shadow_prospective_collection_completion_report,
+)
 from risk_stratification_engine.exposure_load_shadow_error_control import (
     build_exposure_load_shadow_error_control_review,
     clean_shadow_error_control_rows,
@@ -3557,6 +3562,69 @@ def run_exposure_load_shadow_prospective_collection_operations_sprint_experiment
         packet_path.write_text(str(packet_document["content"]), encoding="utf-8")
     if operations["packet_documents"]:
         packet_dir.mkdir(parents=True, exist_ok=True)
+    return experiment_dir
+
+
+def run_exposure_load_shadow_prospective_collection_completion_sprint_experiment(
+    exposure_load_shadow_prospective_collection_operations_path: str | Path,
+    output_dir: str | Path,
+    experiment_id: str,
+) -> Path:
+    experiment_dir = _experiment_path(output_dir, experiment_id)
+    operations = _load_json_payload(
+        exposure_load_shadow_prospective_collection_operations_path
+    )
+    completion = build_exposure_load_shadow_prospective_collection_completion(
+        operations
+    )
+    write_frame(
+        pd.DataFrame(
+            clean_shadow_prospective_collection_completion_rows(
+                completion["packet_validation_rows"]
+            )
+        ),
+        experiment_dir
+        / "exposure_load_shadow_prospective_collection_packet_validation.csv",
+    )
+    write_frame(
+        pd.DataFrame(
+            clean_shadow_prospective_collection_completion_rows(
+                completion["channel_completion_rows"]
+            )
+        ),
+        experiment_dir
+        / "exposure_load_shadow_prospective_collection_channel_completion.csv",
+    )
+    write_frame(
+        pd.DataFrame(
+            clean_shadow_prospective_collection_completion_rows(
+                completion["completion_gate_rows"]
+            )
+        ),
+        experiment_dir
+        / "exposure_load_shadow_prospective_collection_completion_gates.csv",
+    )
+    _write_json(
+        experiment_dir / "config.json",
+        {
+            "experiment_id": experiment_id,
+            "experiment_type": (
+                "exposure_load_shadow_prospective_collection_completion"
+            ),
+            "exposure_load_shadow_prospective_collection_operations_path": str(
+                exposure_load_shadow_prospective_collection_operations_path
+            ),
+        },
+    )
+    _write_json(
+        experiment_dir / "exposure_load_shadow_prospective_collection_completion.json",
+        completion,
+    )
+    write_exposure_load_shadow_prospective_collection_completion_report(
+        experiment_dir
+        / "exposure_load_shadow_prospective_collection_completion_report.md",
+        completion,
+    )
     return experiment_dir
 
 

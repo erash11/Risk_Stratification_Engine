@@ -39,6 +39,7 @@ from risk_stratification_engine.experiments import (
     run_exposure_load_shadow_bounded_calibration_stress_test_sprint_experiment,
     run_exposure_load_shadow_error_control_sprint_experiment,
     run_exposure_load_shadow_prospective_collection_operations_sprint_experiment,
+    run_exposure_load_shadow_prospective_collection_completion_sprint_experiment,
     run_exposure_load_shadow_prospective_evidence_gate_sprint_experiment,
     run_exposure_load_shadow_collection_evidence_prefill_sprint_experiment,
     run_exposure_load_shadow_collection_packet_workflow_sprint_experiment,
@@ -3624,6 +3625,95 @@ def test_run_exposure_load_shadow_prospective_collection_operations_sprint_write
     )
     assert payload["packet_count"] == 4
     assert payload["production_readiness"] == "not_ready_for_probability_or_pilot"
+
+
+def test_run_exposure_load_shadow_prospective_collection_completion_sprint_writes_artifacts(
+    tmp_path,
+):
+    operations_path = (
+        tmp_path / "exposure_load_shadow_prospective_collection_operations.json"
+    )
+    operations_path.write_text(
+        json.dumps(
+            {
+                "experiment_type": (
+                    "exposure_load_shadow_prospective_collection_operations_sprint"
+                ),
+                "overall_recommendation": (
+                    "prepare_prospective_collection_operations_before_retest"
+                ),
+                "retest_readiness": "pending_required_prospective_collection",
+                "production_readiness": "not_ready_for_probability_or_pilot",
+                "calibration_claim_readiness": "not_ready_for_calibration_claims",
+                "pilot_dashboard_readiness": "blocked",
+                "load_modification_readiness": "blocked",
+                "channel_operation_rows": [
+                    {
+                        "channel_name": "broad_30d",
+                        "required_packet_count": 4,
+                        "required_captured_events": 8,
+                        "maximum_allowed_missed_event_rate": 0.75,
+                    }
+                ],
+                "collection_worksheet_rows": [
+                    {
+                        "collection_packet_id": "broad_30d__prospective_collection_001",
+                        "channel_name": "broad_30d",
+                        "packet_sequence": 1,
+                        "collection_season_id": "",
+                        "packet_start_date": "",
+                        "packet_end_date": "",
+                        "source_eligible": "",
+                        "episode_count": "",
+                        "unique_observed_event_count": "",
+                        "unique_captured_event_count": "",
+                        "unique_missed_event_count": "",
+                        "missed_event_rate": "",
+                        "alert_usefulness": "",
+                        "outcome_confirmed": "",
+                        "source_context_ok": "",
+                        "action_taken": "",
+                        "reviewer_id": "",
+                        "review_date": "",
+                        "collection_status": "pending_prospective_collection",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_exposure_load_shadow_prospective_collection_completion_sprint_experiment(
+        exposure_load_shadow_prospective_collection_operations_path=operations_path,
+        output_dir=tmp_path,
+        experiment_id="exposure_load_shadow_prospective_collection_completion",
+    )
+
+    assert (
+        result / "exposure_load_shadow_prospective_collection_packet_validation.csv"
+    ).exists()
+    assert (
+        result / "exposure_load_shadow_prospective_collection_channel_completion.csv"
+    ).exists()
+    assert (
+        result / "exposure_load_shadow_prospective_collection_completion_gates.csv"
+    ).exists()
+    assert (
+        result / "exposure_load_shadow_prospective_collection_completion.json"
+    ).exists()
+    assert (
+        result / "exposure_load_shadow_prospective_collection_completion_report.md"
+    ).exists()
+    assert (result / "config.json").exists()
+    payload = json.loads(
+        (
+            result / "exposure_load_shadow_prospective_collection_completion.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert payload["overall_recommendation"] == (
+        "continue_prospective_collection_before_bounded_retest"
+    )
+    assert payload["bounded_retest_readiness"] == "blocked_pending_collection"
 
 
 def _write_context_review_inputs(tmp_path):

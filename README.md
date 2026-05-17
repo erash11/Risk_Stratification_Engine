@@ -974,6 +974,32 @@ packet. Retest readiness remains `pending_required_prospective_collection`;
 probability-facing output, calibration claims, pilot/dashboard readiness,
 autonomous intervention, and load modification remain blocked.
 
+## Run Exposure Load Shadow Prospective Collection Completion Sprint
+
+After prospective collection operations exist, validate whether completed
+practitioner evidence is sufficient for a bounded retest:
+
+```bash
+risk-engine \
+  --exposure-load-shadow-prospective-collection-completion-sprint \
+  --exposure-load-shadow-prospective-collection-operations outputs/experiments/exposure_load_shadow_prospective_collection_operations_v1/exposure_load_shadow_prospective_collection_operations.json \
+  --output-dir outputs \
+  --experiment-id exposure_load_shadow_prospective_collection_completion_v1
+```
+
+This writes `exposure_load_shadow_prospective_collection_packet_validation.csv`,
+`exposure_load_shadow_prospective_collection_channel_completion.csv`,
+`exposure_load_shadow_prospective_collection_completion_gates.csv`,
+`exposure_load_shadow_prospective_collection_completion.json`, and
+`exposure_load_shadow_prospective_collection_completion_report.md`. The live
+`exposure_load_shadow_prospective_collection_completion_v1` run recommends
+`continue_prospective_collection_before_bounded_retest`, with milestone status
+`prospective_collection_incomplete` and bounded retest readiness
+`blocked_pending_collection`. All 8 packet rows remain `pending_or_invalid`, so
+both `broad_30d` and `severity_14d` remain blocked pending required packets.
+Probability-facing output, calibration claims, pilot/dashboard readiness,
+autonomous intervention, and load modification remain blocked.
+
 ## Run Exposure Load Shadow Event Crosswalk Sprint
 
 Before independent practitioner adjudication, generate the retained-channel

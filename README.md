@@ -1041,6 +1041,9 @@ For the exact user/practitioner workflow, field definitions, allowed values,
 examples, ingest command, and follow-on validation command, see
 `docs/prospective_collection_completion_guide.md`. For a compact step-by-step
 reference, see `docs/prospective_collection_completion_process_reference.md`.
+For a packet-level map from the 8 packet IDs to channels, target types, packet
+files, allowed values, and ingest checks, see
+`docs/prospective_collection_packet_crosswalk.md`.
 
 ## Run Exposure Load Shadow Event Crosswalk Sprint
 

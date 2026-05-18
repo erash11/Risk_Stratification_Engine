@@ -81,6 +81,13 @@ Key files:
 - `exposure_load_shadow_prospective_collection_operations.json`: machine-readable
   operations package used by ingest and validation.
 
+The packet crosswalk is:
+
+`docs/prospective_collection_packet_crosswalk.md`
+
+Use the crosswalk to match packet IDs to channels, packet types, packet files,
+allowed values, ingest checks, and the follow-on validation path.
+
 The current ingest package is:
 
 `outputs/experiments/exposure_load_shadow_prospective_collection_ingest_v1/`
